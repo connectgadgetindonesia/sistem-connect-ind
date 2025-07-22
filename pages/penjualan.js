@@ -1,6 +1,7 @@
 import Layout from '@/components/Layout'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import dayjs from 'dayjs'
 
 export default function Penjualan() {
   const [formData, setFormData] = useState({
@@ -64,6 +65,20 @@ export default function Penjualan() {
     }
   }
 
+  async function generateInvoiceId(tanggal) {
+    const bulan = dayjs(tanggal).format('MM')
+    const tahun = dayjs(tanggal).format('YYYY')
+
+    const { data, error } = await supabase
+      .from('penjualan_baru')
+      .select('id')
+      .gte('tanggal', `${tahun}-${bulan}-01`)
+      .lte('tanggal', `${tahun}-${bulan}-31`)
+
+    const nomorUrut = (data?.length || 0) + 1
+    return `INV-CTI-${bulan}-${tahun}-${nomorUrut}`
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
 
@@ -75,6 +90,7 @@ export default function Penjualan() {
     const harga_jual = parseInt(formData.harga_jual)
     const harga_modal = parseInt(formData.harga_modal)
     const laba = harga_jual - harga_modal
+    const invoice = await generateInvoiceId(formData.tanggal)
 
     const { error } = await supabase.from('penjualan_baru').insert({
       sn_sku: formData.sn_sku,
@@ -90,7 +106,8 @@ export default function Penjualan() {
       harga_modal,
       laba,
       garansi: formData.garansi,
-      storage: formData.storage
+      storage: formData.storage,
+      invoice_id: invoice
     })
 
     if (error) {
