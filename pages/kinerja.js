@@ -97,7 +97,7 @@ export default function KinerjaKaryawan() {
                 <td className="border px-2 py-1 text-center">{i + 1}</td>
                 <td className="border px-2 py-1">{item.nama}</td>
                 <td className="border px-2 py-1 text-center">{item.jumlah_transaksi}</td>
-                <td className="border px-2 py-1 text-center">{item.jumlah_referrral}</td>
+                <td className="border px-2 py-1 text-center">{item.jumlah_referral}</td>
               </tr>
             ))}
           </tbody>
