@@ -1,52 +1,32 @@
-import { useRouter } from 'next/router'
-import { useEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
 import html2pdf from 'html2pdf.js'
+import { useEffect } from 'react'
 
-export default function InvoicePage() {
-  const router = useRouter()
-  const { id } = router.query
-  const [data, setData] = useState(null)
-  const invoiceRef = useRef()
-
+export default function InvoicePage({ data }) {
   useEffect(() => {
-    if (id) fetchData()
-  }, [id])
-
-  async function fetchData() {
-    const { data } = await supabase.from('penjualan_baru').select('*').eq('id', id).maybeSingle()
     if (data) {
-      setData(data)
-      setTimeout(() => generatePDF(data.invoice_id), 500) // Tunggu render selesai
+      const el = document.getElementById('invoice-content')
+      html2pdf()
+        .set({
+          margin: 0.5,
+          filename: `${data.invoice_id || 'invoice'}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+        })
+        .from(el)
+        .save()
     }
-  }
-
-  function generatePDF(invoiceId = 'invoice') {
-    const opt = {
-      margin: 0.5,
-      filename: `${invoiceId}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-    }
-    html2pdf().set(opt).from(invoiceRef.current).save()
-  }
+  }, [data])
 
   if (!data) return <p>Loading...</p>
 
   return (
-    <div ref={invoiceRef} style={{ padding: '1rem', fontFamily: 'Arial' }}>
+    <div id="invoice-content" style={{ padding: '1rem', fontFamily: 'Arial' }}>
       <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>INVOICE</h1>
-      <p>No: {data.invoice_id}</p>
       <p>Tanggal: {data.tanggal}</p>
-      <hr />
-
-      <p><strong>Nama:</strong> {data.nama_pembeli}</p>
-      <p><strong>Alamat:</strong> {data.alamat}</p>
-      <p><strong>No WA:</strong> {data.no_wa}</p>
-      <hr />
-
-      <table border="1" cellPadding="6" style={{ width: '100%', fontSize: '14px', marginTop: '1rem' }}>
+      <p>Nama: {data.nama_pembeli}</p>
+      <p>Alamat: {data.alamat}</p>
+      <table style={{ width: '100%', marginTop: '1rem' }} border="1" cellPadding="6">
         <thead>
           <tr>
             <th>Produk</th>
@@ -54,7 +34,7 @@ export default function InvoicePage() {
             <th>Storage</th>
             <th>Garansi</th>
             <th>SN/SKU</th>
-            <th>Harga Jual</th>
+            <th>Harga</th>
           </tr>
         </thead>
         <tbody>
@@ -68,10 +48,18 @@ export default function InvoicePage() {
           </tr>
         </tbody>
       </table>
-
-      <div style={{ textAlign: 'right', marginTop: '1rem' }}>
-        <strong>Total:</strong> Rp {parseInt(data.harga_jual).toLocaleString()}
-      </div>
+      <p style={{ textAlign: 'right', marginTop: '1rem' }}>
+        <strong>Total: Rp {parseInt(data.harga_jual).toLocaleString()}</strong>
+      </p>
     </div>
   )
+}
+
+// Tambahkan juga getServerSideProps untuk ambil data dari Supabase
+import { supabase } from '@/lib/supabaseClient'
+
+export async function getServerSideProps(context) {
+  const id = context.params.id
+  const { data, error } = await supabase.from('penjualan_baru').select('*').eq('id', id).maybeSingle()
+  return { props: { data } }
 }
