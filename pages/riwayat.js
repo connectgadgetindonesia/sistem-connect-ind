@@ -132,7 +132,15 @@ export default function RiwayatPenjualan() {
                   <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
                   <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
                   <td className="border px-2 py-1 text-center">
-                    <Link href={`/invoice/${item.id}`} className="text-blue-600 hover:underline" target="_blank">Cetak</Link>
+                    <a
+  href={`/invoice/${item.id}`}
+  target="_blank"
+  download={`${item.invoice_id || 'invoice'}.pdf`}
+  className="text-blue-600 hover:underline"
+>
+  Unduh
+</a>
+
                   </td>
                   <td className="border px-2 py-1 space-x-1">
                     <button onClick={() => handleDelete(item)} className="bg-red-600 text-white px-2 rounded">Hapus</button>
