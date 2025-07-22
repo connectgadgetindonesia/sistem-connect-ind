@@ -16,7 +16,7 @@ export default function RekapBulanan() {
 
   async function fetchData() {
     const { data, error } = await supabase
-      .from('penjualan')
+      .from('penjualan_baru')
       .select('*')
       .order('tanggal', { ascending: false })
 

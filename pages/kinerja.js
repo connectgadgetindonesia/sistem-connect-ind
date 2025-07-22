@@ -17,7 +17,7 @@ export default function KinerjaKaryawan() {
     const akhir = dayjs(bulan).endOf('month').format('YYYY-MM-DD')
 
     const { data: penjualan, error } = await supabase
-      .from('penjualan')
+      .from('penjualan_baru')
       .select('*')
       .gte('tanggal', awal)
       .lte('tanggal', akhir)
@@ -27,7 +27,6 @@ export default function KinerjaKaryawan() {
       return
     }
 
-    // Hitung kinerja
     const hasil = {}
 
     penjualan.forEach((item) => {
