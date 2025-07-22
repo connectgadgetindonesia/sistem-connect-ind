@@ -4,11 +4,13 @@ import { supabase } from '../lib/supabaseClient'
 
 export default function StokAksesoris() {
   const [form, setForm] = useState({
+    sku: '',
     nama_produk: '',
     warna: '',
     stok: '',
     harga_modal: ''
   })
+
   const [data, setData] = useState([])
 
   useEffect(() => {
@@ -16,7 +18,7 @@ export default function StokAksesoris() {
   }, [])
 
   async function fetchData() {
-    const { data, error } = await supabase.from('stok_aksesoris').select('*')
+    const { data, error } = await supabase.from('stok_aksesoris').select('*').order('nama_produk', { ascending: true })
     if (!error) setData(data)
   }
 
@@ -26,30 +28,32 @@ export default function StokAksesoris() {
     const { data: existing } = await supabase
       .from('stok_aksesoris')
       .select('*')
-      .eq('nama_produk', form.nama_produk)
-      .eq('warna', form.warna)
+      .eq('sku', form.sku)
       .maybeSingle()
 
     if (existing) {
       await supabase
         .from('stok_aksesoris')
         .update({
-          stok: existing.stok + parseInt(form.stok),
-          harga_modal: parseInt(form.harga_modal)
+          stok: Number(existing.stok) + Number(form.stok),
+          harga_modal: Number(form.harga_modal),
+          nama_produk: form.nama_produk,
+          warna: form.warna
         })
         .eq('id', existing.id)
     } else {
       await supabase.from('stok_aksesoris').insert([
         {
+          sku: form.sku,
           nama_produk: form.nama_produk,
           warna: form.warna,
-          stok: parseInt(form.stok),
-          harga_modal: parseInt(form.harga_modal)
+          stok: Number(form.stok),
+          harga_modal: Number(form.harga_modal)
         }
       ])
     }
 
-    setForm({ nama_produk: '', warna: '', stok: '', harga_modal: '' })
+    setForm({ sku: '', nama_produk: '', warna: '', stok: '', harga_modal: '' })
     fetchData()
   }
 
@@ -59,6 +63,7 @@ export default function StokAksesoris() {
         <h1 className="text-2xl font-bold mb-4">Input & Update Stok Aksesoris</h1>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {[
+            ['SKU (Kode Produk)', 'sku'],
             ['Nama Produk', 'nama_produk'],
             ['Warna', 'warna'],
             ['Jumlah Stok', 'stok', 'number'],
@@ -84,7 +89,7 @@ export default function StokAksesoris() {
         <ul className="space-y-1 text-sm">
           {data.map((item) => (
             <li key={item.id} className="border-b pb-1">
-              <strong>{item.nama_produk}</strong> | Warna: {item.warna} | Stok: {item.stok} | Modal: Rp{item.harga_modal?.toLocaleString()}
+              <strong>{item.nama_produk}</strong> | SKU: <span className="font-mono">{item.sku}</span> | Warna: {item.warna} | Stok: {item.stok} | Modal: Rp{item.harga_modal?.toLocaleString()}
             </li>
           ))}
         </ul>
