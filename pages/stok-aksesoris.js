@@ -18,7 +18,7 @@ export default function StokAksesoris() {
   }, [])
 
   async function fetchData() {
-    const { data, error } = await supabase.from('stok_aksesoris').select('*').order('nama_produk', { ascending: true })
+    const { data, error } = await supabase.from('stok_aksesoris').select('*')
     if (!error) setData(data)
   }
 
@@ -35,8 +35,8 @@ export default function StokAksesoris() {
       await supabase
         .from('stok_aksesoris')
         .update({
-          stok: Number(existing.stok) + Number(form.stok),
-          harga_modal: Number(form.harga_modal),
+          stok: existing.stok + parseInt(form.stok),
+          harga_modal: parseInt(form.harga_modal),
           nama_produk: form.nama_produk,
           warna: form.warna
         })
@@ -47,13 +47,18 @@ export default function StokAksesoris() {
           sku: form.sku,
           nama_produk: form.nama_produk,
           warna: form.warna,
-          stok: Number(form.stok),
-          harga_modal: Number(form.harga_modal)
+          stok: parseInt(form.stok),
+          harga_modal: parseInt(form.harga_modal)
         }
       ])
     }
 
     setForm({ sku: '', nama_produk: '', warna: '', stok: '', harga_modal: '' })
+    fetchData()
+  }
+
+  async function handleDelete(id) {
+    await supabase.from('stok_aksesoris').delete().eq('id', id)
     fetchData()
   }
 
@@ -86,10 +91,32 @@ export default function StokAksesoris() {
         </form>
 
         <h2 className="text-xl font-semibold mb-2">Daftar Aksesoris</h2>
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-4 text-sm">
           {data.map((item) => (
-            <li key={item.id} className="border-b pb-1">
-              <strong>{item.nama_produk}</strong> | SKU: <span className="font-mono">{item.sku}</span> | Warna: {item.warna} | Stok: {item.stok} | Modal: Rp{item.harga_modal?.toLocaleString()}
+            <li key={item.id} className="border-b pb-2">
+              <strong>{item.nama_produk}</strong> | SKU: {item.sku || '-'} | Warna: {item.warna} | Stok: {item.stok} | Modal: Rp{item.harga_modal?.toLocaleString()}
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() =>
+                    setForm({
+                      sku: item.sku,
+                      nama_produk: item.nama_produk,
+                      warna: item.warna,
+                      stok: item.stok,
+                      harga_modal: item.harga_modal
+                    })
+                  }
+                  className="px-2 py-1 bg-blue-500 text-white rounded text-sm"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  className="px-2 py-1 bg-red-600 text-white rounded text-sm"
+                >
+                  Hapus
+                </button>
+              </div>
             </li>
           ))}
         </ul>
