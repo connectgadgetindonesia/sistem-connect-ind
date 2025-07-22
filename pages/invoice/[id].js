@@ -29,16 +29,22 @@ export default function InvoicePage() {
 
   if (!data) return <div className="p-8 text-center">Memuat invoice...</div>
 
-  // Format nomor invoice
-  const tanggal = new Date(data.tanggal)
-  const bulan = String(tanggal.getMonth() + 1).padStart(2, '0')
-  const tahun = tanggal.getFullYear()
-  const nomorInvoice = `INV-CTI-${bulan}${tahun}-${data.id}`
-
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-white text-sm font-sans print:text-black print:bg-white print:p-0 print:border-none print:shadow-none">
+    <div className="max-w-3xl mx-auto p-6 bg-white text-sm font-sans print:p-0 print:border-none print:shadow-none">
+      {/* CSS Print Override */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            margin: 0;
+          }
+          body {
+            margin: 0;
+          }
+        }
+      `}</style>
+
       {/* Header */}
-      <div className="flex justify-between items-center mb-4 print:mb-2">
+      <div className="flex justify-between items-center mb-4">
         <div>
           <Image src={logo} alt="Logo CONNECT.IND" width={100} />
         </div>
@@ -50,12 +56,12 @@ export default function InvoicePage() {
         </div>
       </div>
 
-      <hr className="my-4 border-gray-400 print:my-2" />
+      <hr className="my-4 border-gray-400" />
 
       {/* Info Invoice & Customer */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <p><strong>Invoice:</strong> {nomorInvoice}</p>
+          <p><strong>Invoice:</strong> {data.invoice_id}</p>
           <p><strong>Tanggal:</strong> {data.tanggal}</p>
         </div>
         <div>
@@ -66,7 +72,7 @@ export default function InvoicePage() {
       </div>
 
       {/* Produk */}
-      <table className="w-full border text-sm mb-6 print:text-xs">
+      <table className="w-full border text-sm mb-6">
         <thead className="bg-gray-100">
           <tr>
             <th className="border px-2 py-1">Nama Produk</th>
