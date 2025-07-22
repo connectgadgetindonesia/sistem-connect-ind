@@ -2,7 +2,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import Image from 'next/image'
-import logo from '@/public/logo connect-01.jpg'
+import logo from '@/public/logo-connect-01.jpg'
 
 export default function InvoicePage() {
   const router = useRouter()
@@ -10,16 +10,22 @@ export default function InvoicePage() {
   const [data, setData] = useState(null)
 
   useEffect(() => {
-    if (id) fetchInvoice()
-  }, [id])
+    if (router.isReady) fetchInvoice()
+  }, [router.isReady])
 
   async function fetchInvoice() {
+    const { id } = router.query
     const { data, error } = await supabase
       .from('penjualan_baru')
       .select('*')
       .eq('id', id)
       .maybeSingle()
-    if (!error) setData(data)
+
+    if (error) {
+      console.error('Gagal fetch invoice:', error)
+    } else {
+      setData(data)
+    }
   }
 
   if (!data) return <div className="p-8 text-center">Memuat invoice...</div>
