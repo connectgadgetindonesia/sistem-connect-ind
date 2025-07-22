@@ -38,6 +38,8 @@ export default function Penjualan() {
         nama_produk: stokUnit.nama_produk,
         warna: stokUnit.warna,
         harga_modal: stokUnit.harga_modal,
+        storage: stokUnit.storage || '',
+        garansi: stokUnit.garansi || ''
       }))
     } else {
       let { data: aksesoris } = await supabase
@@ -52,6 +54,8 @@ export default function Penjualan() {
           nama_produk: aksesoris.nama_produk,
           warna: aksesoris.warna,
           harga_modal: aksesoris.harga_modal,
+          storage: '',
+          garansi: ''
         }))
       }
     }
@@ -59,13 +63,20 @@ export default function Penjualan() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+
     const harga_jual = parseInt(formData.harga_jual)
     const harga_modal = parseInt(formData.harga_modal)
     const laba = harga_jual - harga_modal
 
-    const dataBaru = { ...formData, laba }
+    const dataBaru = {
+      ...formData,
+      harga_jual,
+      harga_modal,
+      laba,
+    }
 
     const { error } = await supabase.from('penjualan').insert([dataBaru])
+
     if (error) {
       alert('Gagal simpan')
       console.error(error)
@@ -106,7 +117,7 @@ export default function Penjualan() {
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Input Penjualan CONNECT.IND</h1>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {[ 
+          {[
             ['Tanggal Transaksi', 'tanggal', 'date'],
             ['Nama Pembeli', 'nama_pembeli'],
             ['SN / SKU', 'sn_sku'],
@@ -131,7 +142,7 @@ export default function Penjualan() {
             <p>Nama Produk: {formData.nama_produk || '-'}</p>
             <p>Warna: {formData.warna || '-'}</p>
             <p>Harga Modal: Rp {formData.harga_modal || '-'}</p>
-            <p>Laba: Rp {formData.laba || '-'}</p>
+            <p>Laba: Rp {formData.harga_jual && formData.harga_modal ? (formData.harga_jual - formData.harga_modal).toLocaleString() : '-'}</p>
           </div>
 
           <button className="bg-blue-600 text-white py-2 rounded md:col-span-2" type="submit">
