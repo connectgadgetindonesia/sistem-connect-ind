@@ -1,59 +1,64 @@
 // pages/login.js
 import { useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
+import { supabase } from '@/lib/supabaseClient'
 
-export default function Login() {
-  const router = useRouter()
+export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const router = useRouter()
 
-  async function handleLogin(e) {
+  const handleLogin = async (e) => {
     e.preventDefault()
-    setLoading(true)
+    setError('')
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
 
     if (error) {
-      alert('Login gagal: ' + error.message)
-    } else {
-      router.push('/dashboard')
+      setError(error.message)
+      return
     }
 
-    setLoading(false)
+    // Simpan token ke cookie
+    document.cookie = `user_token=${data.session.access_token}; path=/;`
+
+    router.push('/dashboard')
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <form
-        onSubmit={handleLogin}
-        className="bg-white p-6 rounded shadow-md w-full max-w-sm"
-      >
-        <h2 className="text-xl font-bold mb-4 text-center">Login CONNECT.IND</h2>
+      <form onSubmit={handleLogin} className="bg-white p-6 rounded shadow-md w-96">
+        <h1 className="text-2xl font-bold mb-4 text-center">Login CONNECT.IND</h1>
+
+        {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
 
         <input
           type="email"
           placeholder="Email"
-          className="border p-2 w-full mb-3"
+          className="w-full mb-3 border p-2 rounded"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
         />
+
         <input
           type="password"
           placeholder="Password"
-          className="border p-2 w-full mb-3"
+          className="w-full mb-4 border p-2 rounded"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+
         <button
           type="submit"
-          className="bg-blue-600 text-white w-full py-2 rounded"
-          disabled={loading}
+          className="bg-blue-600 hover:bg-blue-700 text-white w-full p-2 rounded font-semibold"
         >
-          {loading ? 'Loading...' : 'Login'}
+          Login
         </button>
       </form>
     </div>
