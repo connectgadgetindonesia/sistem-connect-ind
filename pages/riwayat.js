@@ -20,7 +20,7 @@ export default function RiwayatPenjualan() {
 
   async function fetchData() {
     const { data, error } = await supabase
-      .from('penjualan')
+      .from('penjualan_baru')
       .select('*')
       .order('tanggal', { ascending: false })
     if (!error) setData(data)
@@ -52,7 +52,7 @@ export default function RiwayatPenjualan() {
       await supabase.rpc('tambah_stok_aksesoris', { sku_input: item.sn_sku })
     }
 
-    await supabase.from('penjualan').delete().eq('id', item.id)
+    await supabase.from('penjualan_baru').delete().eq('id', item.id)
     fetchData()
   }
 
@@ -62,7 +62,7 @@ export default function RiwayatPenjualan() {
     const laba = harga_jual - harga_modal
 
     const { error } = await supabase
-      .from('penjualan')
+      .from('penjualan_baru')
       .update({ ...editData, laba })
       .eq('id', editId)
 
