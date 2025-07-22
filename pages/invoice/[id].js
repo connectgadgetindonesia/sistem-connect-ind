@@ -18,7 +18,7 @@ export default function InvoicePage() {
     const { data, error } = await supabase
       .from('penjualan_baru')
       .select('*')
-      .eq('uuid', id)
+      .eq('id', id)
       .maybeSingle()
 
     if (error) {
