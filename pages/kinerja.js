@@ -33,12 +33,14 @@ export default function KinerjaKaryawan() {
       const pelayanan = item.dilayani_oleh?.toUpperCase() || '-'
       const referral = item.referal?.toUpperCase() || '-'
 
+      // Hitung jumlah transaksi
       if (!hasil[pelayanan]) {
         hasil[pelayanan] = { nama: pelayanan, jumlah_transaksi: 0, jumlah_referral: 0 }
       }
       hasil[pelayanan].jumlah_transaksi++
 
-      if (referral !== '-' && referral !== pelayanan) {
+      // Hitung referral (termasuk jika sama dengan yang melayani)
+      if (referral !== '-') {
         if (!hasil[referral]) {
           hasil[referral] = { nama: referral, jumlah_transaksi: 0, jumlah_referral: 0 }
         }
