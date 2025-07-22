@@ -15,8 +15,18 @@ export default function Penjualan() {
     nama_produk: '',
     warna: '',
     harga_modal: '',
+    storage: '',
+    garansi: '',
     laba: ''
   })
+
+  // Hitung laba otomatis setiap kali harga berubah
+  useEffect(() => {
+    const jual = parseInt(formData.harga_jual)
+    const modal = parseInt(formData.harga_modal)
+    const laba = !isNaN(jual) && !isNaN(modal) ? jual - modal : ''
+    setFormData((prev) => ({ ...prev, laba }))
+  }, [formData.harga_jual, formData.harga_modal])
 
   useEffect(() => {
     if (formData.sn_sku.length > 0) {
@@ -25,7 +35,7 @@ export default function Penjualan() {
   }, [formData.sn_sku])
 
   async function cariStok(sn_sku) {
-    let { data: stokUnit } = await supabase
+    const { data: stokUnit } = await supabase
       .from('stok')
       .select('*')
       .eq('sn', sn_sku)
@@ -42,7 +52,7 @@ export default function Penjualan() {
         garansi: stokUnit.garansi || ''
       }))
     } else {
-      let { data: aksesoris } = await supabase
+      const { data: aksesoris } = await supabase
         .from('stok_aksesoris')
         .select('*')
         .eq('sku', sn_sku)
@@ -72,11 +82,10 @@ export default function Penjualan() {
       ...formData,
       harga_jual,
       harga_modal,
-      laba,
+      laba
     }
 
     const { error } = await supabase.from('penjualan').insert([dataBaru])
-
     if (error) {
       alert('Gagal simpan')
       console.error(error)
@@ -108,6 +117,8 @@ export default function Penjualan() {
       nama_produk: '',
       warna: '',
       harga_modal: '',
+      storage: '',
+      garansi: '',
       laba: ''
     })
   }
@@ -125,7 +136,7 @@ export default function Penjualan() {
             ['No. WA', 'no_wa'],
             ['Harga Jual', 'harga_jual', 'number'],
             ['Referal', 'referal'],
-            ['Dilayani Oleh', 'dilayani_oleh'],
+            ['Dilayani Oleh', 'dilayani_oleh']
           ].map(([label, field, type = 'text']) => (
             <input
               key={field}
@@ -141,8 +152,8 @@ export default function Penjualan() {
           <div className="md:col-span-2 text-sm text-gray-600">
             <p>Nama Produk: {formData.nama_produk || '-'}</p>
             <p>Warna: {formData.warna || '-'}</p>
-            <p>Harga Modal: Rp {formData.harga_modal || '-'}</p>
-            <p>Laba: Rp {formData.harga_jual && formData.harga_modal ? (formData.harga_jual - formData.harga_modal).toLocaleString() : '-'}</p>
+            <p>Harga Modal: Rp {formData.harga_modal?.toLocaleString('id-ID') || '-'}</p>
+            <p>Laba: Rp {formData.laba?.toLocaleString('id-ID') || '-'}</p>
           </div>
 
           <button className="bg-blue-600 text-white py-2 rounded md:col-span-2" type="submit">
