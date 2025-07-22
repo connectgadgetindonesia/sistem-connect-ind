@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import Image from 'next/image'
 import logo from '@/public/logo-connect-01.jpg'
+import html2pdf from 'html2pdf.js'
 
 export default function InvoicePage() {
   const router = useRouter()
@@ -27,10 +28,22 @@ export default function InvoicePage() {
     }
   }
 
+  function downloadPDF() {
+    const element = document.getElementById('invoice-content')
+    const opt = {
+      margin: 0.5,
+      filename: `${data.invoice_id || 'invoice'}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+    }
+    html2pdf().set(opt).from(element).save()
+  }
+
   if (!data) return <div className="p-8 text-center">Memuat invoice...</div>
 
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-white text-sm font-sans print:p-0 print:border-none print:shadow-none">
+    <div id="invoice-content" className="max-w-3xl mx-auto p-6 bg-white text-sm font-sans print:p-0 print:border-none print:shadow-none">
       {/* CSS Print Override */}
       <style jsx global>{`
         @media print {
@@ -107,8 +120,8 @@ export default function InvoicePage() {
       </div>
 
       <div className="text-center mt-6 print:hidden">
-        <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded">
-          Cetak Invoice
+        <button onClick={downloadPDF} className="bg-blue-600 text-white px-4 py-2 rounded">
+          Download PDF
         </button>
       </div>
     </div>
