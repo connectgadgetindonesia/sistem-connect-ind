@@ -1,7 +1,8 @@
-// pages/invoice/[id].js
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import Image from 'next/image'
+import logo from '@/public/logo connect-01.jpg'
 
 export default function InvoicePage() {
   const router = useRouter()
@@ -14,49 +15,81 @@ export default function InvoicePage() {
 
   async function fetchInvoice() {
     const { data, error } = await supabase
-      .from('penjualan_baru') // ✅ GANTI DI SINI
+      .from('penjualan_baru')
       .select('*')
-      .eq('uuid', id)
+      .eq('id', id)
       .maybeSingle()
     if (!error) setData(data)
   }
 
-  if (!data) return <div className="p-4">Memuat invoice...</div>
+  if (!data) return <div className="p-8 text-center">Memuat invoice...</div>
 
   return (
-    <div className="p-6 max-w-2xl mx-auto border rounded bg-white shadow">
-      <h1 className="text-2xl font-bold mb-4 text-center">INVOICE PENJUALAN</h1>
-
-      <div className="mb-4 text-sm">
-        <p><strong>Nama Toko:</strong> CONNECT.IND</p>
-        <p><strong>Alamat Toko:</strong> Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang. 50145.</p>
-        <p><strong>No. Telp:</strong> 089-631-4000-31</p>
+    <div className="max-w-3xl mx-auto p-6 bg-white border border-gray-300 rounded text-sm font-sans">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <Image src={logo} alt="Logo CONNECT.IND" width={100} />
+        </div>
+        <div className="text-right text-sm">
+          <p className="font-bold text-lg">CONNECT.IND</p>
+          <p>Jl. Srikuncoro Raya Ruko B1-B2</p>
+          <p>Kalibanteng Kulon, Semarang 50145</p>
+          <p>Telp: 089-631-4000-31</p>
+        </div>
       </div>
 
-      <hr className="my-4" />
+      <hr className="my-4 border-gray-400" />
 
-      <div className="text-sm">
-        <p><strong>Tanggal:</strong> {data.tanggal}</p>
-        <p><strong>Invoice ID:</strong> INV-CTI-{data.id}</p>
-        <p><strong>Nama Pembeli:</strong> {data.nama_pembeli}</p>
-        <p><strong>Alamat:</strong> {data.alamat}</p>
-        <p><strong>Nomor WA:</strong> {data.no_wa}</p>
+      {/* Info Invoice & Customer */}
+      <div className="mb-6 grid grid-cols-2 gap-4">
+        <div>
+          <p><strong>Invoice:</strong> INV-CTI-{data.id}</p>
+          <p><strong>Tanggal:</strong> {data.tanggal}</p>
+        </div>
+        <div>
+          <p><strong>Nama Pembeli:</strong> {data.nama_pembeli}</p>
+          <p><strong>Alamat:</strong> {data.alamat}</p>
+          <p><strong>No. WA:</strong> {data.no_wa}</p>
+        </div>
       </div>
 
-      <hr className="my-4" />
+      {/* Produk */}
+      <table className="w-full border text-sm mb-6">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="border px-2 py-1">Nama Produk</th>
+            <th className="border px-2 py-1">Warna</th>
+            <th className="border px-2 py-1">SN / SKU</th>
+            <th className="border px-2 py-1">Garansi</th>
+            <th className="border px-2 py-1">Storage</th>
+            <th className="border px-2 py-1">Harga Jual</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="border px-2 py-1">{data.nama_produk}</td>
+            <td className="border px-2 py-1">{data.warna}</td>
+            <td className="border px-2 py-1">{data.sn_sku}</td>
+            <td className="border px-2 py-1">{data.garansi || '-'}</td>
+            <td className="border px-2 py-1">{data.storage || '-'}</td>
+            <td className="border px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </table>
 
-      <h2 className="font-semibold mb-2">Produk</h2>
-      <ul className="text-sm">
-        <li><strong>Nama Produk:</strong> {data.nama_produk}</li>
-        <li><strong>SN / SKU:</strong> {data.sn_sku}</li>
-        <li><strong>Warna:</strong> {data.warna}</li>
-        <li><strong>Harga Jual:</strong> Rp {parseInt(data.harga_jual).toLocaleString()}</li>
-        <li><strong>Referal:</strong> {data.referal}</li>
-        <li><strong>Dilayani Oleh:</strong> {data.dilayani_oleh}</li>
-      </ul>
+      {/* Footer */}
+      <div className="text-right mb-6">
+        <p className="text-sm"><strong>Total:</strong> Rp {parseInt(data.harga_jual).toLocaleString()}</p>
+      </div>
+
+      <div className="text-center text-xs text-gray-500">
+        <p>Terima kasih telah berbelanja di CONNECT.IND</p>
+        <p>Semua barang bergaransi & dapat klaim di service center resmi</p>
+      </div>
 
       <div className="text-center mt-6">
-        <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={() => window.print()}>
+        <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded">
           Cetak Invoice
         </button>
       </div>
