@@ -27,7 +27,6 @@ export default function Penjualan() {
   }, [formData.sn_sku])
 
   async function cariStok(snsku) {
-    // Cek unit SN
     const { data: unit } = await supabase
       .from('stok')
       .select('*')
@@ -47,7 +46,6 @@ export default function Penjualan() {
       return
     }
 
-    // Cek aksesoris
     const { data: aks } = await supabase
       .from('stok_aksesoris')
       .select('*')
@@ -69,25 +67,38 @@ export default function Penjualan() {
   async function handleSubmit(e) {
     e.preventDefault()
 
+    if (!formData.tanggal) {
+      alert('Tanggal tidak boleh kosong')
+      return
+    }
+
     const harga_jual = parseInt(formData.harga_jual)
     const harga_modal = parseInt(formData.harga_modal)
     const laba = harga_jual - harga_modal
 
-    const data = {
-      ...formData,
+    const { error } = await supabase.from('penjualan_baru').insert({
+      sn_sku: formData.sn_sku,
+      tanggal: formData.tanggal,
+      nama_pembeli: formData.nama_pembeli,
       harga_jual,
+      alamat: formData.alamat,
+      no_wa: formData.no_wa,
+      referal: formData.referal,
+      dilayani_oleh: formData.dilayani_oleh,
+      nama_produk: formData.nama_produk,
+      warna: formData.warna,
       harga_modal,
-      laba
-    }
+      laba,
+      garansi: formData.garansi,
+      storage: formData.storage
+    })
 
-    const { error } = await supabase.from('penjualan_baru').insert([data])
     if (error) {
-      alert('Gagal simpan')
+      alert('Gagal simpan: ' + error.message)
       console.error(error)
       return
     }
 
-    // Kurangi stok
     const { data: stokUnit } = await supabase
       .from('stok')
       .select('id')
