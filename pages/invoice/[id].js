@@ -1,9 +1,6 @@
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabaseClient'
-import Image from 'next/image'
-import logo from '@/public/logo-connect-01.jpg'
-import html2pdf from 'html2pdf.js'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function InvoicePage() {
   const router = useRouter()
@@ -11,8 +8,8 @@ export default function InvoicePage() {
   const [data, setData] = useState(null)
 
   useEffect(() => {
-    if (router.isReady) fetchInvoice()
-  }, [router.isReady])
+    if (id) fetchInvoice()
+  }, [id])
 
   async function fetchInvoice() {
     const { data, error } = await supabase
@@ -21,109 +18,71 @@ export default function InvoicePage() {
       .eq('id', id)
       .maybeSingle()
 
-    if (error) {
-      console.error('Gagal fetch invoice:', error)
-    } else {
-      setData(data)
-    }
+    if (data) setData(data)
   }
 
-  function downloadPDF() {
-    const element = document.getElementById('invoice-content')
-    const opt = {
-      margin: 0.5,
-      filename: `${data.invoice_id || 'invoice'}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-    }
-    html2pdf().set(opt).from(element).save()
-  }
-
-  if (!data) return <div className="p-8 text-center">Memuat invoice...</div>
+  if (!data) return <div>Loading...</div>
 
   return (
-    <div id="invoice-content" className="max-w-3xl mx-auto p-6 bg-white text-sm font-sans print:p-0 print:border-none print:shadow-none">
-      {/* CSS Print Override */}
-      <style jsx global>{`
-        @media print {
-          @page {
-            margin: 0;
-          }
-          body {
-            margin: 0;
-          }
-        }
-      `}</style>
-
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <Image src={logo} alt="Logo CONNECT.IND" width={100} />
-        </div>
-        <div className="text-right text-sm">
-          <p className="font-bold text-lg">CONNECT.IND</p>
-          <p>Jl. Srikuncoro Raya Ruko B1-B2</p>
-          <p>Kalibanteng Kulon, Semarang 50145</p>
-          <p>Telp: 089-631-4000-31</p>
-        </div>
+    <div className="p-8 font-sans text-sm text-black" style={{ width: '600px', margin: '0 auto' }}>
+      <div className="text-center mb-6">
+        <img src="/logo-connect.png" alt="Logo CONNECT.IND" className="h-16 mx-auto mb-2" />
+        <h1 className="text-xl font-bold">INVOICE</h1>
+        <p className="text-xs">
+          CONNECT.IND<br />
+          Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145<br />
+          Telp: 089-631-4000-31
+        </p>
       </div>
 
-      <hr className="my-4 border-gray-400" />
-
-      {/* Info Invoice & Customer */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <p><strong>Invoice:</strong> {data.invoice_id}</p>
-          <p><strong>Tanggal:</strong> {data.tanggal}</p>
-        </div>
-        <div>
-          <p><strong>Nama Pembeli:</strong> {data.nama_pembeli}</p>
-          <p><strong>Alamat:</strong> {data.alamat}</p>
-          <p><strong>No. WA:</strong> {data.no_wa}</p>
-        </div>
+      <div className="mb-4">
+        <p><strong>Invoice ID:</strong> {data.invoice_id}</p>
+        <p><strong>Tanggal:</strong> {data.tanggal}</p>
+        <p><strong>Nama Pembeli:</strong> {data.nama_pembeli}</p>
+        <p><strong>Alamat:</strong> {data.alamat}</p>
+        <p><strong>No. WA:</strong> {data.no_wa}</p>
       </div>
 
-      {/* Produk */}
-      <table className="w-full border text-sm mb-6">
+      <table className="w-full border text-xs">
         <thead className="bg-gray-100">
           <tr>
-            <th className="border px-2 py-1">Nama Produk</th>
+            <th className="border px-2 py-1">Produk</th>
             <th className="border px-2 py-1">Warna</th>
-            <th className="border px-2 py-1">SN / SKU</th>
-            <th className="border px-2 py-1">Garansi</th>
             <th className="border px-2 py-1">Storage</th>
-            <th className="border px-2 py-1">Harga Jual</th>
+            <th className="border px-2 py-1">Garansi</th>
+            <th className="border px-2 py-1">SN/SKU</th>
+            <th className="border px-2 py-1">Harga</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td className="border px-2 py-1">{data.nama_produk}</td>
             <td className="border px-2 py-1">{data.warna}</td>
-            <td className="border px-2 py-1">{data.sn_sku}</td>
-            <td className="border px-2 py-1">{data.garansi || '-'}</td>
             <td className="border px-2 py-1">{data.storage || '-'}</td>
+            <td className="border px-2 py-1">{data.garansi || '-'}</td>
+            <td className="border px-2 py-1">{data.sn_sku}</td>
             <td className="border px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString()}</td>
           </tr>
         </tbody>
       </table>
 
-      {/* Total */}
-      <div className="text-right mb-6">
-        <p className="text-sm"><strong>Total:</strong> Rp {parseInt(data.harga_jual).toLocaleString()}</p>
+      <div className="text-right mt-4 text-base font-semibold">
+        Total: Rp {parseInt(data.harga_jual).toLocaleString()}
       </div>
 
-      {/* Footer */}
-      <div className="text-center text-xs text-gray-500 print:text-black">
-        <p>Terima kasih telah berbelanja di CONNECT.IND</p>
-        <p>Semua barang bergaransi & dapat klaim di service center resmi</p>
-      </div>
-
-      <div className="text-center mt-6 print:hidden">
-        <button onClick={downloadPDF} className="bg-blue-600 text-white px-4 py-2 rounded">
-          Download PDF
-        </button>
-      </div>
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          body > div, body > div * {
+            visibility: visible;
+          }
+          body {
+            margin: 0;
+          }
+        }
+      `}</style>
     </div>
   )
 }
