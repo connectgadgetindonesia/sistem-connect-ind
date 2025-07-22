@@ -14,7 +14,7 @@ export default function InvoicePage() {
 
   async function fetchInvoice() {
     const { data, error } = await supabase
-      .from('penjualan')
+      .from('penjualan_baru') // ✅ GANTI DI SINI
       .select('*')
       .eq('id', id)
       .maybeSingle()
