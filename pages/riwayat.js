@@ -101,24 +101,34 @@ export default function RiwayatPenjualan() {
               </tr>
             </thead>
             <tbody>
-              {filterData().map((item) => (
-                <tr key={item.id}>
-                  <td className="border px-2 py-1">{item.tanggal}</td>
-                  <td className="border px-2 py-1">{item.nama_pembeli}</td>
-                  <td className="border px-2 py-1">{item.nama_produk}</td>
-                  <td className="border px-2 py-1">{item.sn_sku}</td>
-                  <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
-                  <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
-                  <td className="border px-2 py-1 text-center">
-                    <Link href={`/invoice/${item.id}`} target="_blank" className="text-blue-600 hover:underline">
-  Unduh
-</Link>
-                  <td className="border px-2 py-1 space-x-1">
-                    <button onClick={() => handleDelete(item)} className="bg-red-600 text-white px-2 rounded">Hapus</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+  {filterData().map((item) => (
+    <tr key={item.id}>
+      <td className="border px-2 py-1">{item.tanggal}</td>
+      <td className="border px-2 py-1">{item.nama_pembeli}</td>
+      <td className="border px-2 py-1">{item.nama_produk}</td>
+      <td className="border px-2 py-1">{item.sn_sku}</td>
+      <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
+      <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
+      <td className="border px-2 py-1 text-center">
+        <Link
+          href={`/invoice/${item.id}`}
+          target="_blank"
+          className="text-blue-600 hover:underline"
+        >
+          Unduh
+        </Link>
+      </td>
+      <td className="border px-2 py-1 space-x-1">
+        <button
+          onClick={() => handleDelete(item)}
+          className="bg-red-600 text-white px-2 rounded"
+        >
+          Hapus
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
           </table>
         </div>
 
