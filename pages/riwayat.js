@@ -1,13 +1,10 @@
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import Link from 'next/link'
 import * as XLSX from 'xlsx'
 
 export default function RiwayatPenjualan() {
   const [data, setData] = useState([])
-  const [editId, setEditId] = useState(null)
-  const [editData, setEditData] = useState({})
   const [search, setSearch] = useState('')
   const [rekapOpen, setRekapOpen] = useState(false)
   const [rekap, setRekap] = useState([])
@@ -54,22 +51,6 @@ export default function RiwayatPenjualan() {
 
     await supabase.from('penjualan_baru').delete().eq('id', item.id)
     fetchData()
-  }
-
-  async function handleUpdate() {
-    const harga_jual = parseInt(editData.harga_jual)
-    const harga_modal = parseInt(editData.harga_modal)
-    const laba = harga_jual - harga_modal
-
-    const { error } = await supabase
-      .from('penjualan_baru')
-      .update({ ...editData, laba })
-      .eq('id', editId)
-
-    if (!error) {
-      setEditId(null)
-      fetchData()
-    }
   }
 
   function lihatRekap() {
@@ -131,14 +112,15 @@ export default function RiwayatPenjualan() {
                   <td className="border px-2 py-1">{item.sn_sku}</td>
                   <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
                   <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
-                 <td className="border px-2 py-1 text-center">
-<a
-  href={`/invoice/${item.id}`}
-  download={`${item.invoice_id || 'invoice'}.pdf`}
-  className="text-blue-600 hover:underline"
->
-  Unduh
-</a>
+                  <td className="border px-2 py-1 text-center">
+                    <a
+                      href={`/invoice/${item.id}`}
+                      download={`${item.invoice_id || 'invoice'}.pdf`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Unduh
+                    </a>
+                  </td>
                   <td className="border px-2 py-1 space-x-1">
                     <button onClick={() => handleDelete(item)} className="bg-red-600 text-white px-2 rounded">Hapus</button>
                   </td>
