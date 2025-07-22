@@ -74,10 +74,7 @@ export default function RiwayatPenjualan() {
       <div className="p-4">
         <h1 className="text-xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
 
-        <button
-          onClick={() => setRekapOpen(true)}
-          className="bg-green-600 text-white px-4 py-2 mb-4 rounded"
-        >
+        <button onClick={() => setRekapOpen(true)} className="bg-green-600 text-white px-4 py-2 mb-4 rounded">
           Rekap Bulanan
         </button>
 
@@ -115,6 +112,7 @@ export default function RiwayatPenjualan() {
                   <td className="border px-2 py-1 text-center">
                     <a
                       href={`/invoice/${item.id}`}
+                      target="_blank"
                       download={`${item.invoice_id || 'invoice'}.pdf`}
                       className="text-blue-600 hover:underline"
                     >
