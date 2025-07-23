@@ -1,5 +1,3 @@
-// Final Invoice Layout - CONNECT.IND
-
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
@@ -13,9 +11,7 @@ export default function InvoicePage() {
   const { id } = router.query
 
   useEffect(() => {
-    if (id) {
-      fetchData(id)
-    }
+    if (id) fetchData(id)
   }, [id])
 
   async function fetchData(id) {
@@ -42,12 +38,11 @@ export default function InvoicePage() {
               filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
               margin: 0,
               html2canvas: { scale: 2 },
-              jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+              jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
             })
             .save()
         })
       }, 800)
-
       return () => clearTimeout(timer)
     }
   }, [data])
@@ -55,58 +50,58 @@ export default function InvoicePage() {
   if (!data) return <p>Loading...</p>
 
   return (
-    <div id="invoice" style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#000', padding: '32px' }}>
-      <div style={{ backgroundImage: 'url(/head.png)', backgroundSize: 'cover', borderRadius: '24px', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div>
-          <p style={{ color: '#868DA6', fontWeight: 'bold' }}>Invoice Details:</p>
-          <p style={{ color: '#868DA6' }}>Invoice number: {data.invoice_id}</p>
-          <p style={{ color: '#868DA6' }}>Invoice date: {new Date(data.tanggal).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' })}</p>
+    <div id="invoice" style={{ fontFamily: 'Inter, sans-serif', padding: 40, background: '#fff', color: '#000' }}>
+      {/* Header Section */}
+      <div style={{ backgroundImage: 'url(/head.png)', backgroundSize: 'cover', borderRadius: 20, padding: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', color: '#868DA6' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0, color: '#000' }}>Invoice</h2>
+          <p><strong>Invoice number:</strong> {data.invoice_id}</p>
+          <p><strong>Invoice date:</strong> {new Date(data.tanggal).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' })}</p>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <img src="/logo-connect-transparan.png" alt="logo" style={{ width: '32px' }} />
-          <p style={{ fontWeight: 'bold' }}>CONNECT.IND</p>
-          <p style={{ color: '#868DA6' }}>+62 896-31-4000-31</p>
-          <p style={{ color: '#868DA6' }}>Jl. Srikuncoro Raya Ruko B2, Kalibanteng Kulon, Semarang Barat, Kota Semarang, Jawa Tengah 50145</p>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 13 }}>
+          <p><strong>CONNECT.IND</strong><br />(+62) 896-31-4000-31<br />Jl. Srikuncoro Raya Ruko B2,<br />Kalibanteng Kulon, Semarang Barat,<br />Kota Semarang, Jawa Tengah 50145</p>
+        </div>
+        <div style={{ flex: 1, textAlign: 'right' }}>
+          <img src="/logo-connect-transparan.png" alt="logo" style={{ width: 60, marginBottom: 10 }} />
+          <div style={{ background: '#F3F6FC', borderRadius: 10, padding: 10, color: '#000' }}>
+            <p><strong>Invoice To:</strong><br />{data.nama_pembeli}<br />{data.alamat}<br />{data.no_wa}</p>
+          </div>
         </div>
       </div>
 
-      <div style={{ backgroundColor: '#F3F5FB', padding: '12px 16px', borderRadius: '12px', marginBottom: '16px', width: 'fit-content' }}>
-        <p style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '4px' }}>Invoice To:</p>
-        <p>{data.nama_pembeli}</p>
-        <p>{data.alamat}</p>
-        <p>+62 {data.no_wa}</p>
-      </div>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
-        <thead style={{ backgroundColor: '#F3F5FB', color: '#868DA6' }}>
+      {/* Item Table */}
+      <table style={{ width: '100%', marginTop: 40, borderCollapse: 'collapse', fontSize: 14 }}>
+        <thead style={{ background: '#F3F6FC', color: '#868DA6' }}>
           <tr>
-            <th style={{ textAlign: 'left', padding: '10px' }}>Item</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Total</th>
+            <th style={{ padding: 10, textAlign: 'left' }}>Item</th>
+            <th style={{ padding: 10 }}>Qty</th>
+            <th style={{ padding: 10 }}>Price</th>
+            <th style={{ padding: 10 }}>Total</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style={{ padding: '8px' }}>
-              {data.nama_produk}<br />
-              <span style={{ fontSize: '10px', color: '#868DA6' }}>SN: {data.sn_sku}</span>
+            <td style={{ padding: 10 }}>
+              <strong>{data.nama_produk}</strong><br />
+              <span style={{ fontSize: 12, color: '#868DA6' }}>SN: {data.sn_sku}</span>
             </td>
-            <td style={{ textAlign: 'center' }}>1</td>
-            <td>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
-            <td>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
+            <td style={{ padding: 10, textAlign: 'center' }}>1</td>
+            <td style={{ padding: 10 }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
+            <td style={{ padding: 10 }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
           </tr>
         </tbody>
       </table>
 
-      <div style={{ textAlign: 'right', marginBottom: '32px' }}>
+      {/* Total Section */}
+      <div style={{ marginTop: 30, textAlign: 'right', borderTop: '1px solid #eee', paddingTop: 10 }}>
         <p>Sub Total: Rp {parseInt(data.harga_jual).toLocaleString()}</p>
         <p>Discount: -</p>
-        <p style={{ fontWeight: 'bold' }}>Total: Rp {parseInt(data.harga_jual).toLocaleString()}</p>
+        <p><strong>Total: Rp {parseInt(data.harga_jual).toLocaleString()}</strong></p>
       </div>
 
-      <div style={{ backgroundColor: '#F3F5FB', padding: '12px 16px', borderRadius: '12px', color: '#868DA6' }}>
-        <p>Notes:</p>
+      {/* Notes */}
+      <div style={{ marginTop: 40, background: '#F3F6FC', borderRadius: 10, padding: 15, color: '#868DA6' }}>
+        <strong>Notes:</strong>
       </div>
     </div>
   )
