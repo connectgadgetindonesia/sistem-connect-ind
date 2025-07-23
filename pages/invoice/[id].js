@@ -37,7 +37,7 @@ export default function InvoicePage() {
             .from(element)
             .set({
               filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
-              margin: [0.5, 0.5, 0.5, 0.5],
+              margin: 0.5,
               html2canvas: { scale: 2 },
               jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
             })
@@ -52,53 +52,48 @@ export default function InvoicePage() {
   if (!data) return <p>Loading...</p>
 
   return (
-    <div id="invoice" style={{ padding: '2rem 2.5rem', fontFamily: 'Inter, sans-serif', backgroundColor: '#fff', width: '100%', maxWidth: '794px', margin: '0 auto' }}>
+    <div id="invoice" style={{ width: '794px', minHeight: '1123px', margin: '0 auto', padding: '2rem', fontFamily: 'Inter, sans-serif', backgroundColor: '#fff' }}>
       <div style={{
         backgroundImage: 'url(/head.png)',
         backgroundSize: 'cover',
-        borderRadius: '50px',
-        padding: '2rem 2.5rem',
-        color: '#000',
+        borderRadius: '32px',
+        padding: '2rem',
+        color: '#868DA6',
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start'
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: '2rem'
       }}>
-        <div style={{ flex: 1 }}>
-          <h2 style={{ margin: 0, fontWeight: 600 }}>Invoice</h2>
-          <p style={{ margin: '0.5rem 0', color: '#868DA6' }}><strong>Invoice number:</strong> {data.invoice_id}</p>
-          <p style={{ margin: 0, color: '#868DA6' }}><strong>Invoice date:</strong> {new Date(data.tanggal).toDateString()}</p>
-        </div>
-        <div style={{ flex: 1, textAlign: 'center', color: '#868DA6' }}>
-          <p style={{ marginBottom: 8 }}><strong style={{ color: '#000' }}>CONNECT.IND</strong></p>
-          <p>(+62) 896-31-4000-31</p>
-          <p>Jl. Srikuncoro Raya Ruko B2,</p>
-          <p>Kalibanteng Kulon, Semarang Barat,</p>
-          <p>Kota Semarang, Jawa Tengah 50145</p>
-        </div>
-        <div style={{ flex: 1, textAlign: 'right' }}>
-          <img src="/logo-connect-transparan.png" alt="logo" style={{ height: 40, marginBottom: 8 }} />
-          <div style={{
-            backgroundColor: '#fff',
-            padding: '0.5rem 1rem',
-            borderRadius: '12px',
-            color: '#000',
-            textAlign: 'left'
-          }}>
-            <p><strong>Invoice To:</strong></p>
-            <p style={{ margin: 0 }}>{data.nama_pembeli}</p>
-            <p style={{ margin: 0 }}>{data.alamat}</p>
-            <p style={{ margin: 0 }}>{data.no_wa}</p>
+        <img src="/logo-connect-transparan.png" alt="logo" style={{ height: 50, marginBottom: '1rem' }} />
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ color: '#000', margin: 0 }}>Invoice</h2>
+            <p><strong>Invoice number:</strong> {data.invoice_id}</p>
+            <p><strong>Invoice date:</strong> {new Date(data.tanggal).toDateString()}</p>
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <p><strong>CONNECT.IND</strong></p>
+            <p>(+62) 896-31-4000-31</p>
+            <p style={{ margin: 0 }}>Jl. Srikuncoro Raya Ruko B2,</p>
+            <p style={{ margin: 0 }}>Kalibanteng Kulon, Semarang Barat,</p>
+            <p style={{ margin: 0 }}>Kota Semarang, Jawa Tengah 50145</p>
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ backgroundColor: '#fff', padding: '0.5rem 1rem', borderRadius: '12px', color: '#000' }}>
+              <p><strong>Invoice To:</strong></p>
+              <p>{data.nama_pembeli}</p>
+              <p>{data.alamat}</p>
+              <p>{data.no_wa}</p>
+            </div>
           </div>
         </div>
       </div>
 
-      <table style={{
-        width: '100%',
-        marginTop: '2rem',
-        borderCollapse: 'collapse',
-        fontSize: '14px',
-        color: '#000'
-      }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
         <thead style={{ backgroundColor: '#F3F5FC', color: '#868DA6', textAlign: 'left' }}>
           <tr>
             <th style={{ padding: '10px' }}>Item</th>
@@ -109,24 +104,19 @@ export default function InvoicePage() {
         </thead>
         <tbody>
           <tr>
-            <td style={{ padding: '10px' }}>
-              <strong style={{ color: '#000' }}>{data.nama_produk}</strong>
-              <br />
+            <td style={{ padding: '10px', color: '#000' }}>
+              <strong>{data.nama_produk}</strong><br />
               <span style={{ color: '#868DA6' }}>SN: {data.sn_sku}</span>
             </td>
-            <td style={{ padding: '10px' }}>1</td>
-            <td style={{ padding: '10px' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
-            <td style={{ padding: '10px' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
+            <td style={{ padding: '10px', color: '#000' }}>1</td>
+            <td style={{ padding: '10px', color: '#000' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
+            <td style={{ padding: '10px', color: '#000' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
           </tr>
         </tbody>
       </table>
 
-      <div style={{
-        marginTop: '1rem',
-        display: 'flex',
-        justifyContent: 'flex-end'
-      }}>
-        <table style={{ fontSize: '14px', color: '#000', textAlign: 'right' }}>
+      <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+        <table style={{ fontSize: '14px', color: '#000' }}>
           <tbody>
             <tr>
               <td style={{ padding: '4px 8px', color: '#868DA6' }}>Sub Total:</td>
@@ -144,14 +134,7 @@ export default function InvoicePage() {
         </table>
       </div>
 
-      <div style={{
-        backgroundColor: '#F3F5FC',
-        borderRadius: '12px',
-        padding: '1rem',
-        marginTop: '2rem',
-        color: '#868DA6',
-        fontWeight: 'bold'
-      }}>
+      <div style={{ backgroundColor: '#F3F5FC', borderRadius: '12px', padding: '1rem', marginTop: '2rem', color: '#868DA6', fontWeight: 'bold' }}>
         Notes:
       </div>
     </div>
