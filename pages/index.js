@@ -7,6 +7,9 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editId, setEditId] = useState(null)
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterStartDate, setFilterStartDate] = useState('')
+  const [filterEndDate, setFilterEndDate] = useState('')
 
   const [formData, setFormData] = useState({
     nama_produk: '',
@@ -82,11 +85,15 @@ export default function Home() {
     setEditId(null)
   }
 
-  const filteredStok = stok.filter(item =>
-    [item.nama_produk, item.sn, item.warna].some(field =>
+  const filteredStok = stok.filter(item => {
+    const matchSearch = [item.nama_produk, item.sn, item.warna].some(field =>
       field?.toLowerCase().includes(searchTerm.toLowerCase())
     )
-  )
+    const matchStatus = filterStatus ? item.status === filterStatus : true
+    const matchStart = filterStartDate ? new Date(item.tanggal_masuk) >= new Date(filterStartDate) : true
+    const matchEnd = filterEndDate ? new Date(item.tanggal_masuk) <= new Date(filterEndDate) : true
+    return matchSearch && matchStatus && matchStart && matchEnd
+  })
 
   return (
     <Layout>
@@ -125,13 +132,34 @@ export default function Home() {
           </button>
         </form>
 
-        <div className="mb-2">
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-4">
           <input
             type="text"
             placeholder="Cari produk / SN / warna..."
-            className="border p-2 w-full md:w-1/2"
+            className="border p-2"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <select
+            className="border p-2"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="">Semua Status</option>
+            <option value="READY">READY</option>
+            <option value="SOLD">SOLD</option>
+          </select>
+          <input
+            type="date"
+            className="border p-2"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+          />
+          <input
+            type="date"
+            className="border p-2"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
           />
         </div>
 
