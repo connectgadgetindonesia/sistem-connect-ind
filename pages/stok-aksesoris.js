@@ -43,9 +43,13 @@ export default function StokAksesoris() {
   }
 
   async function handleDelete(id) {
-    if (confirm('Yakin ingin hapus?')) {
-      await supabase.from('stok_aksesoris').delete().eq('id', id)
-      fetchData()
+    if (!confirm('Yakin ingin hapus?')) return
+
+    const { error } = await supabase.from('stok_aksesoris').delete().eq('id', id)
+    if (error) {
+      alert('Gagal hapus data: ' + error.message)
+    } else {
+      setData(prev => prev.filter(item => item.id !== id))
     }
   }
 
@@ -123,7 +127,7 @@ export default function StokAksesoris() {
               </div>
             </div>
           </div>
-        )}
+        ))}
 
         {/* Popup Tambah Stok */}
         {tambahStokItem && (
