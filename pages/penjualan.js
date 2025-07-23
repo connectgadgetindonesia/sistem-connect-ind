@@ -2,6 +2,7 @@ import Layout from '@/components/Layout'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
+import Select from 'react-select'
 
 export default function Penjualan() {
   const [formData, setFormData] = useState({
@@ -20,6 +21,34 @@ export default function Penjualan() {
     garansi: '',
     storage: ''
   })
+
+  const [options, setOptions] = useState([])
+
+  useEffect(() => {
+    async function fetchOptions() {
+      const { data: stokReady } = await supabase
+        .from('stok')
+        .select('sn, nama_produk, warna')
+        .eq('status', 'READY')
+
+      const { data: aksesoris } = await supabase
+        .from('stok_aksesoris')
+        .select('sku, nama_produk, warna')
+
+      const combinedOptions = [
+        ...(stokReady?.map((item) => ({
+          value: item.sn,
+          label: `${item.sn} | ${item.nama_produk} | ${item.warna}`
+        })) || []),
+        ...(aksesoris?.map((item) => ({
+          value: item.sku,
+          label: `${item.sku} | ${item.nama_produk} | ${item.warna}`
+        })) || [])
+      ]
+      setOptions(combinedOptions)
+    }
+    fetchOptions()
+  }, [])
 
   useEffect(() => {
     if (formData.sn_sku.length > 0) {
@@ -69,7 +98,7 @@ export default function Penjualan() {
     const bulan = dayjs(tanggal).format('MM')
     const tahun = dayjs(tanggal).format('YYYY')
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('penjualan_baru')
       .select('id')
       .gte('tanggal', `${tahun}-${bulan}-01`)
@@ -136,7 +165,7 @@ export default function Penjualan() {
       harga_jual: '',
       alamat: '',
       no_wa: '',
-      refferal: '',
+      referral: '',
       dilayani_oleh: '',
       nama_produk: '',
       warna: '',
@@ -152,9 +181,25 @@ export default function Penjualan() {
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Input Penjualan CONNECT.IND</h1>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <input
+            type="date"
+            className="border p-2"
+            placeholder="Tanggal Transaksi"
+            value={formData.tanggal}
+            onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
+            required
+          />
+
+          <Select
+            className="text-sm"
+            options={options}
+            placeholder="Cari SN / SKU"
+            value={options.find((opt) => opt.value === formData.sn_sku) || null}
+            onChange={(selected) => setFormData({ ...formData, sn_sku: selected.value })}
+            isClearable
+          />
+
           {[
-            ['Tanggal Transaksi', 'tanggal', 'date'],
-            ['SN / SKU', 'sn_sku'],
             ['Nama Pembeli', 'nama_pembeli'],
             ['Alamat', 'alamat'],
             ['No. WA', 'no_wa'],
