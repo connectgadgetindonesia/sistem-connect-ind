@@ -27,11 +27,16 @@ export default function RiwayatPenjualan() {
   function filterData() {
     return data.filter((item) => {
       const s = search.toLowerCase()
-      return (
+      const isMatchSearch = (
         item.nama_pembeli?.toLowerCase().includes(s) ||
         item.nama_produk?.toLowerCase().includes(s) ||
         item.sn_sku?.toLowerCase().includes(s)
       )
+      const isWithinDateRange = (
+        (!tanggalAwal || item.tanggal >= tanggalAwal) &&
+        (!tanggalAkhir || item.tanggal <= tanggalAkhir)
+      )
+      return isMatchSearch && isWithinDateRange
     })
   }
 
@@ -79,13 +84,27 @@ export default function RiwayatPenjualan() {
           Rekap Bulanan
         </button>
 
-        <input
-          type="text"
-          placeholder="Cari nama, produk, SN/SKU..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border px-2 py-1 mb-4 w-full md:w-1/2"
-        />
+        <div className="flex flex-col md:flex-row gap-2 mb-2">
+          <input
+            type="date"
+            value={tanggalAwal}
+            onChange={(e) => setTanggalAwal(e.target.value)}
+            className="border p-2"
+          />
+          <input
+            type="date"
+            value={tanggalAkhir}
+            onChange={(e) => setTanggalAkhir(e.target.value)}
+            className="border p-2"
+          />
+          <input
+            type="text"
+            placeholder="Cari nama, produk, SN/SKU..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="border px-2 py-1 w-full md:w-1/2"
+          />
+        </div>
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -102,34 +121,34 @@ export default function RiwayatPenjualan() {
               </tr>
             </thead>
             <tbody>
-  {filterData().map((item) => (
-    <tr key={item.id}>
-      <td className="border px-2 py-1">{item.tanggal}</td>
-      <td className="border px-2 py-1">{item.nama_pembeli}</td>
-      <td className="border px-2 py-1">{item.nama_produk}</td>
-      <td className="border px-2 py-1">{item.sn_sku}</td>
-      <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
-      <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
-      <td className="border px-2 py-1 text-center">
-        <Link
-          href={`/invoice/${item.id}`}
-          target="_blank"
-          className="text-blue-600 hover:underline"
-        >
-          Unduh
-        </Link>
-      </td>
-      <td className="border px-2 py-1 space-x-1">
-        <button
-          onClick={() => handleDelete(item)}
-          className="bg-red-600 text-white px-2 rounded"
-        >
-          Hapus
-        </button>
-      </td>
-    </tr>
-  ))}
-</tbody>
+              {filterData().map((item) => (
+                <tr key={item.id}>
+                  <td className="border px-2 py-1">{item.tanggal}</td>
+                  <td className="border px-2 py-1">{item.nama_pembeli}</td>
+                  <td className="border px-2 py-1">{item.nama_produk}</td>
+                  <td className="border px-2 py-1">{item.sn_sku}</td>
+                  <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
+                  <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
+                  <td className="border px-2 py-1 text-center">
+                    <Link
+                      href={`/invoice/${item.id}`}
+                      target="_blank"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Unduh
+                    </Link>
+                  </td>
+                  <td className="border px-2 py-1 space-x-1">
+                    <button
+                      onClick={() => handleDelete(item)}
+                      className="bg-red-600 text-white px-2 rounded"
+                    >
+                      Hapus
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
 
