@@ -27,43 +27,36 @@ export default function RiwayatPenjualan() {
     if (!confirm('Yakin ingin hapus data ini?')) return
 
     try {
-      // Cek apakah SN ada di stok utama
-      const { data: stokUnit, error: err1 } = await supabase
+      const { data: stokUnit, error: cekStokErr } = await supabase
         .from('stok')
         .select('id')
         .eq('sn', item.sn_sku)
         .maybeSingle()
-
-      if (err1) throw err1
+      if (cekStokErr) throw cekStokErr
 
       if (stokUnit) {
-        // Kembalikan status jadi READY
-        const { error: err2 } = await supabase
+        const { error: updateErr } = await supabase
           .from('stok')
           .update({ status: 'READY' })
           .eq('sn', item.sn_sku)
-        if (err2) throw err2
+        if (updateErr) throw updateErr
       } else {
-        // Tambahkan stok aksesoris
-        const { error: err3 } = await supabase.rpc('tambah_stok_aksesoris', {
-          sku_input: item.sn_sku
+        const { error: aksesorisErr } = await supabase.rpc('tambah_stok_aksesoris', {
+          sku_input: item.sn_sku,
         })
-        if (err3) throw err3
+        if (aksesorisErr) throw aksesorisErr
       }
 
-      // Hapus dari tabel penjualan
-      const { error: err4 } = await supabase
+      const { error: hapusErr } = await supabase
         .from('penjualan_baru')
         .delete()
         .eq('id', item.id)
-      if (err4) throw err4
+      if (hapusErr) throw hapusErr
 
-      // Update UI
       setData((prev) => prev.filter((row) => row.id !== item.id))
-      alert('Data berhasil dihapus.')
     } catch (error) {
       console.error('Gagal hapus data:', error.message)
-      alert('Terjadi kesalahan saat menghapus. Silakan cek console.')
+      alert('Gagal hapus: ' + error.message)
     }
   }
 
