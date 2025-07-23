@@ -1,4 +1,4 @@
-// File: pages/invoice/[id].js
+// pages/invoice/[id].js
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
@@ -33,18 +33,29 @@ export default function InvoicePage() {
           const tahun = new Date(data.tanggal).getFullYear()
           const nomor = data.invoice_id?.split('-').pop() || 'INVOICE'
 
-          html2pdf.default()
-            .from(element)
-            .set({
-              filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
-              margin: 0.5,
-              html2canvas: { scale: 2 },
-              jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-            })
-            .save()
+          const opt = {
+            filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
+            margin: [0, 0],
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              logging: true,
+              scrollY: 0,
+              windowWidth: 1122, // for 794px width
+              windowHeight: 1587 // to fit full height
+            },
+            jsPDF: {
+              unit: 'px',
+              format: 'a4',
+              orientation: 'portrait'
+            },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+          }
+
+          html2pdf().set(opt).from(element).save()
         })
       }, 800)
-
       return () => clearTimeout(timer)
     }
   }, [data])
@@ -52,7 +63,12 @@ export default function InvoicePage() {
   if (!data) return <p>Loading...</p>
 
   return (
-    <div id="invoice" style={{ width: '794px', minHeight: '1123px', margin: '0 auto', padding: '2rem', fontFamily: 'Inter, sans-serif', backgroundColor: '#fff' }}>
+    <div id="invoice" style={{
+      width: '794px', minHeight: '1123px', margin: '0 auto',
+      padding: '2rem', fontFamily: 'Inter, sans-serif',
+      backgroundColor: '#fff', boxSizing: 'border-box'
+    }}>
+      {/* Header */}
       <div style={{
         backgroundImage: 'url(/head.png)',
         backgroundSize: 'cover',
@@ -66,24 +82,27 @@ export default function InvoicePage() {
         marginBottom: '2rem'
       }}>
         <img src="/logo-connect-transparan.png" alt="logo" style={{ height: 50, marginBottom: '1rem' }} />
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '1rem' }}>
           <div style={{ flex: 1 }}>
             <h2 style={{ color: '#000', margin: 0 }}>Invoice</h2>
             <p><strong>Invoice number:</strong> {data.invoice_id}</p>
             <p><strong>Invoice date:</strong> {new Date(data.tanggal).toDateString()}</p>
           </div>
-
           <div style={{ flex: 1 }}>
             <p><strong>CONNECT.IND</strong></p>
             <p>(+62) 896-31-4000-31</p>
             <p style={{ margin: 0 }}>Jl. Srikuncoro Raya Ruko B2,</p>
-            <p style={{ margin: 0 }}>Kalibanteng Kulon, Semarang Barat,</p>
+            <p style={{ margin: 0 }}>Kalibanteng Kulon, Semarang Barat</p>
             <p style={{ margin: 0 }}>Kota Semarang, Jawa Tengah 50145</p>
           </div>
-
           <div style={{ flex: 1 }}>
-            <div style={{ backgroundColor: '#fff', padding: '0.5rem 1rem', borderRadius: '12px', color: '#000' }}>
+            <div style={{
+              backgroundColor: '#fff',
+              padding: '0.5rem 1rem',
+              borderRadius: '12px',
+              color: '#000',
+              boxShadow: '0 0 4px rgba(0,0,0,0.1)'
+            }}>
               <p><strong>Invoice To:</strong></p>
               <p>{data.nama_pembeli}</p>
               <p>{data.alamat}</p>
@@ -93,6 +112,7 @@ export default function InvoicePage() {
         </div>
       </div>
 
+      {/* Table */}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
         <thead style={{ backgroundColor: '#F3F5FC', color: '#868DA6', textAlign: 'left' }}>
           <tr>
@@ -115,6 +135,7 @@ export default function InvoicePage() {
         </tbody>
       </table>
 
+      {/* Summary */}
       <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
         <table style={{ fontSize: '14px', color: '#000' }}>
           <tbody>
@@ -134,7 +155,15 @@ export default function InvoicePage() {
         </table>
       </div>
 
-      <div style={{ backgroundColor: '#F3F5FC', borderRadius: '12px', padding: '1rem', marginTop: '2rem', color: '#868DA6', fontWeight: 'bold' }}>
+      {/* Notes */}
+      <div style={{
+        backgroundColor: '#F3F5FC',
+        borderRadius: '12px',
+        padding: '1rem',
+        marginTop: '2rem',
+        color: '#868DA6',
+        fontWeight: 'bold'
+      }}>
         Notes:
       </div>
     </div>
