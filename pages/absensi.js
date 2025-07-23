@@ -2,14 +2,15 @@
 import Layout from '@/components/Layout'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import * as XLSX from 'xlsx'
 
 export default function AbsenTugasKaryawan() {
   const [nama, setNama] = useState('')
   const [shift, setShift] = useState('Pagi')
   const [status, setStatus] = useState('Hadir')
   const [absenList, setAbsenList] = useState([])
-  const [tugas, setTugas] = useState([])
-  const [checked, setChecked] = useState([])
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   useEffect(() => {
     fetchAbsensiHariIni()
@@ -46,6 +47,41 @@ export default function AbsenTugasKaryawan() {
       : ['Merapikan stok', 'Matikan semua elektronik', 'Membersihkan toko']
   }
 
+  const handleDownload = async () => {
+    const { data, error } = await supabase
+      .from('absensi_karyawan')
+      .select('*')
+      .gte('tanggal', startDate)
+      .lte('tanggal', endDate)
+
+    if (error || !data) return alert('Gagal ambil data')
+
+    const sheetAbsen = data.map(item => ({
+      Tanggal: item.tanggal,
+      Nama: item.nama,
+      Shift: item.shift,
+      Status: item.status,
+    }))
+
+    const tugasList = data.map(item => {
+      const tugas = getTugasByShift(item.shift).join(', ')
+      return {
+        Tanggal: item.tanggal,
+        Nama: item.nama,
+        Shift: item.shift,
+        Tugas: tugas,
+      }
+    })
+
+    const wb = XLSX.utils.book_new()
+    const ws1 = XLSX.utils.json_to_sheet(sheetAbsen)
+    const ws2 = XLSX.utils.json_to_sheet(tugasList)
+
+    XLSX.utils.book_append_sheet(wb, ws1, 'Absensi')
+    XLSX.utils.book_append_sheet(wb, ws2, 'Tugas')
+    XLSX.writeFile(wb, `Rekap_Absensi_${startDate}_to_${endDate}.xlsx`)
+  }
+
   return (
     <Layout>
       <div className="max-w-4xl mx-auto p-4">
@@ -72,6 +108,27 @@ export default function AbsenTugasKaryawan() {
           </select>
           <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Simpan Absen</button>
         </form>
+
+        <div className="flex items-center space-x-2 mb-6">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border p-2"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border p-2"
+          />
+          <button
+            onClick={handleDownload}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
+            Download Rekap Excel
+          </button>
+        </div>
 
         {absenList.length > 0 && (
           <div className="space-y-6">
