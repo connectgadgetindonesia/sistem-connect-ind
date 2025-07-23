@@ -20,7 +20,7 @@ export default function InvoicePage() {
   }
 
   useEffect(() => {
-    if (data) {
+    if (typeof window !== 'undefined' && data) {
       setTimeout(() => {
         const element = document.getElementById('invoice')
         const bulan = new Date(data.tanggal).getMonth() + 1
