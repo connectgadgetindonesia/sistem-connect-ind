@@ -11,6 +11,7 @@ export default function Layout({ children }) {
     { label: 'Absensi & Tugas', path: '/absensi' },
     { label: 'Stok Barang', path: '/' },
     { label: 'Input Penjualan', path: '/penjualan' },
+    { label: 'Transaksi Indent', path: '/indent' },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris' },
     { label: 'Riwayat Penjualan', path: '/riwayat' },
     { label: 'Kinerja Karyawan', path: '/kinerja' },
