@@ -8,17 +8,20 @@ export default function RiwayatPenjualan() {
   const [search, setSearch] = useState('')
   const [tanggalAwal, setTanggalAwal] = useState('')
   const [tanggalAkhir, setTanggalAkhir] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
+    setLoading(true)
     const { data, error } = await supabase
       .from('penjualan_baru')
       .select('*')
       .order('tanggal', { ascending: false })
     if (!error) setData(data)
+    setLoading(false)
   }
 
   async function handleDelete(item) {
@@ -37,7 +40,7 @@ export default function RiwayatPenjualan() {
     }
 
     await supabase.from('penjualan_baru').delete().eq('id', item.id)
-    fetchData()
+    await fetchData()
   }
 
   function filterData() {
@@ -73,51 +76,55 @@ export default function RiwayatPenjualan() {
           />
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border px-2 py-1">Tanggal</th>
-                <th className="border px-2 py-1">Nama</th>
-                <th className="border px-2 py-1">Produk</th>
-                <th className="border px-2 py-1">SN/SKU</th>
-                <th className="border px-2 py-1">Harga Jual</th>
-                <th className="border px-2 py-1">Laba</th>
-                <th className="border px-2 py-1">Invoice</th>
-                <th className="border px-2 py-1">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filterData().map((item) => (
-                <tr key={item.id}>
-                  <td className="border px-2 py-1">{item.tanggal}</td>
-                  <td className="border px-2 py-1">{item.nama_pembeli}</td>
-                  <td className="border px-2 py-1">{item.nama_produk}</td>
-                  <td className="border px-2 py-1">{item.sn_sku}</td>
-                  <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
-                  <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
-                  <td className="border px-2 py-1 text-center">
-                    <Link
-                      href={`/invoice/${item.id}`}
-                      target="_blank"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Unduh
-                    </Link>
-                  </td>
-                  <td className="border px-2 py-1">
-                    <button
-                      onClick={() => handleDelete(item)}
-                      className="bg-red-600 text-white px-2 rounded"
-                    >
-                      Hapus
-                    </button>
-                  </td>
+        {loading ? (
+          <p className="text-gray-500 text-sm">⏳ Memuat data...</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border px-2 py-1">Tanggal</th>
+                  <th className="border px-2 py-1">Nama</th>
+                  <th className="border px-2 py-1">Produk</th>
+                  <th className="border px-2 py-1">SN/SKU</th>
+                  <th className="border px-2 py-1">Harga Jual</th>
+                  <th className="border px-2 py-1">Laba</th>
+                  <th className="border px-2 py-1">Invoice</th>
+                  <th className="border px-2 py-1">Aksi</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filterData().map((item) => (
+                  <tr key={item.id}>
+                    <td className="border px-2 py-1">{item.tanggal}</td>
+                    <td className="border px-2 py-1">{item.nama_pembeli}</td>
+                    <td className="border px-2 py-1">{item.nama_produk}</td>
+                    <td className="border px-2 py-1">{item.sn_sku}</td>
+                    <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
+                    <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
+                    <td className="border px-2 py-1 text-center">
+                      <Link
+                        href={`/invoice/${item.id}`}
+                        target="_blank"
+                        className="text-blue-600 hover:underline"
+                      >
+                        Unduh
+                      </Link>
+                    </td>
+                    <td className="border px-2 py-1">
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="bg-red-600 text-white px-2 rounded"
+                      >
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </Layout>
   )
