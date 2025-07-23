@@ -157,14 +157,21 @@ export default function Penjualan() {
       await supabase.rpc('kurangi_stok_aksesoris', { sku_input: formData.sn_sku })
     }
 
-    // Update transaksi indent jika nama cocok
-    await supabase
+    // Update status transaksi_indent jika ada
+    const { data: indentRow } = await supabase
       .from('transaksi_indent')
-      .update({
-        status: 'Sudah Diambil',
-        sisa_pembayaran: 0
-      })
+      .select('id')
       .eq('nama', formData.nama_pembeli.trim())
+      .order('tanggal', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (indentRow) {
+      await supabase
+        .from('transaksi_indent')
+        .update({ status: 'Sudah Diambil' })
+        .eq('id', indentRow.id)
+    }
 
     alert('Berhasil simpan!')
     setFormData({
@@ -204,11 +211,11 @@ export default function Penjualan() {
             options={options}
             placeholder="Cari SN / SKU"
             value={options.find((opt) => opt.value === formData.sn_sku) || null}
-            onChange={(selected) => setFormData({ ...formData, sn_sku: selected.value })}
+            onChange={(selected) => setFormData({ ...formData, sn_sku: selected?.value || '' })}
             isClearable
           />
 
-          {[
+          {[ 
             ['Nama Pembeli', 'nama_pembeli'],
             ['Alamat', 'alamat'],
             ['No. WA', 'no_wa'],
