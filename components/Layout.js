@@ -7,8 +7,8 @@ export default function Layout({ children }) {
   const router = useRouter()
 
   const menuItems = [
-    { label: 'Stok Barang', path: '/' },
     { label: 'Dashboard', path: '/dashboard' },
+    { label: 'Stok Barang', path: '/' },
     { label: 'Input Penjualan', path: '/penjualan' },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris' },
     { label: 'Riwayat Penjualan', path: '/riwayat' },
