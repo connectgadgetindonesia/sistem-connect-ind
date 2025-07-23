@@ -1,3 +1,4 @@
+// pages/riwayat.js
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -5,108 +6,133 @@ import dayjs from 'dayjs'
 
 export default function RiwayatPenjualan() {
   const [data, setData] = useState([])
-  const [filtered, setFiltered] = useState([])
-  const [search, setSearch] = useState('')
-  const [dateRange, setDateRange] = useState({ from: '', to: '' })
+  const [filter, setFilter] = useState({
+    tanggal_awal: '',
+    tanggal_akhir: '',
+    search: ''
+  })
 
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
-    const { data } = await supabase.from('penjualan_baru').select('*').order('tanggal', { ascending: false })
+    let query = supabase.from('penjualan_baru').select('*')
+
+    if (filter.tanggal_awal) {
+      query = query.gte('tanggal', filter.tanggal_awal)
+    }
+    if (filter.tanggal_akhir) {
+      query = query.lte('tanggal', filter.tanggal_akhir)
+    }
+    if (filter.search) {
+      query = query.ilike('nama_pembeli', `%${filter.search}%`)
+    }
+
+    const { data } = await query.order('tanggal', { ascending: false })
     setData(data)
-    setFiltered(data)
   }
 
-  async function handleDelete(row) {
-    const confirm = window.confirm('Yakin ingin hapus transaksi ini?')
-    if (!confirm) return
+  const handleHapus = async (id, sn_sku) => {
+    const konfirmasi = confirm('Yakin ingin hapus transaksi ini?')
+    if (!konfirmasi) return
 
-    const { error } = await supabase.from('penjualan_baru').delete().eq('id', row.id)
-    if (error) {
-      alert('Gagal hapus')
+    const { error: deleteError } = await supabase
+      .from('penjualan_baru')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      alert('Gagal hapus transaksi!')
       return
     }
 
-    // Jika SN (anggap panjang > 10 karakter)
-    if (row.sn_sku?.length > 10) {
-      await supabase.from('stok').update({ status: 'READY' }).eq('sn', row.sn_sku)
+    const { data: snUnit } = await supabase
+      .from('stok')
+      .select('id')
+      .eq('sn', sn_sku)
+      .maybeSingle()
+
+    if (snUnit) {
+      await supabase.from('stok').update({ status: 'READY' }).eq('sn', sn_sku)
     } else {
-      await supabase.rpc('tambah_stok_aksesoris', { sku_input: row.sn_sku })
+      await supabase.rpc('tambah_stok_aksesoris', { sku_input: sn_sku })
     }
 
+    alert('Transaksi berhasil dihapus dan stok dikembalikan')
     fetchData()
   }
-
-  function filterData() {
-    let hasil = data
-
-    if (search) {
-      const keyword = search.toLowerCase()
-      hasil = hasil.filter(
-        (row) =>
-          row.nama_pembeli?.toLowerCase().includes(keyword) ||
-          row.nama_produk?.toLowerCase().includes(keyword) ||
-          row.sn_sku?.toLowerCase().includes(keyword)
-      )
-    }
-
-    if (dateRange.from) {
-      hasil = hasil.filter((row) => dayjs(row.tanggal).isAfter(dayjs(dateRange.from).subtract(1, 'day')))
-    }
-
-    if (dateRange.to) {
-      hasil = hasil.filter((row) => dayjs(row.tanggal).isBefore(dayjs(dateRange.to).add(1, 'day')))
-    }
-
-    setFiltered(hasil)
-  }
-
-  useEffect(() => {
-    filterData()
-  }, [search, dateRange])
 
   return (
     <Layout>
       <div className="p-4">
-        <h1 className="text-xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
+        <h1 className="text-2xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
-          <input type="date" className="border p-2" onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} />
-          <input type="date" className="border p-2" onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} />
-          <input type="text" className="border p-2" placeholder="Cari nama, produk, SN/SKU..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex flex-wrap gap-2 mb-4">
+          <input
+            type="date"
+            value={filter.tanggal_awal}
+            onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })}
+            className="border p-2"
+          />
+          <input
+            type="date"
+            value={filter.tanggal_akhir}
+            onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })}
+            className="border p-2"
+          />
+          <input
+            type="text"
+            placeholder="Cari nama, produk, SN/SKU..."
+            value={filter.search}
+            onChange={(e) => setFilter({ ...filter, search: e.target.value })}
+            className="border p-2 flex-1"
+          />
+          <button
+            onClick={fetchData}
+            className="bg-blue-600 text-white px-4 rounded"
+          >
+            Cari
+          </button>
         </div>
 
-        <table className="w-full border">
+        <table className="w-full table-auto border">
           <thead>
-            <tr className="bg-gray-100 text-sm">
-              <th className="border p-1">Tanggal</th>
-              <th className="border p-1">Nama</th>
-              <th className="border p-1">Produk</th>
-              <th className="border p-1">SN/SKU</th>
-              <th className="border p-1">Harga Jual</th>
-              <th className="border p-1">Laba</th>
-              <th className="border p-1">Invoice</th>
-              <th className="border p-1">Aksi</th>
+            <tr className="bg-gray-200">
+              <th className="border px-2 py-1">Tanggal</th>
+              <th className="border px-2 py-1">Nama</th>
+              <th className="border px-2 py-1">Produk</th>
+              <th className="border px-2 py-1">SN/SKU</th>
+              <th className="border px-2 py-1">Harga Jual</th>
+              <th className="border px-2 py-1">Laba</th>
+              <th className="border px-2 py-1">Invoice</th>
+              <th className="border px-2 py-1">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row) => (
-              <tr key={row.id} className="text-sm text-center">
-                <td className="border p-1">{dayjs(row.tanggal).format('YYYY-MM-DD')}</td>
-                <td className="border p-1">{row.nama_pembeli}</td>
-                <td className="border p-1">{row.nama_produk}</td>
-                <td className="border p-1">{row.sn_sku}</td>
-                <td className="border p-1">Rp {row.harga_jual?.toLocaleString()}</td>
-                <td className="border p-1">Rp {row.laba?.toLocaleString()}</td>
-                <td className="border p-1 text-blue-600">
-                  <a href={`/invoice/${row.id}`} target="_blank" rel="noopener noreferrer">
+            {data.map((item) => (
+              <tr key={item.id}>
+                <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
+                <td className="border px-2 py-1">{item.nama_pembeli}</td>
+                <td className="border px-2 py-1">{item.nama_produk}</td>
+                <td className="border px-2 py-1">{item.sn_sku}</td>
+                <td className="border px-2 py-1">Rp {item.harga_jual.toLocaleString()}</td>
+                <td className="border px-2 py-1">Rp {item.laba.toLocaleString()}</td>
+                <td className="border px-2 py-1">
+                  <a
+                    href={`/invoice/${item.id}`}
+                    className="text-blue-600 underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Unduh
                   </a>
                 </td>
-                <td className="border p-1">
-                  <button onClick={() => handleDelete(row)} className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                <td className="border px-2 py-1">
+                  <button
+                    onClick={() => handleHapus(item.id, item.sn_sku)}
+                    className="bg-red-600 text-white px-2 py-1 rounded"
+                  >
                     Hapus
                   </button>
                 </td>
