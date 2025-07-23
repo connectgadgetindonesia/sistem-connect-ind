@@ -26,14 +26,15 @@ export default function InvoicePage() {
   }
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && data && html2pdf) {
-      setTimeout(() => {
+  if (typeof window !== 'undefined' && data) {
+    const timer = setTimeout(() => {
+      import('html2pdf.js').then((html2pdf) => {
         const element = document.getElementById('invoice')
         const bulan = new Date(data.tanggal).getMonth() + 1
         const tahun = new Date(data.tanggal).getFullYear()
         const nomor = data.invoice_id?.split('-').pop() || 'INVOICE'
 
-        html2pdf()
+        html2pdf.default()
           .from(element)
           .set({
             filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
@@ -42,9 +43,12 @@ export default function InvoicePage() {
             jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
           })
           .save()
-      }, 1000)
-    }
-  }, [data])
+      })
+    }, 800)
+
+    return () => clearTimeout(timer)
+  }
+}, [data])
 
   if (!data) return <p>Loading...</p>
 
