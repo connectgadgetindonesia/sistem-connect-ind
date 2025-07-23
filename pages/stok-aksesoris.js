@@ -43,13 +43,9 @@ export default function StokAksesoris() {
   }
 
   async function handleDelete(id) {
-    if (!confirm('Yakin ingin hapus?')) return
-
-    const { error } = await supabase.from('stok_aksesoris').delete().eq('id', id)
-    if (error) {
-      alert('Gagal hapus data: ' + error.message)
-    } else {
-      setData(prev => prev.filter(item => item.id !== id))
+    if (confirm('Yakin ingin hapus?')) {
+      const { error } = await supabase.from('stok_aksesoris').delete().eq('id', id)
+      if (!error) fetchData()
     }
   }
 
@@ -69,7 +65,9 @@ export default function StokAksesoris() {
   }
 
   async function handleTambahStok() {
-    if (!tambahStokItem || !tambahStokItem.jumlah) return
+    if (!tambahStokItem || !tambahStokItem.jumlah) {
+      return
+    }
 
     const stokBaru = tambahStokItem.stok + parseInt(tambahStokItem.jumlah)
 
@@ -111,7 +109,6 @@ export default function StokAksesoris() {
           </div>
         ))}
 
-        {/* Popup Edit */}
         {editItem && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex justify-center items-start pt-10 z-50">
             <div className="bg-white p-6 rounded shadow-md w-full max-w-md">
@@ -127,9 +124,8 @@ export default function StokAksesoris() {
               </div>
             </div>
           </div>
-        ))}
+        )}
 
-        {/* Popup Tambah Stok */}
         {tambahStokItem && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex justify-center items-start pt-10 z-50">
             <div className="bg-white p-6 rounded shadow-md w-full max-w-sm">
