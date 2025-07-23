@@ -1,149 +1,119 @@
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
+import dayjs from 'dayjs'
 
 export default function RiwayatPenjualan() {
   const [data, setData] = useState([])
+  const [filtered, setFiltered] = useState([])
   const [search, setSearch] = useState('')
-  const [tanggalAwal, setTanggalAwal] = useState('')
-  const [tanggalAkhir, setTanggalAkhir] = useState('')
+  const [dateRange, setDateRange] = useState({ from: '', to: '' })
 
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('*')
-      .order('tanggal', { ascending: false })
-
-    if (!error) setData(data)
-    else console.error('Gagal ambil data:', error.message)
+    const { data } = await supabase.from('penjualan_baru').select('*').order('tanggal', { ascending: false })
+    setData(data)
+    setFiltered(data)
   }
 
-  async function handleDelete(item) {
-    if (!confirm('Yakin ingin hapus data ini?')) return
+  async function handleDelete(row) {
+    const confirm = window.confirm('Yakin ingin hapus transaksi ini?')
+    if (!confirm) return
 
-    try {
-      // Cek apakah barang berasal dari stok utama (SN)
-      const { data: stokUnit, error: cekStokErr } = await supabase
-        .from('stok')
-        .select('id')
-        .eq('sn', item.sn_sku)
-        .maybeSingle()
-      if (cekStokErr) throw cekStokErr
-
-      if (stokUnit) {
-        // Kembalikan status ke READY jika barang dari stok utama
-        const { error: updateErr } = await supabase
-          .from('stok')
-          .update({ status: 'READY' })
-          .eq('sn', item.sn_sku)
-        if (updateErr) throw updateErr
-      } else {
-        // Tambahkan kembali stok aksesoris jika SKU
-        const { error: aksesorisErr } = await supabase.rpc('tambah_stok_aksesoris', {
-          sku_input: item.sn_sku,
-        })
-        if (aksesorisErr) throw aksesorisErr
-      }
-
-      // Hapus data dari penjualan
-      const { error: hapusErr } = await supabase
-        .from('penjualan_baru')
-        .delete()
-        .eq('id', item.id)
-      if (hapusErr) throw hapusErr
-
-      // Update UI
-      setData((prev) => prev.filter((row) => row.id !== item.id))
-      alert('Data berhasil dihapus.')
-    } catch (error) {
-      console.error('Gagal hapus data:', error.message)
-      alert('Gagal hapus: ' + error.message)
+    const { error } = await supabase.from('penjualan_baru').delete().eq('id', row.id)
+    if (error) {
+      alert('Gagal hapus')
+      return
     }
+
+    // Jika SN (anggap panjang > 10 karakter)
+    if (row.sn_sku?.length > 10) {
+      await supabase.from('stok').update({ status: 'READY' }).eq('sn', row.sn_sku)
+    } else {
+      await supabase.rpc('tambah_stok_aksesoris', { sku_input: row.sn_sku })
+    }
+
+    fetchData()
   }
 
   function filterData() {
-    return data
-      .filter((item) => {
-        const s = search.toLowerCase()
-        return (
-          item.nama_pembeli?.toLowerCase().includes(s) ||
-          item.nama_produk?.toLowerCase().includes(s) ||
-          item.sn_sku?.toLowerCase().includes(s)
-        )
-      })
-      .filter((item) => {
-        if (!tanggalAwal || !tanggalAkhir) return true
-        return item.tanggal >= tanggalAwal && item.tanggal <= tanggalAkhir
-      })
+    let hasil = data
+
+    if (search) {
+      const keyword = search.toLowerCase()
+      hasil = hasil.filter(
+        (row) =>
+          row.nama_pembeli?.toLowerCase().includes(keyword) ||
+          row.nama_produk?.toLowerCase().includes(keyword) ||
+          row.sn_sku?.toLowerCase().includes(keyword)
+      )
+    }
+
+    if (dateRange.from) {
+      hasil = hasil.filter((row) => dayjs(row.tanggal).isAfter(dayjs(dateRange.from).subtract(1, 'day')))
+    }
+
+    if (dateRange.to) {
+      hasil = hasil.filter((row) => dayjs(row.tanggal).isBefore(dayjs(dateRange.to).add(1, 'day')))
+    }
+
+    setFiltered(hasil)
   }
+
+  useEffect(() => {
+    filterData()
+  }, [search, dateRange])
 
   return (
     <Layout>
       <div className="p-4">
         <h1 className="text-xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
 
-        <div className="flex flex-wrap gap-2 mb-4">
-          <input type="date" value={tanggalAwal} onChange={(e) => setTanggalAwal(e.target.value)} className="border p-2" />
-          <input type="date" value={tanggalAkhir} onChange={(e) => setTanggalAkhir(e.target.value)} className="border p-2" />
-          <input
-            type="text"
-            placeholder="Cari nama, produk, SN/SKU..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="border px-2 py-1 w-full md:w-1/3"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+          <input type="date" className="border p-2" onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} />
+          <input type="date" className="border p-2" onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} />
+          <input type="text" className="border p-2" placeholder="Cari nama, produk, SN/SKU..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border px-2 py-1">Tanggal</th>
-                <th className="border px-2 py-1">Nama</th>
-                <th className="border px-2 py-1">Produk</th>
-                <th className="border px-2 py-1">SN/SKU</th>
-                <th className="border px-2 py-1">Harga Jual</th>
-                <th className="border px-2 py-1">Laba</th>
-                <th className="border px-2 py-1">Invoice</th>
-                <th className="border px-2 py-1">Aksi</th>
+        <table className="w-full border">
+          <thead>
+            <tr className="bg-gray-100 text-sm">
+              <th className="border p-1">Tanggal</th>
+              <th className="border p-1">Nama</th>
+              <th className="border p-1">Produk</th>
+              <th className="border p-1">SN/SKU</th>
+              <th className="border p-1">Harga Jual</th>
+              <th className="border p-1">Laba</th>
+              <th className="border p-1">Invoice</th>
+              <th className="border p-1">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((row) => (
+              <tr key={row.id} className="text-sm text-center">
+                <td className="border p-1">{dayjs(row.tanggal).format('YYYY-MM-DD')}</td>
+                <td className="border p-1">{row.nama_pembeli}</td>
+                <td className="border p-1">{row.nama_produk}</td>
+                <td className="border p-1">{row.sn_sku}</td>
+                <td className="border p-1">Rp {row.harga_jual?.toLocaleString()}</td>
+                <td className="border p-1">Rp {row.laba?.toLocaleString()}</td>
+                <td className="border p-1 text-blue-600">
+                  <a href={`/invoice/${row.id}`} target="_blank" rel="noopener noreferrer">
+                    Unduh
+                  </a>
+                </td>
+                <td className="border p-1">
+                  <button onClick={() => handleDelete(row)} className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                    Hapus
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filterData().map((item) => (
-                <tr key={item.id}>
-                  <td className="border px-2 py-1">{item.tanggal}</td>
-                  <td className="border px-2 py-1">{item.nama_pembeli}</td>
-                  <td className="border px-2 py-1">{item.nama_produk}</td>
-                  <td className="border px-2 py-1">{item.sn_sku}</td>
-                  <td className="border px-2 py-1">Rp {parseInt(item.harga_jual).toLocaleString()}</td>
-                  <td className="border px-2 py-1">Rp {parseInt(item.laba).toLocaleString()}</td>
-                  <td className="border px-2 py-1 text-center">
-                    <Link
-                      href={`/invoice/${item.id}`}
-                      target="_blank"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Unduh
-                    </Link>
-                  </td>
-                  <td className="border px-2 py-1 text-center">
-                    <button
-                      onClick={() => handleDelete(item)}
-                      className="bg-red-600 text-white px-2 rounded"
-                    >
-                      Hapus
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </Layout>
   )
