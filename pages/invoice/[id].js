@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
-import html2pdf from 'html2pdf.js'
+import dynamic from 'next/dynamic'
+
+const html2pdf = dynamic(() => import('html2pdf.js'), { ssr: false })
 
 export default function InvoicePage() {
   const [data, setData] = useState(null)
@@ -15,12 +17,16 @@ export default function InvoicePage() {
   }, [id])
 
   async function fetchData(id) {
-    const { data } = await supabase.from('penjualan_baru').select('*').eq('id', id).maybeSingle()
+    const { data } = await supabase
+      .from('penjualan_baru')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
     if (data) setData(data)
   }
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && data) {
+    if (typeof window !== 'undefined' && data && html2pdf) {
       setTimeout(() => {
         const element = document.getElementById('invoice')
         const bulan = new Date(data.tanggal).getMonth() + 1
