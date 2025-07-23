@@ -8,6 +8,7 @@ export default function Layout({ children }) {
 
   const menuItems = [
     { label: 'Dashboard', path: '/dashboard' },
+    { label: 'Absensi & Tugas', path: '/absensi' },
     { label: 'Stok Barang', path: '/' },
     { label: 'Input Penjualan', path: '/penjualan' },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris' },
