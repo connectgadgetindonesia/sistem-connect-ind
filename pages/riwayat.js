@@ -27,6 +27,7 @@ export default function RiwayatPenjualan() {
     if (!confirm('Yakin ingin hapus data ini?')) return
 
     try {
+      // Cek apakah barang berasal dari stok utama (SN)
       const { data: stokUnit, error: cekStokErr } = await supabase
         .from('stok')
         .select('id')
@@ -35,25 +36,30 @@ export default function RiwayatPenjualan() {
       if (cekStokErr) throw cekStokErr
 
       if (stokUnit) {
+        // Kembalikan status ke READY jika barang dari stok utama
         const { error: updateErr } = await supabase
           .from('stok')
           .update({ status: 'READY' })
           .eq('sn', item.sn_sku)
         if (updateErr) throw updateErr
       } else {
+        // Tambahkan kembali stok aksesoris jika SKU
         const { error: aksesorisErr } = await supabase.rpc('tambah_stok_aksesoris', {
           sku_input: item.sn_sku,
         })
         if (aksesorisErr) throw aksesorisErr
       }
 
+      // Hapus data dari penjualan
       const { error: hapusErr } = await supabase
         .from('penjualan_baru')
         .delete()
         .eq('id', item.id)
       if (hapusErr) throw hapusErr
 
+      // Update UI
       setData((prev) => prev.filter((row) => row.id !== item.id))
+      alert('Data berhasil dihapus.')
     } catch (error) {
       console.error('Gagal hapus data:', error.message)
       alert('Gagal hapus: ' + error.message)
