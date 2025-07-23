@@ -157,6 +157,15 @@ export default function Penjualan() {
       await supabase.rpc('kurangi_stok_aksesoris', { sku_input: formData.sn_sku })
     }
 
+    // Update transaksi indent jika nama cocok
+    await supabase
+      .from('transaksi_indent')
+      .update({
+        status: 'Sudah Diambil',
+        sisa_pembayaran: 0
+      })
+      .eq('nama', formData.nama_pembeli.trim())
+
     alert('Berhasil simpan!')
     setFormData({
       tanggal: '',
