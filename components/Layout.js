@@ -7,14 +7,14 @@ export default function Layout({ children }) {
   const router = useRouter()
 
   const menuItems = [
-    { label: 'Dashboard', path: '/dashboard' },
-    { label: 'Stok Barang', path: '/' },
+    { label: 'Dashboard', path: '/dashboard' },{ label: 'Stok Barang', path: '/' },
     { label: 'Input Penjualan', path: '/penjualan' },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris' },
     { label: 'Riwayat Penjualan', path: '/riwayat' },
     { label: 'Kinerja Karyawan', path: '/kinerja' },
     { label: 'Rekap Bulanan', path: '/rekap' },
   ]
+console.log('🟢 Layout from Layout.jsx loaded');
 
   return (
     <div className="flex min-h-screen bg-gray-50 text-gray-800">
