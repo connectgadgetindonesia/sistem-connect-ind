@@ -25,40 +25,32 @@ export default function InvoicePage() {
   }
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && data) {
-      const timer = setTimeout(() => {
-        import('html2pdf.js').then((html2pdf) => {
-          const element = document.getElementById('invoice')
-          const bulan = new Date(data.tanggal).getMonth() + 1
-          const tahun = new Date(data.tanggal).getFullYear()
-          const nomor = data.invoice_id?.split('-').pop() || 'INVOICE'
+  if (typeof window !== 'undefined' && data) {
+    const timer = setTimeout(() => {
+      import('html2pdf.js').then((html2pdf) => {
+        const element = document.getElementById('invoice')
+        const bulan = new Date(data.tanggal).getMonth() + 1
+        const tahun = new Date(data.tanggal).getFullYear()
+        const nomor = data.invoice_id?.split('-').pop() || 'INVOICE'
 
-          const opt = {
-            filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
-            margin: [0, 0],
-            image: { type: 'jpeg', quality: 1 },
-            html2canvas: {
-              scale: 2,
-              useCORS: true,
-              logging: true,
-              scrollY: 0,
-              windowWidth: 1122, // for 794px width
-              windowHeight: 1587 // to fit full height
-            },
-            jsPDF: {
-              unit: 'px',
-              format: 'a4',
-              orientation: 'portrait'
-            },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-          }
+        if (element) {
+          html2pdf.default()
+            .from(element)
+            .set({
+              filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
+              margin: 0,
+              html2canvas: { scale: 2 },
+              jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+            })
+            .save()
+        }
+      })
+    }, 1500) // tambahkan jeda sedikit lebih lama
 
-          html2pdf().set(opt).from(element).save()
-        })
-      }, 800)
-      return () => clearTimeout(timer)
-    }
-  }, [data])
+    return () => clearTimeout(timer)
+  }
+}, [data])
+
 
   if (!data) return <p>Loading...</p>
 
