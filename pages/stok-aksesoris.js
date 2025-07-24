@@ -10,6 +10,9 @@ export default function StokAksesoris() {
   const [hargaModal, setHargaModal] = useState('')
   const [data, setData] = useState([])
   const [search, setSearch] = useState('')
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [selectedData, setSelectedData] = useState(null)
+  const [newStok, setNewStok] = useState(0)
 
   useEffect(() => {
     fetchData()
@@ -47,6 +50,32 @@ export default function StokAksesoris() {
     }
   }
 
+  const handleOpenUpdateModal = (item) => {
+    setSelectedData(item)
+    setNewStok(0)
+    setShowUpdateModal(true)
+  }
+
+  const handleUpdateStok = async () => {
+    if (!selectedData || isNaN(newStok)) return
+
+    const stokBaru = selectedData.stok + newStok
+
+    const { error } = await supabase
+      .from('stok_aksesoris')
+      .update({ stok: stokBaru })
+      .eq('id', selectedData.id)
+
+    if (error) {
+      alert('Gagal update stok')
+    } else {
+      alert('Stok berhasil diupdate')
+      fetchData()
+    }
+
+    setShowUpdateModal(false)
+  }
+
   const filteredData = data.filter(item => {
     const s = search.toLowerCase()
     return (
@@ -75,11 +104,32 @@ export default function StokAksesoris() {
         {filteredData.map((item) => (
           <div key={item.id} className="mb-2 border-b pb-2">
             <p><b>{item.nama_produk}</b> | SKU: {item.sku} | Warna: {item.warna} | Stok: {item.stok} | Modal: Rp{parseInt(item.harga_modal).toLocaleString()}</p>
-            <div className="text-sm mt-1">
+            <div className="text-sm mt-1 flex gap-4">
               <button onClick={() => handleDelete(item.id)} className="text-red-600">Hapus</button>
+              <button onClick={() => handleOpenUpdateModal(item)} className="text-blue-600">Update</button>
             </div>
           </div>
         ))}
+
+        {showUpdateModal && (
+          <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded shadow-lg w-96">
+              <h2 className="text-lg font-bold mb-2">Update Stok</h2>
+              <p className="mb-2">SKU: <strong>{selectedData?.sku}</strong></p>
+              <input
+                type="number"
+                value={newStok}
+                onChange={(e) => setNewStok(Number(e.target.value))}
+                placeholder="Jumlah stok baru masuk"
+                className="border px-2 py-1 w-full mb-4"
+              />
+              <div className="flex justify-between">
+                <button onClick={handleUpdateStok} className="bg-blue-600 text-white px-4 py-2 rounded">Simpan</button>
+                <button onClick={() => setShowUpdateModal(false)} className="text-gray-600">Batal</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )
