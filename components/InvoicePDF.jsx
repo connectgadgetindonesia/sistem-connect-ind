@@ -1,131 +1,127 @@
-// components/InvoicePDF.jsx
-import { useEffect, useRef, useState } from "react";
+// pages/invoice/[id].jsx
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
 import html2pdf from "html2pdf.js";
 
-export default function InvoicePDF({ id }) {
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+export default function InvoicePDF() {
+  const router = useRouter();
+  const { id } = router.query;
   const [data, setData] = useState(null);
-  const printRef = useRef();
-
-  const fetchData = async () => {
-    const { data, error } = await supabase
-      .from("penjualan_baru")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (data) setData(data);
-    else console.error("Fetch error:", error);
-  };
+  const contentRef = useRef();
 
   useEffect(() => {
-    fetchData();
+    if (id) {
+      fetchData();
+    }
   }, [id]);
 
-  const handleDownload = () => {
-    if (!printRef.current) return;
-    html2pdf()
-      .from(printRef.current)
-      .set({
-        margin: 0,
-        filename: `${data.invoice_id}.pdf`,
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      })
-      .save();
+  const fetchData = async () => {
+    const { data, error } = await supabase.from("penjualan_baru").select("*").eq("id", id).single();
+    if (!error) {
+      setData(data);
+    } else {
+      console.error("Fetch error:", error);
+    }
   };
 
-  if (!data) return <p style={{ padding: 32 }}>Loading invoice...</p>;
+  const handleDownload = () => {
+    const element = contentRef.current;
+    const opt = {
+      margin: 0,
+      filename: `${data.invoice_id}.pdf`,
+      image: { type: "jpeg", quality: 1 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["avoid-all"] },
+    };
+    html2pdf().set(opt).from(element).save();
+  };
+
+  if (!data) return <div>Loading...</div>;
 
   return (
-    <div style={{ padding: 32 }}>
-      <button onClick={handleDownload} style={{ marginBottom: 16 }}>
+    <div style={{ padding: "20px", fontFamily: "Inter, sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
+      <button onClick={handleDownload} style={{ marginBottom: "20px" }}>
         Download PDF
       </button>
-      <div
-        ref={printRef}
-        style={{
-          fontFamily: "Arial, sans-serif",
-          width: "210mm",
-          minHeight: "297mm",
-          background: "white",
-          padding: 32,
-          borderRadius: 8,
-          border: "1px solid #ccc",
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <img
-            src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAA+W0/XAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAB/5JREFUeNrs3Q1y2jYUBuBfBcyTuXMEYjIpGTl2wP0+yKyTIT7gE0wn6qpDPu/hSVAsJZckfznwAAAAAAAAAAAPCFLu/7Tb3SnUcyoZ3s+e9b1/0Fbb0AAAAAAAAAAABAfYJZTx6+Z0OGay3O7NVl6KM5ZgvA4O9aZD/gYeBGvOjv2xw09znrBIBGv+I/NZt+GLG0zms7JZNGYvPEo6WeU+tfRB4D3VtfQ+GWLP3FrbK94AYDE5O4k+oYbrMynF6Ut+cQyDRgeAzMyJeOkok3Czj4UzSOsUgAAY3iCNVR9Q3Ycytv5g8zwyjoAKIsq1bGvPVuYOtdMIgoRk7ADs15YPKZYCrz2zzcZAWtsw95diPO8Ns0G0XeG25Wyc9z+q/ezDADAK6zEox6MDgA6k/RuGyDvMEh4MoedfcY2fbmZQIvfshLxkFgOwBQZblDazOCgQvlLvMj7k6ONdh5OaxcfR7CrkuVZYiZPjTfKM8YFgOwCU9HtlbZJwcMoGHqGLZ58DqKysPb1z3QU3O1LDR29XvGLdEYD4LEOgOQ7B8ZLZuQu9F1rE8ZTW1hgh8rqoytkPQDAEMcgW9W9TLyVRffz7WxbgwH8BQEwyKtb9M5OmlhA/A2/YfC3ZzkdZqQ9vbzv7p5hEDwy7eEddAoV5rgwPAOfKvZ0oGz8GJnu1WRItSpxeZtNFFN4Zbd4eB1O40HoZPbaTso/tel1RJjo9pvCWqPiTszPMB8DDMkKNHH8Esl3EfEXlzGJjjVvExhFS4mK7eK1ti7+g9ZBPbCVX1iTQAkG63LV+q5KVZlNKtTKe/URZVFuayvKMuUbi1ijxXszLAgCrKhzXFqKeKSSWVyz2qI+I+GgNmqxmeuz41vN54nOBbNlgCUl04ABpvspbpkmFe2af6ORJ2w7LNRn+d3GT+jrH5ZH9b2yFoH5bIAAHFz/So/P23bXtc+CMiQ7w0EcYAFWsn7ppPCbM5veN5/Cz+6Av4X/JGRW99VxpjT8cCMCc0H1D98xtngl+8CV/wdPu2ujBvf5B8S2qZ/DEW77oLsAHp//2L8PAAAAAADgfZsfATXuNgsI4bB7AAAAAElFTkSuQmCC"
-            alt="CONNECT.IND"
-            style={{ height: 48 }}
-          />
-          <div style={{ textAlign: "right", fontSize: 14 }}>
-            <strong>CONNECT.IND</strong><br />
-            Jl. Srikuncoro Raya Ruko B1-B2<br />
-            Kalibanteng Kulon, Semarang 50145<br />
+
+      <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <img src="/logo-connect-transparan.png" alt="Logo CONNECT.IND" width="50" />
+          <div style={{ textAlign: "right", fontSize: "12px" }}>
+            <strong>CONNECT.IND</strong>
+            <br />
+            Jl. Srikuncoro Raya Ruko B1-B2
+            <br />
+            Kalibanteng Kulon, Semarang 50145
+            <br />
             089-631-4000-31
           </div>
         </div>
 
-        {/* Tagihan */}
-        <div style={{ marginTop: 24, background: "#eef2f7", padding: 12, borderRadius: 12, fontWeight: "bold", color: "#2362eb" }}>
-          INVOICE
+        <div style={{ background: "#eef2f8", padding: "10px", borderRadius: "50px", textAlign: "center", margin: "20px 0" }}>
+          <strong style={{ color: "#0040ff", fontSize: "16px" }}>INVOICE</strong>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "20px" }}>
           <div>
-            <strong>Invoice Number:</strong> {data.invoice_id}<br />
-            <strong>Invoice Date:</strong> {data.tanggal}
+            <div><strong>Invoice Number:</strong> {data.invoice_id}</div>
+            <div><strong>Invoice Date:</strong> {data.tanggal}</div>
           </div>
           <div>
-            <strong>Invoice To:</strong><br />
-            {data.nama_pembeli}<br />
-            {data.alamat}<br />
-            {data.no_wa}
+            <div><strong>Invoice To:</strong></div>
+            <div>{data.nama_pembeli}</div>
+            <div>{data.alamat}</div>
+            <div>{data.no_wa}</div>
           </div>
         </div>
 
-        {/* Tabel */}
-        <table style={{ width: "100%", marginTop: 24, borderCollapse: "collapse" }}>
-          <thead style={{ backgroundColor: "#f3f6fa", borderBottom: "1px solid #ccc" }}>
-            <tr>
-              <th style={{ textAlign: "left", padding: 8 }}>Item</th>
-              <th style={{ textAlign: "center", padding: 8 }}>Qty</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Price</th>
-              <th style={{ textAlign: "right", padding: 8 }}>Total</th>
+        <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse", marginBottom: "20px" }}>
+          <thead>
+            <tr style={{ background: "#f0f0f0" }}>
+              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Item</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Qty</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Price</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr style={{ borderBottom: "1px solid #ccc" }}>
-              <td style={{ padding: 8 }}>
-                <strong>{data.nama_produk}</strong><br />
-                SN: {data.sn_sku}<br />
-                Warna: {data.warna}<br />
-                Storage: {data.storage}<br />
-                Garansi: {data.garansi}
+            <tr>
+              <td style={{ padding: "8px", border: "1px solid #ccc" }}>
+                {data.nama_produk}
+                <br />
+                <span style={{ fontSize: "11px" }}>SN: {data.sn_sku}</span>
+                <br />
+                <span style={{ fontSize: "11px" }}>Warna: {data.warna}</span>
+                {data.storage && <><br /><span style={{ fontSize: "11px" }}>Storage: {data.storage}</span></>}
+                {data.garansi && <><br /><span style={{ fontSize: "11px" }}>Garansi: {data.garansi}</span></>}
               </td>
-              <td style={{ textAlign: "center", padding: 8 }}>1</td>
-              <td style={{ textAlign: "right", padding: 8 }}>
-                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
-              </td>
-              <td style={{ textAlign: "right", padding: 8 }}>
-                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
-              </td>
+              <td style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>1</td>
+              <td style={{ padding: "8px", border: "1px solid #ccc", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ padding: "8px", border: "1px solid #ccc", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
             </tr>
           </tbody>
         </table>
 
-        <div style={{ textAlign: "right", fontWeight: "bold", fontSize: 16, marginTop: 16 }}>
-          Total: Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
+        <div style={{ textAlign: "right", fontSize: "14px", fontWeight: "bold" }}>
+          Total: {formatRupiah(data.harga_jual)}
         </div>
 
-        <div style={{ fontSize: 12, color: "#868DA6", marginTop: 32 }}>
+        <div style={{ fontSize: "10px", marginTop: "30px", color: "#868DA6" }}>
           * Terima kasih telah berbelanja di CONNECT.IND. Invoice ini berlaku sebagai bukti pembelian resmi.
         </div>
       </div>
     </div>
   );
+}
+
+function formatRupiah(number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(number);
 }
