@@ -62,7 +62,7 @@ export default function InvoicePDF() {
           alignItems: "center",
           justifyContent: "center"
         }}>
-          <h2 style={{ color: "#0040FF", fontSize: "20px", margin: 0 }}>INVOICE</h2>
+          <h2 style={{ color: "#000000ff", fontSize: "20px", margin: 0 }}>INVOICE</h2>
         </div>
 
         {/* LOGO & INFO TOKO */}
