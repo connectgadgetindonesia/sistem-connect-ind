@@ -2,7 +2,6 @@ import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-// ✅ Tambahan untuk Vercel agar route dinamis bisa dibuild
 export const dynamic = 'force-dynamic'
 export async function getServerSideProps() {
   return { props: {} }
@@ -35,8 +34,7 @@ export default function InvoicePage() {
   const formatRupiah = (num) =>
     typeof num === 'number' ? 'Rp' + num.toLocaleString('id-ID') : '-'
 
-  const generatePDF = async () => {
-    const html2pdf = (await import('html2pdf.js')).default
+  const generatePDF = () => {
     const opt = {
       margin: 0,
       filename: `${data.invoice_id}.pdf`,
@@ -45,7 +43,11 @@ export default function InvoicePage() {
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
     }
-    html2pdf().set(opt).from(pdfRef.current).save()
+
+    import('html2pdf.js').then((module) => {
+      const html2pdf = module.default
+      html2pdf().set(opt).from(pdfRef.current).save()
+    })
   }
 
   if (!router.isReady || !data) return <div>Loading...</div>
@@ -79,7 +81,10 @@ export default function InvoicePage() {
   return (
     <div className="p-4">
       <div className="mb-4">
-        <button onClick={generatePDF} className="bg-blue-600 text-white px-4 py-2 rounded">
+        <button
+          onClick={generatePDF}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
           Download PDF
         </button>
       </div>
@@ -92,8 +97,12 @@ export default function InvoicePage() {
         <div className="flex justify-between items-start mb-8">
           <div>
             <h2 className="text-2xl font-bold text-blue-700">INVOICE</h2>
-            <p className="text-gray-600 text-sm">Invoice Number: {invoice_id}</p>
-            <p className="text-gray-600 text-sm">Invoice Date: {new Date(tanggal).toDateString()}</p>
+            <p className="text-gray-600 text-sm">
+              Invoice Number: {invoice_id}
+            </p>
+            <p className="text-gray-600 text-sm">
+              Invoice Date: {new Date(tanggal).toDateString()}
+            </p>
           </div>
           <div className="text-right text-sm">
             <h3 className="font-bold text-blue-700">CONNECT.IND</h3>
@@ -129,8 +138,12 @@ export default function InvoicePage() {
                 <span className="text-gray-700">{produkDetail}</span>
               </td>
               <td className="border px-3 py-2 text-center">1</td>
-              <td className="border px-3 py-2 text-right">{formatRupiah(harga_jual)}</td>
-              <td className="border px-3 py-2 text-right">{formatRupiah(harga_jual)}</td>
+              <td className="border px-3 py-2 text-right">
+                {formatRupiah(harga_jual)}
+              </td>
+              <td className="border px-3 py-2 text-right">
+                {formatRupiah(harga_jual)}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -139,12 +152,16 @@ export default function InvoicePage() {
         <div className="text-right pr-2">
           <p className="mb-1">Sub Total: {formatRupiah(harga_jual)}</p>
           <p className="mb-1">Discount: -</p>
-          <h3 className="text-xl font-bold">Total: {formatRupiah(harga_jual)}</h3>
+          <h3 className="text-xl font-bold">
+            Total: {formatRupiah(harga_jual)}
+          </h3>
         </div>
 
         {/* Notes */}
         <div className="mt-10 text-sm text-gray-500">
-          <p><b>Notes:</b> -</p>
+          <p>
+            <b>Notes:</b> -
+          </p>
         </div>
       </div>
     </div>
