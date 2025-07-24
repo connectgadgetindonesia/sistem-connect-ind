@@ -7,6 +7,7 @@ export default function InvoicePDF() {
   const { id } = router.query;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [readyToDownload, setReadyToDownload] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -24,8 +25,16 @@ export default function InvoicePDF() {
     fetchData();
   }, [id]);
 
+  useEffect(() => {
+    if (data) {
+      // Tunggu render layout selesai
+      setTimeout(() => setReadyToDownload(true), 500); // kasih delay biar aman
+    }
+  }, [data]);
+
   const handleDownload = () => {
     const element = document.getElementById("invoice-content");
+    if (!element) return;
     html2pdf()
       .from(element)
       .set({
@@ -38,14 +47,17 @@ export default function InvoicePDF() {
       .save();
   };
 
-  if (loading) return <div style={{ color: "white", padding: 40 }}>Loading...</div>;
-  if (!data) return <div style={{ color: "red", padding: 40 }}>Invoice not found</div>;
+  if (loading) return <div className="p-10 text-white">Loading...</div>;
+  if (!data) return <div className="p-10 text-red-500">Invoice not found.</div>;
 
   return (
     <div className="p-8 bg-white min-h-screen font-sans">
       <button
         onClick={handleDownload}
-        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded mb-6"
+        disabled={!readyToDownload}
+        className={`px-4 py-2 rounded mb-6 text-white ${
+          readyToDownload ? "bg-blue-500 hover:bg-blue-600" : "bg-gray-400 cursor-not-allowed"
+        }`}
       >
         Download PDF
       </button>
