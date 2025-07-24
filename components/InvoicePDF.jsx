@@ -83,7 +83,7 @@ export default function InvoicePDF() {
           marginBottom: "10px"
         }}>
           <img
-            src="/Head-new.png"
+            src="/head-new.png"
             alt="Header Background"
             style={{
               width: "100%",
