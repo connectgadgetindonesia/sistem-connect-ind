@@ -1,4 +1,4 @@
-// InvoicePDF.jsx — Final Layout Modern Fit A4 (Fix: use <img src> for header)
+// InvoicePDF.jsx — Final Layout Modern Fit A4
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { createClient } from "@supabase/supabase-js";
@@ -58,44 +58,52 @@ export default function InvoicePDF() {
           padding: "32px",
           boxSizing: "border-box",
           borderRadius: "20px",
-          position: "relative"
-        }}>
+        }}
+      >
+     <div style={{
+  position: "relative",
+  width: "100%",
+  height: "130px",
+  borderRadius: "20px",
+  overflow: "hidden",
+  marginBottom: "20px"
+}}>
+  <img
+    src="/head-bg.png"
+    alt="Header Background"
+    style={{
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      zIndex: 0
+    }}
+  />
 
-        {/* Header with image */}
-        <div style={{ position: "relative", height: "130px", marginBottom: 20 }}>
-          <img
-            src="/head-bg.png"
-            alt="Header"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "130px",
-              objectFit: "cover",
-              borderRadius: "20px",
-              zIndex: 0
-            }}
-          />
-          <div style={{ position: "relative", zIndex: 2, textAlign: "center", paddingTop: 16 }}>
-            <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 32, marginBottom: 6 }} />
-            <h2 style={{ margin: 0, fontSize: 16 }}>INVOICE</h2>
-          </div>
-        </div>
+  <div style={{ position: "relative", zIndex: 1, textAlign: "center", paddingTop: 16 }}>
+    <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 32, marginBottom: 8 }} />
+    <h2 style={{ margin: 0, fontSize: 16, color: "#000" }}>INVOICE</h2>
+  </div>
+</div>
 
-        {/* Informasi utama */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 24 }}>
+        {/* Tiga kolom informasi */}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20 }}>
           <div>
             <strong>Invoice Details</strong><br />
-            Invoice number: {data.invoice_id}<br />
-            Invoice date: {data.tanggal}
+            Invoice number:<br />
+            {data.invoice_id}<br />
+            Invoice date:<br />
+            {data.tanggal}
           </div>
-          <div>
+          <div style={{ textAlign: "center" }}>
             <strong>CONNECT.IND</strong><br />
             (+62) 896-31-4000-31<br />
             Jl. Srikuncoro Raya Ruko B2<br />
             Kalibanteng Kulon, Semarang Barat<br />
-            Kota Semarang, Jawa Tengah 50145
+            Kota Semarang, Jawa Tengah<br />
+            50145
           </div>
           <div style={{ textAlign: "right" }}>
             <strong>Invoice To:</strong><br />
@@ -105,58 +113,53 @@ export default function InvoicePDF() {
           </div>
         </div>
 
-        {/* Tabel Produk */}
-        <table style={{
-          width: "100%",
-          fontSize: 11,
-          borderCollapse: "collapse",
-          marginBottom: 24,
-        }}>
+        {/* Tabel produk */}
+        <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", marginBottom: 24 }}>
           <thead style={{ background: "#f3f6fd" }}>
             <tr>
-              <th style={{ textAlign: "left", padding: 10, border: "1px solid #ccc" }}>Item</th>
-              <th style={{ textAlign: "center", padding: 10, border: "1px solid #ccc", width: "50px" }}>Qty</th>
-              <th style={{ textAlign: "right", padding: 10, border: "1px solid #ccc", width: "80px" }}>Price</th>
-              <th style={{ textAlign: "right", padding: 10, border: "1px solid #ccc", width: "90px" }}>Total</th>
+              <th style={{ textAlign: "left", padding: 8 }}>Item</th>
+              <th style={{ textAlign: "center" }}>Qty</th>
+              <th style={{ textAlign: "right" }}>Price</th>
+              <th style={{ textAlign: "right" }}>Total</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td style={{ padding: 10, border: "1px solid #ccc" }}>
+              <td style={{ padding: 8 }}>
                 <strong>{data.nama_produk}</strong><br />
                 <span style={{ color: "#7b88a8" }}>SN: {data.sn_sku}</span><br />
                 <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
                 {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
                 {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
               </td>
-              <td style={{ textAlign: "center", border: "1px solid #ccc" }}>1</td>
-              <td style={{ textAlign: "right", border: "1px solid #ccc" }}>{formatRupiah(data.harga_jual)}</td>
-              <td style={{ textAlign: "right", border: "1px solid #ccc" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ textAlign: "center" }}>1</td>
+              <td style={{ textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
             </tr>
           </tbody>
         </table>
 
-        {/* Total section */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, paddingRight: 16 }}>
-          <table style={{ fontSize: 11, lineHeight: "1.8", minWidth: "220px", maxWidth: "260px" }}>
+        {/* Total */}
+        <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <table style={{ fontSize: 11, lineHeight: "1.8" }}>
             <tbody>
               <tr>
-                <td style={{ textAlign: "left", color: "#7b88a8" }}>Sub Total:</td>
-                <td style={{ textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+                <td style={{ color: "#7b88a8", textAlign: "left" }}>Sub Total:</td>
+                <td style={{ textAlign: "right", paddingLeft: 20 }}>{formatRupiah(data.harga_jual)}</td>
               </tr>
               <tr>
-                <td style={{ textAlign: "left", color: "#7b88a8" }}>Discount:</td>
-                <td style={{ textAlign: "right" }}>-</td>
+                <td style={{ color: "#7b88a8", textAlign: "left" }}>Discount:</td>
+                <td style={{ textAlign: "right", paddingLeft: 20 }}>-</td>
               </tr>
               <tr>
                 <td style={{ textAlign: "left" }}><strong>Total:</strong></td>
-                <td style={{ textAlign: "right" }}><strong>{formatRupiah(data.harga_jual)}</strong></td>
+                <td style={{ textAlign: "right", paddingLeft: 20 }}><strong>{formatRupiah(data.harga_jual)}</strong></td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {/* Notes section */}
+        {/* Notes */}
         <div style={{
           fontSize: 10,
           background: "#f3f6fd",
