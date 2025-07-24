@@ -1,9 +1,8 @@
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import html2pdf from 'html2pdf.js'
 
-// ✅ Fix untuk Vercel build
+// ✅ Tambahan untuk Vercel agar route dinamis bisa dibuild
 export const dynamic = 'force-dynamic'
 export async function getServerSideProps() {
   return { props: {} }
@@ -36,7 +35,8 @@ export default function InvoicePage() {
   const formatRupiah = (num) =>
     typeof num === 'number' ? 'Rp' + num.toLocaleString('id-ID') : '-'
 
-  const generatePDF = () => {
+  const generatePDF = async () => {
+    const html2pdf = (await import('html2pdf.js')).default
     const opt = {
       margin: 0,
       filename: `${data.invoice_id}.pdf`,
