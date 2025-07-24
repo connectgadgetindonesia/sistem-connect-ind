@@ -3,20 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import html2pdf from 'html2pdf.js'
 
-// ✅ Tambahan untuk hindari error Vercel build
+// ✅ Fix untuk Vercel build
 export const dynamic = 'force-dynamic'
-
-export async function getStaticPaths() {
-  return {
-    paths: [],
-    fallback: true,
-  }
-}
-
-export async function getStaticProps() {
-  return {
-    props: {},
-  }
+export async function getServerSideProps() {
+  return { props: {} }
 }
 
 export default function InvoicePage() {
