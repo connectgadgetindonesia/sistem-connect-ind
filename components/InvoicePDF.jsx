@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { createClient } from "@supabase/supabase-js";
@@ -105,8 +106,20 @@ export default function InvoicePDF() {
               alignItems: "center",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 28 }} />
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
+                width: "fit-content",
+              }}
+            >
+              <img
+                src="/logo-connect-transparan.png"
+                alt="Logo"
+                style={{ width: 28, height: 28, objectFit: "contain", display: "block" }}
+              />
               <h2 style={{ margin: 0, fontSize: 16, color: "#000" }}>INVOICE</h2>
             </div>
           </div>
