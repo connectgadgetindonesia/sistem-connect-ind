@@ -39,7 +39,7 @@ export default function InvoicePDF() {
       margin: 0,
       filename: `${data.invoice_id}.pdf`,
       image: { type: "jpeg", quality: 1 },
-      html2canvas: { scale: 2 },
+      html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       pagebreak: { mode: ["avoid-all"] },
     };
@@ -52,7 +52,7 @@ export default function InvoicePDF() {
     <div
       style={{
         padding: "20px",
-        fontFamily: "Inter, sans-serif",
+        fontFamily: "'Helvetica Neue', Arial, sans-serif",
         background: "#f5f5f5",
         minHeight: "100vh",
       }}
@@ -69,6 +69,8 @@ export default function InvoicePDF() {
           maxWidth: "800px",
           margin: "auto",
           borderRadius: "10px",
+          printColorAdjust: "exact",
+          WebkitPrintColorAdjust: "exact",
         }}
       >
         <div
@@ -142,10 +144,10 @@ export default function InvoicePDF() {
         >
           <thead>
             <tr style={{ background: "#f0f0f0", textAlign: "center" }}>
-              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Item</th>
-              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Qty</th>
-              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Price</th>
-              <th style={{ padding: "8px", border: "1px solid #ccc" }}>Total</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>Item</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>Qty</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>Price</th>
+              <th style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>Total</th>
             </tr>
           </thead>
           <tbody>
