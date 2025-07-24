@@ -49,14 +49,14 @@ export default function InvoicePDF() {
 
       <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
         
-   {/* HEADER DENGAN BACKGROUND + LOGO DI KIRI + INFO TOKO DI KANAN */}
+        {/* HEADER FINAL: Background, Logo kiri, INVOICE kanan logo, Info toko di kanan atas */}
 <div style={{
   position: "relative",
   width: "100%",
-  height: "130px",
+  height: "130px", // Ukuran original head-bg.png
   marginBottom: "20px",
   borderRadius: "10px",
-  overflow: "hidden",
+  overflow: "hidden"
 }}>
   {/* Background image */}
   <img
@@ -72,28 +72,31 @@ export default function InvoicePDF() {
     }}
   />
 
-  {/* Konten header */}
+  {/* Konten di atas background */}
   <div style={{
     position: "relative",
     zIndex: 2,
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     height: "100%",
     padding: "20px",
-    color: "#000",
-    fontSize: "12px",
   }}>
-    {/* Logo di kiri */}
-    <img src="/logo-connect-transparan.png" alt="Logo" width="50" />
-
-    {/* Teks INVOICE di tengah */}
-    <div style={{ textAlign: "center", flex: 1 }}>
-      <h2 style={{ color: "#0040FF", margin: 0 }}>INVOICE</h2>
+    {/* Kiri: Logo + Tulisan INVOICE */}
+    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+      <img src="/logo-connect-transparan.png" alt="Logo" width="50" />
+      <h2 style={{
+        margin: 0,
+        fontSize: "18px",
+        color: "#000",
+        fontWeight: 600
+      }}>
+        INVOICE
+      </h2>
     </div>
 
-    {/* Info toko di kanan */}
-    <div style={{ textAlign: "right", lineHeight: "1.5" }}>
+    {/* Kanan: Info Toko */}
+    <div style={{ textAlign: "right", fontSize: "12px", lineHeight: "1.5" }}>
       <strong>CONNECT.IND</strong><br />
       Jl. Srikuncoro Raya Ruko B1-B2<br />
       Kalibanteng Kulon, Semarang 50145<br />
