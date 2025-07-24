@@ -82,13 +82,12 @@ export default function InvoicePDF() {
     }}
   />
 
-<div style={{ position: "relative", zIndex: 1, textAlign: "center", paddingTop: 16 }}>
-  <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-    <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 32 }} />
+  <div style={{ position: "relative", zIndex: 1, textAlign: "center", paddingTop: 16 }}>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}></div>
+    <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 32, marginBottom: 8 }} />
     <h2 style={{ margin: 0, fontSize: 16, color: "#000" }}>INVOICE</h2>
   </div>
 </div>
-
 
         {/* Tiga kolom informasi */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20 }}>
@@ -115,51 +114,51 @@ export default function InvoicePDF() {
           </div>
         </div>
 
-       {/* Tabel produk */}
-<table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", marginBottom: 24 }}>
-  <thead style={{ background: "#f3f6fd" }}>
-    <tr>
-      <th style={{ textAlign: "center", padding: 8 }}>Item</th>
-      <th style={{ textAlign: "center" }}>Qty</th>
-      <th style={{ textAlign: "center" }}>Price</th>
-      <th style={{ textAlign: "center" }}>Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style={{ textAlign: "left", padding: 8 }}>
-        <strong>{data.nama_produk}</strong><br />
-        <span style={{ color: "#7b88a8" }}>SN: {data.sn_sku}</span><br />
-        <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
-        {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
-        {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
-      </td>
-      <td style={{ textAlign: "left" }}>1</td>
-      <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
-      <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
-    </tr>
-  </tbody>
-</table>
+        {/* Tabel produk */}
+        <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", marginBottom: 24 }}>
+          <thead style={{ background: "#f3f6fd" }}>
+            <tr>
+              <th style={{ textAlign: "center", padding: 8 }}>Item</th>
+              <th style={{ textAlign: "center" }}>Qty</th>
+              <th style={{ textAlign: "center" }}>Price</th>
+              <th style={{ textAlign: "cemter" }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={{ padding: 8 }}>
+                <strong>{data.nama_produk}</strong><br />
+                <span style={{ color: "#7b88a8" }}>SN: {data.sn_sku}</span><br />
+                <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
+                {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
+                {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
+              </td>
+              <td style={{ textAlign: "left" }}>1</td>
+              <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
+            </tr>
+          </tbody>
+        </table>
 
-{/* Total */}
-<div style={{ width: "100%", display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
-  <table style={{ fontSize: 11, lineHeight: "1.8", textAlign: "left" }}>
-    <tbody>
-      <tr>
-        <td style={{ color: "#7b88a8" }}>Sub Total:</td>
-        <td style={{ paddingLeft: 10 }}>{formatRupiah(data.harga_jual)}</td>
-      </tr>
-      <tr>
-        <td style={{ color: "#7b88a8" }}>Discount:</td>
-        <td style={{ paddingLeft: 10 }}>-</td>
-      </tr>
-      <tr>
-        <td><strong>Total:</strong></td>
-        <td style={{ paddingLeft: 10 }}><strong>{formatRupiah(data.harga_jual)}</strong></td>
-      </tr>
-    </tbody>
-  </table>
-</div>
+        {/* Total */}
+        <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <table style={{ fontSize: 11, lineHeight: "1.8", textAlign: "left" }}>
+            <tbody>
+              <tr>
+                <td style={{ color: "#7b88a8", textAlign: "left" }}>Sub Total:</td>
+                <td style={{ paddingLeft: 20 }}>{formatRupiah(data.harga_jual)}</td>
+              </tr>
+              <tr>
+                <td style={{ color: "#7b88a8", textAlign: "left" }}>Discount:</td>
+                <td style={{ paddingLeft: 20 }}>-</td>
+              </tr>
+              <tr>
+                <td style={{ textAlign: "left" }}><strong>Total:</strong></td>
+                <td style={{ paddingLeft: 20 }}><strong>{formatRupiah(data.harga_jual)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         {/* Notes */}
         <div style={{
