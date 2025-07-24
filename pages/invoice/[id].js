@@ -1,162 +1,131 @@
-// pages/invoice/[id].js
-import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import dynamic from 'next/dynamic'
-
-const html2pdf = dynamic(() => import('html2pdf.js'), { ssr: false })
+import html2pdf from 'html2pdf.js'
 
 export default function InvoicePage() {
-  const [data, setData] = useState(null)
   const router = useRouter()
   const { id } = router.query
+  const [data, setData] = useState(null)
+  const pdfRef = useRef()
 
   useEffect(() => {
-    if (id) fetchData(id)
+    if (id) fetchData()
   }, [id])
 
-  async function fetchData(id) {
-    const { data } = await supabase
-      .from('penjualan_baru')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-    if (data) setData(data)
+  async function fetchData() {
+    const { data } = await supabase.from('penjualan_baru').select('*').eq('id', id).single()
+    setData(data)
   }
 
-  useEffect(() => {
-  if (typeof window !== 'undefined' && data) {
-    const timer = setTimeout(() => {
-      import('html2pdf.js').then((html2pdf) => {
-        const element = document.getElementById('invoice')
-        const bulan = new Date(data.tanggal).getMonth() + 1
-        const tahun = new Date(data.tanggal).getFullYear()
-        const nomor = data.invoice_id?.split('-').pop() || 'INVOICE'
+  const formatRupiah = (num) =>
+    typeof num === 'number' ? 'Rp' + num.toLocaleString('id-ID') : '-'
 
-        if (element) {
-          html2pdf.default()
-            .from(element)
-            .set({
-              filename: `INV-CTI-${bulan.toString().padStart(2, '0')}-${tahun}-${nomor}.pdf`,
-              margin: 0,
-              html2canvas: { scale: 2 },
-              jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-            })
-            .save()
-        }
-      })
-    }, 1500) // tambahkan jeda sedikit lebih lama
-
-    return () => clearTimeout(timer)
+  const generatePDF = () => {
+    const opt = {
+      margin: 0,
+      filename: `${data.invoice_id}.pdf`,
+      image: { type: 'jpeg', quality: 1 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    }
+    html2pdf().set(opt).from(pdfRef.current).save()
   }
-}, [data])
 
+  if (!data) return <div>Loading...</div>
 
-  if (!data) return <p>Loading...</p>
+  const {
+    invoice_id,
+    tanggal,
+    nama_pembeli,
+    alamat,
+    no_wa,
+    nama_produk,
+    sn_sku,
+    imei,
+    warna,
+    storage,
+    garansi,
+    harga_jual,
+  } = data
+
+  const produkDetail = [
+    { label: 'SN', value: sn_sku },
+    { label: 'IMEI', value: imei },
+    { label: 'Warna', value: warna },
+    { label: 'Storage', value: storage },
+    { label: 'Garansi', value: garansi },
+  ]
+    .filter(item => item.value && item.value !== '-')
+    .map(item => `${item.label}: ${item.value}`)
+    .join(' | ')
 
   return (
-    <div id="invoice" style={{
-      width: '794px', minHeight: '1123px', margin: '0 auto',
-      padding: '2rem', fontFamily: 'Inter, sans-serif',
-      backgroundColor: '#fff', boxSizing: 'border-box'
-    }}>
-      {/* Header */}
-      <div style={{
-        backgroundImage: 'url(/head.png)',
-        backgroundSize: 'cover',
-        borderRadius: '32px',
-        padding: '2rem',
-        color: '#868DA6',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: '2rem'
-      }}>
-        <img src="/logo-connect-transparan.png" alt="logo" style={{ height: 50, marginBottom: '1rem' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <h2 style={{ color: '#000', margin: 0 }}>Invoice</h2>
-            <p><strong>Invoice number:</strong> {data.invoice_id}</p>
-            <p><strong>Invoice date:</strong> {new Date(data.tanggal).toDateString()}</p>
-          </div>
-          <div style={{ flex: 1 }}>
-            <p><strong>CONNECT.IND</strong></p>
-            <p>(+62) 896-31-4000-31</p>
-            <p style={{ margin: 0 }}>Jl. Srikuncoro Raya Ruko B2,</p>
-            <p style={{ margin: 0 }}>Kalibanteng Kulon, Semarang Barat</p>
-            <p style={{ margin: 0 }}>Kota Semarang, Jawa Tengah 50145</p>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{
-              backgroundColor: '#fff',
-              padding: '0.5rem 1rem',
-              borderRadius: '12px',
-              color: '#000',
-              boxShadow: '0 0 4px rgba(0,0,0,0.1)'
-            }}>
-              <p><strong>Invoice To:</strong></p>
-              <p>{data.nama_pembeli}</p>
-              <p>{data.alamat}</p>
-              <p>{data.no_wa}</p>
-            </div>
-          </div>
-        </div>
+    <div className="p-4">
+      <div className="mb-4">
+        <button onClick={generatePDF} className="bg-blue-600 text-white px-4 py-2 rounded">Download PDF</button>
       </div>
 
-      {/* Table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-        <thead style={{ backgroundColor: '#F3F5FC', color: '#868DA6', textAlign: 'left' }}>
-          <tr>
-            <th style={{ padding: '10px' }}>Item</th>
-            <th style={{ padding: '10px' }}>Qty</th>
-            <th style={{ padding: '10px' }}>Price</th>
-            <th style={{ padding: '10px' }}>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={{ padding: '10px', color: '#000' }}>
-              <strong>{data.nama_produk}</strong><br />
-              <span style={{ color: '#868DA6' }}>SN: {data.sn_sku}</span>
-            </td>
-            <td style={{ padding: '10px', color: '#000' }}>1</td>
-            <td style={{ padding: '10px', color: '#000' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
-            <td style={{ padding: '10px', color: '#000' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div ref={pdfRef} className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto text-sm leading-relaxed">
+        {/* Header */}
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-blue-700">INVOICE</h2>
+            <p className="text-gray-600 text-sm">Invoice Number: {invoice_id}</p>
+            <p className="text-gray-600 text-sm">Invoice Date: {new Date(tanggal).toDateString()}</p>
+          </div>
+          <div className="text-right text-sm">
+            <h3 className="font-bold text-blue-700">CONNECT.IND</h3>
+            <p>Jl. Srikuncoro Raya Ruko B2, Kalibanteng Kulon</p>
+            <p>Semarang Barat, Kota Semarang</p>
+            <p>089-631-4000-31</p>
+          </div>
+        </div>
 
-      {/* Summary */}
-      <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
-        <table style={{ fontSize: '14px', color: '#000' }}>
+        {/* Customer Info */}
+        <div className="mb-6">
+          <h4 className="font-bold mb-1">Invoice To:</h4>
+          <p>{nama_pembeli}</p>
+          {alamat && <p>{alamat}</p>}
+          {no_wa && <p>{no_wa}</p>}
+        </div>
+
+        {/* Produk */}
+        <table className="w-full border text-sm mb-8">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border px-3 py-2 text-left">Item</th>
+              <th className="border px-3 py-2">Qty</th>
+              <th className="border px-3 py-2">Price</th>
+              <th className="border px-3 py-2">Total</th>
+            </tr>
+          </thead>
           <tbody>
             <tr>
-              <td style={{ padding: '4px 8px', color: '#868DA6' }}>Sub Total:</td>
-              <td style={{ padding: '4px 8px' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: '4px 8px', color: '#868DA6' }}>Discount:</td>
-              <td style={{ padding: '4px 8px' }}>-</td>
-            </tr>
-            <tr>
-              <td style={{ padding: '4px 8px', fontWeight: 'bold' }}>Total:</td>
-              <td style={{ padding: '4px 8px', fontWeight: 'bold' }}>Rp {parseInt(data.harga_jual).toLocaleString()}</td>
+              <td className="border px-3 py-2">
+                <b>{nama_produk}</b>
+                <br />
+                <span className="text-gray-700">{produkDetail}</span>
+              </td>
+              <td className="border px-3 py-2 text-center">1</td>
+              <td className="border px-3 py-2 text-right">{formatRupiah(harga_jual)}</td>
+              <td className="border px-3 py-2 text-right">{formatRupiah(harga_jual)}</td>
             </tr>
           </tbody>
         </table>
-      </div>
 
-      {/* Notes */}
-      <div style={{
-        backgroundColor: '#F3F5FC',
-        borderRadius: '12px',
-        padding: '1rem',
-        marginTop: '2rem',
-        color: '#868DA6',
-        fontWeight: 'bold'
-      }}>
-        Notes:
+        {/* Total */}
+        <div className="text-right pr-2">
+          <p className="mb-1">Sub Total: {formatRupiah(harga_jual)}</p>
+          <p className="mb-1">Discount: -</p>
+          <h3 className="text-xl font-bold">Total: {formatRupiah(harga_jual)}</h3>
+        </div>
+
+        {/* Notes */}
+        <div className="mt-10 text-sm text-gray-500">
+          <p><b>Notes:</b> -</p>
+        </div>
       </div>
     </div>
   )
