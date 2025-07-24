@@ -45,63 +45,53 @@ export default function InvoicePDF() {
   if (!data) return <div>Loading...</div>;
 
   return (
-    <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
-      <button onClick={handleDownload} style={{ marginBottom: 20 }}>Download PDF</button>
+    <div style={{ padding: "20px", fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
+      <button onClick={handleDownload} style={{ marginBottom: "20px" }}>Download PDF</button>
 
       <div
         ref={contentRef}
         style={{
           background: "#fff",
-          width: 595,
-          height: 842,
+          width: "595px",
+          height: "842px",
           margin: "auto",
-          padding: 32,
-          borderRadius: 28,
+          padding: "32px",
+          borderRadius: "28px",
           position: "relative",
-          overflow: "hidden"
+          overflow: "hidden",
+          boxSizing: "border-box"
         }}
       >
-        {/* Header Background */}
+        {/* HEADER IMAGE */}
         <img
           src="/head-bg.png"
-          alt="Header Background"
+          alt="Header"
           style={{
             position: "absolute",
-            top: 32,
-            left: 32,
-            width: 531,
-            height: 218,
-            borderRadius: 28,
-            objectFit: "cover"
+            top: "32px",
+            left: "32px",
+            width: "531px",
+            height: "218px",
+            borderRadius: "28px",
+            objectFit: "cover",
+            zIndex: 0
           }}
         />
 
-        {/* Header Content */}
-        <div style={{
-          position: "absolute",
-          top: 50,
-          left: 50,
-          width: 495,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          zIndex: 2
-        }}>
-          {/* Kiri: Judul + Detail */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/logo-connect-transparan.png" alt="Logo" width={24} />
-              <h1 style={{ fontSize: 20, margin: 0 }}>Invoice</h1>
-            </div>
-            <div style={{ fontSize: 10, marginTop: 10, lineHeight: 1.6 }}>
-              <strong>Invoice Details:</strong><br />
-              Invoice number: {data.invoice_id}<br />
-              Invoice date: {data.tanggal}
-            </div>
-          </div>
+        {/* LOGO & TITLE CENTER */}
+        <div style={{ position: "relative", zIndex: 1, textAlign: "center", marginTop: "60px" }}>
+          <img src="/logo-connect-transparan.png" alt="Logo" width="32" style={{ marginBottom: "8px" }} />
+          <h1 style={{ fontSize: "20px", margin: 0 }}>Invoice</h1>
+        </div>
 
-          {/* Tengah: Info Toko */}
-          <div style={{ fontSize: 10, textAlign: "left", lineHeight: 1.6 }}>
+        {/* DETAILS SECTION */}
+        <div style={{ position: "relative", zIndex: 1, marginTop: "24px", display: "flex", justifyContent: "space-between", fontSize: "10px" }}>
+          <div>
+            <strong>Invoice Details:</strong><br />
+            Invoice number: {data.invoice_id}<br />
+            Invoice date: {data.tanggal}
+          </div>
+          <div style={{ textAlign: "center" }}>
             <strong>CONNECT.IND</strong><br />
             (+62) 896-31-4000-31<br />
             Jl. Srikuncoro Raya Ruko B2,<br />
@@ -109,9 +99,7 @@ export default function InvoicePDF() {
             Kota Semarang, Jawa Tengah<br />
             50145
           </div>
-
-          {/* Kanan: Customer */}
-          <div style={{ fontSize: 10, textAlign: "right", lineHeight: 1.6 }}>
+          <div style={{ textAlign: "right" }}>
             <strong>Invoice To:</strong><br />
             {data.nama_pembeli}<br />
             {data.alamat}<br />
@@ -119,65 +107,47 @@ export default function InvoicePDF() {
           </div>
         </div>
 
-        {/* Tabel Produk */}
+        {/* PRODUCT TABLE */}
         <table style={{
-          position: "absolute",
-          top: 270,
-          left: 32,
-          width: 531,
-          fontSize: 11,
+          width: "100%",
+          fontSize: "11px",
           borderCollapse: "separate",
-          borderSpacing: 0,
-          borderRadius: 12,
-          overflow: "hidden"
+          borderSpacing: "0 10px",
+          marginTop: "40px"
         }}>
           <thead>
-            <tr style={{ backgroundColor: "#E5EDFB", textAlign: "center" }}>
-              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Item</th>
-              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Qty</th>
-              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Price</th>
-              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Total</th>
+            <tr>
+              <th style={{ textAlign: "left", padding: "10px" }}>Item</th>
+              <th style={{ textAlign: "center", padding: "10px" }}>Qty</th>
+              <th style={{ textAlign: "right", padding: "10px" }}>Price</th>
+              <th style={{ textAlign: "right", padding: "10px" }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr style={{ background: "#F8FAFD" }}>
-              <td style={{ padding: 12, border: "1px solid #D0D7E2" }}>
+            <tr style={{ background: "#fff", border: "1px solid #D0D7E2", borderRadius: "10px" }}>
+              <td style={{ padding: "10px", border: "1px solid #D0D7E2", borderRadius: "10px 0 0 10px" }}>
                 {data.nama_produk}<br />
                 SN: {data.sn_sku}<br />
-                Warna: {data.warna}
-                {data.storage && <><br />Storage: {data.storage}</>}
-                {data.garansi && <><br />Garansi: {data.garansi}</>}
+                Warna: {data.warna}<br />
+                {data.storage && <>Storage: {data.storage}<br /></>}
+                {data.garansi && <>Garansi: {data.garansi}</>}
               </td>
-              <td style={{ padding: 12, border: "1px solid #D0D7E2", textAlign: "center" }}>1</td>
-              <td style={{ padding: 12, border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
-              <td style={{ padding: 12, border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ padding: "10px", border: "1px solid #D0D7E2", textAlign: "center" }}>1</td>
+              <td style={{ padding: "10px", border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ padding: "10px", border: "1px solid #D0D7E2", textAlign: "right", borderRadius: "0 10px 10px 0" }}>{formatRupiah(data.harga_jual)}</td>
             </tr>
           </tbody>
         </table>
 
-        {/* Total */}
-        <div style={{
-          position: "absolute",
-          top: 520,
-          right: 50,
-          fontSize: 12,
-          fontWeight: "bold",
-          textAlign: "right"
-        }}>
-          Sub Total: {formatRupiah(data.harga_jual)}<br />
-          Discount: -<br />
-          Total: {formatRupiah(data.harga_jual)}
+        {/* TOTAL & NOTES */}
+        <div style={{ position: "absolute", bottom: "48px", left: "32px", fontSize: "10px", color: "#868DA6" }}>
+          Notes:
         </div>
 
-        {/* Notes */}
-        <div style={{
-          position: "absolute",
-          bottom: 60,
-          left: 50,
-          fontSize: 10,
-          color: "#868DA6"
-        }}>
-          Notes:
+        <div style={{ position: "absolute", bottom: "48px", right: "32px", fontSize: "12px", textAlign: "right" }}>
+          <div>Sub Total: {formatRupiah(data.harga_jual)}</div>
+          <div>Discount: -</div>
+          <div style={{ fontWeight: "bold" }}>Total: {formatRupiah(data.harga_jual)}</div>
         </div>
       </div>
     </div>
