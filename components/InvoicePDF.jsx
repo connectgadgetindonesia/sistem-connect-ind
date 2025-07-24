@@ -51,7 +51,7 @@ export default function InvoicePDF() {
         
         {/* HEADER BACKGROUND */}
         <div style={{
-          backgroundImage: "url('/head(1).png')",
+          backgroundImage: "url('/head-bg.png')",
           backgroundSize: "cover",
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center",
