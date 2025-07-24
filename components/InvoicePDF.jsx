@@ -62,27 +62,27 @@ export default function InvoicePDF() {
           color: "#000"
         }}
       >
-        {/* Logo + INVOICE Center */}
+        {/* Logo + INVOICE Centered */}
         <div style={{ textAlign: "center", marginBottom: "16px" }}>
           <img src="/logo-connect-transparan.png" alt="Logo" width="28" style={{ display: "inline-block", verticalAlign: "middle" }} />
           <h1 style={{ display: "inline-block", margin: "0 0 0 8px", fontSize: "18px" }}>INVOICE</h1>
         </div>
 
-        {/* Tiga Kolom Info */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "24px" }}>
+        {/* Info Tiga Kolom Rata Kiri Semua */}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "24px", textAlign: "left" }}>
           <div style={{ width: "33%" }}>
             <strong>Invoice Details</strong><br />
             Invoice number: {data.invoice_id}<br />
             Invoice date: {data.tanggal}
           </div>
-          <div style={{ width: "33%", textAlign: "center" }}>
+          <div style={{ width: "33%" }}>
             <strong>CONNECT.IND</strong><br />
             (+62) 896-31-4000-31<br />
             Jl. Srikuncoro Raya Ruko B2<br />
             Kalibanteng Kulon, Semarang Barat<br />
             Kota Semarang, Jawa Tengah 50145
           </div>
-          <div style={{ width: "33%", textAlign: "right" }}>
+          <div style={{ width: "33%" }}>
             <strong>Invoice To:</strong><br />
             {data.nama_pembeli}<br />
             {data.alamat}<br />
@@ -90,13 +90,13 @@ export default function InvoicePDF() {
           </div>
         </div>
 
-        {/* Box Produk */}
+        {/* Produk Box */}
         <div style={{
           border: "1px solid #000",
           borderRadius: "10px",
           padding: "12px",
           fontSize: "11px",
-          marginBottom: "180px"
+          marginBottom: "160px"
         }}>
           <div style={{ fontWeight: "600", marginBottom: 4 }}>{data.nama_produk}</div>
           <div>SN / SKU: {data.sn_sku}</div>
@@ -110,17 +110,35 @@ export default function InvoicePDF() {
           </div>
         </div>
 
-        {/* Notes dan Total */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px" }}>
-          <div style={{ color: "#888" }}>
+        {/* FOOTER Total & Notes with light grey background */}
+        <div style={{
+          background: "#f9f9f9",
+          borderTop: "1px solid #ddd",
+          padding: "16px",
+          fontSize: "10px",
+          display: "flex",
+          justifyContent: "space-between",
+          boxSizing: "border-box",
+          position: "absolute",
+          bottom: "32px",
+          left: "32px",
+          right: "32px"
+        }}>
+          <div style={{ maxWidth: "60%", color: "#555" }}>
             <strong>Notes:</strong><br />
             Terima kasih telah berbelanja di CONNECT.IND.<br />
             Invoice ini berlaku sebagai bukti pembelian resmi.
           </div>
-          <div style={{ textAlign: "right", lineHeight: "1.8" }}>
-            Sub Total: {formatRupiah(data.harga_jual)}<br />
-            Discount: -<br />
-            <strong>Total: {formatRupiah(data.harga_jual)}</strong>
+          <div style={{ textAlign: "left", width: "35%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Sub Total:</span><span>{formatRupiah(data.harga_jual)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Discount:</span><span>-</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+              <span>Total:</span><span>{formatRupiah(data.harga_jual)}</span>
+            </div>
           </div>
         </div>
       </div>
