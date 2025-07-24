@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import html2pdf from "html2pdf.js";
 import { useRouter } from "next/router";
 
@@ -8,6 +8,7 @@ export default function InvoicePDF() {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const contentRef = useRef(null);
 
   useEffect(() => {
     if (!id) return;
@@ -33,26 +34,21 @@ export default function InvoicePDF() {
   }, [id]);
 
   const handleDownload = () => {
-    const element = document.getElementById("invoice-content");
-
-    if (!element) {
-      console.error("Invoice content not found");
-      return;
-    }
+    if (!data || !contentRef.current) return;
 
     const opt = {
-      margin: 0.3,
-      filename: `invoice-${data.invoice_id}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+      margin:       0.5,
+      filename:     `${data.invoice_id}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(element).save();
+    html2pdf().set(opt).from(contentRef.current).save();
   };
 
-  if (loading) return <div style={{ color: "white" }}>Loading...</div>;
-  if (!data) return <div style={{ color: "red" }}>Invoice not found</div>;
+  if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
+  if (!data) return <div style={{ color: "red", padding: 32 }}>Invoice not found</div>;
 
   return (
     <div className="p-8 bg-white min-h-screen">
@@ -63,18 +59,10 @@ export default function InvoicePDF() {
         Download PDF
       </button>
 
-      <div
-        id="invoice-content"
-        className="bg-white p-6 border border-gray-300 text-black"
-        style={{ color: "#000" }}
-      >
+      <div id="invoice-content" ref={contentRef} className="bg-white p-6 border border-gray-300 text-black">
         <h2 className="text-blue-600 font-bold mb-2">INVOICE</h2>
-        <p>
-          <strong>Invoice Number:</strong> {data.invoice_id}
-        </p>
-        <p>
-          <strong>Invoice Date:</strong> {data.tanggal}
-        </p>
+        <p><strong>Invoice Number:</strong> {data.invoice_id}</p>
+        <p><strong>Invoice Date:</strong> {data.tanggal}</p>
 
         <div className="mt-6">
           <p className="font-semibold">Invoice To:</p>
@@ -95,23 +83,15 @@ export default function InvoicePDF() {
           <tbody>
             <tr className="border-t">
               <td className="px-2 py-1">
-                {data.nama_produk}
-                <br />
-                SN: {data.sn_sku}
-                <br />
-                Warna: {data.warna}
-                <br />
-                Storage: {data.storage}
-                <br />
-                Garansi: {data.garansi}
+                {data.nama_produk}<br />
+                SN: {data.sn_sku}<br />
+                Warna: {data.warna}<br />
+                Storage: {data.storage || "-"}<br />
+                Garansi: {data.garansi || "-"}
               </td>
               <td className="px-2 py-1">1</td>
-              <td className="px-2 py-1">
-                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
-              </td>
-              <td className="px-2 py-1">
-                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
-              </td>
+              <td className="px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td className="px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
             </tr>
           </tbody>
         </table>
