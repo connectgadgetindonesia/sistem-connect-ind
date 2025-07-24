@@ -34,7 +34,21 @@ export default function InvoicePDF() {
 
   const handleDownload = () => {
     const element = document.getElementById("invoice-content");
-    html2pdf().from(element).save(`invoice-${data.invoice_id}.pdf`);
+
+    if (!element) {
+      console.error("Invoice content not found");
+      return;
+    }
+
+    const opt = {
+      margin: 0.3,
+      filename: `invoice-${data.invoice_id}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+    };
+
+    html2pdf().set(opt).from(element).save();
   };
 
   if (loading) return <div style={{ color: "white" }}>Loading...</div>;
@@ -49,10 +63,18 @@ export default function InvoicePDF() {
         Download PDF
       </button>
 
-      <div id="invoice-content" className="bg-white p-6 border border-gray-300">
+      <div
+        id="invoice-content"
+        className="bg-white p-6 border border-gray-300 text-black"
+        style={{ color: "#000" }}
+      >
         <h2 className="text-blue-600 font-bold mb-2">INVOICE</h2>
-        <p><strong>Invoice Number:</strong> {data.invoice_id}</p>
-        <p><strong>Invoice Date:</strong> {data.tanggal}</p>
+        <p>
+          <strong>Invoice Number:</strong> {data.invoice_id}
+        </p>
+        <p>
+          <strong>Invoice Date:</strong> {data.tanggal}
+        </p>
 
         <div className="mt-6">
           <p className="font-semibold">Invoice To:</p>
@@ -73,15 +95,23 @@ export default function InvoicePDF() {
           <tbody>
             <tr className="border-t">
               <td className="px-2 py-1">
-                {data.nama_produk}<br />
-                SN: {data.sn_sku}<br />
-                Warna: {data.warna}<br />
-                Storage: {data.storage}<br />
+                {data.nama_produk}
+                <br />
+                SN: {data.sn_sku}
+                <br />
+                Warna: {data.warna}
+                <br />
+                Storage: {data.storage}
+                <br />
                 Garansi: {data.garansi}
               </td>
               <td className="px-2 py-1">1</td>
-              <td className="px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
-              <td className="px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td className="px-2 py-1">
+                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
+              </td>
+              <td className="px-2 py-1">
+                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
+              </td>
             </tr>
           </tbody>
         </table>
