@@ -1,24 +1,16 @@
-import { useRouter } from 'next/router'
-import dynamic from 'next/dynamic'
-import { useEffect, useState } from 'react'
+import dynamic from "next/dynamic";
+import { useRouter } from "next/router";
 
-const InvoicePDF = dynamic(() => import('@/components/InvoicePDF'), {
+const InvoicePDF = dynamic(() => import("@/components/InvoicePDF"), {
   ssr: false,
-  loading: () => <div style={{ padding: 32 }}>Loading invoice...</div>
-})
+  loading: () => <p style={{ padding: 32 }}>Loading invoice...</p>,
+});
 
 export default function InvoicePage() {
-  const router = useRouter()
-  const { id } = router.query
-  const [ready, setReady] = useState(false)
+  const router = useRouter();
+  const { id } = router.query;
 
-  useEffect(() => {
-    if (id) setReady(true)
-  }, [id])
+  if (!id) return <p style={{ padding: 32 }}>Loading invoice ID...</p>;
 
-  return (
-    <>
-      {ready ? <InvoicePDF id={id} /> : <div style={{ padding: 32 }}>Loading invoice...</div>}
-    </>
-  )
+  return <InvoicePDF id={id} />;
 }
