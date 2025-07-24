@@ -1,9 +1,8 @@
-
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { createClient } from "@supabase/supabase-js";
 import html2pdf from "html2pdf.js";
-import html2canvas from "html2canvas"; // ⬅️ Tambahan untuk JPG
+import html2canvas from "html2canvas";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -74,59 +73,28 @@ export default function InvoicePDF() {
           borderRadius: "20px",
         }}
       >
-        {/* Header */}
+        {/* Header Baru */}
         <div style={{
           position: "relative",
           width: "100%",
           height: "130px",
           borderRadius: "20px",
           overflow: "hidden",
-          marginBottom: "20px"
+          marginBottom: "10px"
         }}>
           <img
-            src="/head-bg.png"
+            src="/Head-new.png"
             alt="Header Background"
             style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
               width: "100%",
               height: "100%",
-              objectFit: "cover",
-              zIndex: 0
+              objectFit: "cover"
             }}
           />
-          <div
-            style={{
-              position: "relative",
-              zIndex: 1,
-              height: "100%",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 12,
-                width: "fit-content",
-              }}
-            >
-              <img
-                src="/logo-connect-transparan.png"
-                alt="Logo"
-                style={{ width: 28, height: 28, objectFit: "contain", display: "block" }}
-              />
-              <h2 style={{ margin: 0, fontSize: 16, color: "#000" }}>INVOICE</h2>
-            </div>
-          </div>
         </div>
 
         {/* Tiga kolom informasi */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20, marginTop: 10 }}>
           <div>
             <strong>Invoice Details</strong><br />
             Invoice number:<br />
@@ -134,7 +102,7 @@ export default function InvoicePDF() {
             Invoice date:<br />
             {data.tanggal}
           </div>
-          <div style={{ textAlign: "center" }}>
+          <div style={{ textAlign: "left" }}>
             <strong>CONNECT.IND</strong><br />
             (+62) 896-31-4000-31<br />
             Jl. Srikuncoro Raya Ruko B2<br />
