@@ -65,7 +65,28 @@ export default function InvoicePDF() {
   alignItems: "center",
   flexDirection: "row"
 }}>
-{/* LOGO DAN INFO */}
+  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+    <img src="/logo-connect-transparan.png" alt="Logo" width="40" />
+    <div style={{ fontSize: "10px", lineHeight: "1.4" }}>
+      <strong>CONNECT.IND</strong><br />
+      Jl. Srikuncoro Raya Ruko B1-B2<br />
+      Kalibanteng Kulon, Semarang 50145<br />
+      089-631-4000-31
+    </div>
+  </div>
+  <h2 style={{
+    position: "absolute",
+    top: "8px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    fontSize: "18px",
+    color: "#0040FF",
+    margin: 0
+  }}>
+    INVOICE
+  </h2>
+</div>
+        {/* LOGO DAN INFO */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="/logo-connect-transparan.png" alt="Logo CONNECT.IND" width="50" />
           <div style={{ textAlign: "right", fontSize: "12px" }}>
@@ -75,19 +96,6 @@ export default function InvoicePDF() {
             089-631-4000-31
           </div>
         </div>
-  </div>
-  <h2 style={{
-    position: "absolute",
-    top: "8px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    fontSize: "18px",
-    color: "#000000ff",
-    margin: 0
-  }}>
-    INVOICE
-  </h2>
-</div>
 
         {/* DETAIL INVOICE */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", margin: "20px 0" }}>
