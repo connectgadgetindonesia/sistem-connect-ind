@@ -79,10 +79,12 @@ export default function InvoicePDF() {
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20 }}>
           <div>
             <strong>Invoice Details</strong><br />
-            Invoice number: {data.invoice_id}<br />
-            Invoice date: {data.tanggal}
+            Invoice number: 
+            {data.invoice_id}<br />
+            Invoice date: 
+            {data.tanggal}
           </div>
-          <div style={{ textAlign: "center" }}>
+          <div style={{ textAlign: "left" }}>
             <strong>CONNECT.IND</strong><br />
             (+62) 896-31-4000-31<br />
             Jl. Srikuncoro Raya Ruko B2<br />
