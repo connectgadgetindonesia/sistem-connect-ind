@@ -49,18 +49,43 @@ export default function InvoicePDF() {
 
       <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
         
-     {/* HEADER IMAGE sebagai <img /> */}
-<div style={{ width: "100%", marginBottom: "20px", textAlign: "center" }}>
-  <img
-    src={`${window.location.origin}/head-bg.png`}
-    alt="Header"
-    style={{ width: "100%", borderRadius: "10px" }}
-  />
-  <h2 style={{ color: "#000000ff", fontSize: "20px", marginTop: "-60px" }}>INVOICE</h2>
-</div>
-
-
-
+     {/* HEADER dengan background + isi di dalamnya */}
+<div style={{
+  width: "100%",
+  height: "120px",
+  backgroundImage: `url(${window.location.origin}/head-bg.png)`,
+  backgroundSize: "cover",
+  backgroundPosition: "center",
+  borderRadius: "10px",
+  padding: "10px 30px",
+  color: "#000",
+  position: "relative",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexDirection: "row"
+}}>
+  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+    <img src="/logo-connect-transparan.png" alt="Logo" width="40" />
+    <div style={{ fontSize: "10px", lineHeight: "1.4" }}>
+      <strong>CONNECT.IND</strong><br />
+      Jl. Srikuncoro Raya Ruko B1-B2<br />
+      Kalibanteng Kulon, Semarang 50145<br />
+      089-631-4000-31
+    </div>
+  </div>
+  <h2 style={{
+    position: "absolute",
+    top: "8px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    fontSize: "18px",
+    color: "#0040FF",
+    margin: 0
+  }}>
+    INVOICE
+  </h2>
+</div>ß
         {/* LOGO DAN INFO */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="/logo-connect-transparan.png" alt="Logo CONNECT.IND" width="50" />
