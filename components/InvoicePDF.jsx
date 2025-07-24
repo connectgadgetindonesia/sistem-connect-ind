@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import html2pdf from "html2pdf.js";
 import { useRouter } from "next/router";
 
@@ -7,109 +7,120 @@ export default function InvoicePDF() {
   const { id } = router.query;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const invoiceRef = useRef();
 
   useEffect(() => {
     if (!id) return;
-
     const fetchData = async () => {
       try {
         const res = await fetch(`/api/invoice/${id}`);
         const result = await res.json();
         if (result?.data) setData(result.data);
-        else console.error("Invoice not found");
-      } catch (err) {
-        console.error("Fetch error:", err);
+      } catch (error) {
+        console.error("Failed to fetch invoice:", error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [id]);
 
   const handleDownload = () => {
-    if (!invoiceRef.current) return;
-
-    const opt = {
-      margin: 0.5,
-      filename: `${data.invoice_id}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-    };
-
-    html2pdf().set(opt).from(invoiceRef.current).save();
+    const element = document.getElementById("invoice-content");
+    html2pdf()
+      .from(element)
+      .set({
+        margin: 0,
+        filename: `INV-${data.invoice_id}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+      })
+      .save();
   };
 
-  if (loading) return <div style={{ padding: 32, color: "#fff" }}>Loading...</div>;
-  if (!data) return <div style={{ padding: 32, color: "red" }}>Invoice not found</div>;
+  if (loading) return <div style={{ color: "white", padding: 40 }}>Loading...</div>;
+  if (!data) return <div style={{ color: "red", padding: 40 }}>Invoice not found</div>;
 
   return (
-    <div style={{ padding: "2rem", backgroundColor: "#fff", minHeight: "100vh", color: "#000" }}>
+    <div className="p-8 bg-white min-h-screen font-sans">
       <button
         onClick={handleDownload}
-        style={{
-          backgroundColor: "#3B82F6",
-          color: "#fff",
-          padding: "0.5rem 1rem",
-          borderRadius: "0.25rem",
-          marginBottom: "1rem",
-          border: "none",
-        }}
+        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded mb-6"
       >
         Download PDF
       </button>
 
       <div
-        ref={invoiceRef}
-        style={{
-          backgroundColor: "white",
-          padding: "1.5rem",
-          border: "1px solid #ccc",
-          fontSize: "14px",
-          lineHeight: "1.5",
-          color: "#000",
-        }}
+        id="invoice-content"
+        className="max-w-3xl mx-auto bg-white p-8 shadow-lg border border-gray-300 rounded-lg"
+        style={{ fontSize: "14px", color: "#333" }}
       >
-        <h2 style={{ color: "#2563eb", fontWeight: "bold", marginBottom: "1rem" }}>INVOICE</h2>
-        <p><strong>Invoice Number:</strong> {data.invoice_id}</p>
-        <p><strong>Invoice Date:</strong> {data.tanggal}</p>
-
-        <div style={{ marginTop: "1rem" }}>
-          <p style={{ fontWeight: "bold" }}>Invoice To:</p>
-          <p>{data.nama_pembeli}</p>
-          <p>{data.alamat}</p>
-          <p>{data.no_wa}</p>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <img src="/logo-connect-transparan.png" alt="CONNECT.IND" style={{ height: 48 }} />
+          </div>
+          <div className="text-right text-sm text-gray-600">
+            <p><strong>CONNECT.IND</strong></p>
+            <p>Jl. Srikuncoro Raya Ruko B1-B2</p>
+            <p>Kalibanteng Kulon, Semarang 50145</p>
+            <p>089-631-4000-31</p>
+          </div>
         </div>
 
-        <table style={{ width: "100%", marginTop: "1rem", borderCollapse: "collapse", border: "1px solid #ccc" }}>
-          <thead>
-            <tr style={{ backgroundColor: "#f3f4f6", borderBottom: "1px solid #ccc" }}>
-              <th style={{ textAlign: "left", padding: "8px" }}>Item</th>
-              <th style={{ textAlign: "left", padding: "8px" }}>Qty</th>
-              <th style={{ textAlign: "left", padding: "8px" }}>Price</th>
-              <th style={{ textAlign: "left", padding: "8px" }}>Total</th>
+        {/* Invoice Title */}
+        <div className="bg-[#F1F4FB] text-blue-700 px-4 py-3 rounded-full text-xl font-bold mb-6 text-center">
+          INVOICE
+        </div>
+
+        {/* Invoice & Buyer Info */}
+        <div className="flex justify-between mb-6">
+          <div>
+            <p><span className="font-semibold text-gray-600">Invoice Number:</span> {data.invoice_id}</p>
+            <p><span className="font-semibold text-gray-600">Invoice Date:</span> {data.tanggal}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-semibold text-gray-600">Invoice To:</p>
+            <p>{data.nama_pembeli}</p>
+            <p>{data.alamat}</p>
+            <p>{data.no_wa}</p>
+          </div>
+        </div>
+
+        {/* Produk Table */}
+        <table className="w-full text-sm border border-gray-300">
+          <thead className="bg-gray-100 border-b">
+            <tr>
+              <th className="text-left px-2 py-1 border-r">Item</th>
+              <th className="text-left px-2 py-1 border-r">Qty</th>
+              <th className="text-left px-2 py-1 border-r">Price</th>
+              <th className="text-left px-2 py-1">Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr style={{ borderTop: "1px solid #ccc" }}>
-              <td style={{ padding: "8px" }}>
+            <tr className="border-t">
+              <td className="px-2 py-2 border-r">
                 {data.nama_produk}<br />
-                SN: {data.sn_sku}<br />
-                Warna: {data.warna}<br />
-                Storage: {data.storage || "-"}<br />
-                Garansi: {data.garansi || "-"}
+                <span className="text-xs text-gray-600">SN: {data.sn_sku}</span><br />
+                <span className="text-xs text-gray-600">Warna: {data.warna}</span><br />
+                <span className="text-xs text-gray-600">Storage: {data.storage}</span><br />
+                <span className="text-xs text-gray-600">Garansi: {data.garansi}</span>
               </td>
-              <td style={{ padding: "8px" }}>1</td>
-              <td style={{ padding: "8px" }}>Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
-              <td style={{ padding: "8px" }}>Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td className="px-2 py-2 border-r">1</td>
+              <td className="px-2 py-2 border-r">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td className="px-2 py-2">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
             </tr>
           </tbody>
         </table>
 
-        <div style={{ marginTop: "1rem", textAlign: "right", fontWeight: "bold" }}>
+        {/* Total */}
+        <div className="mt-6 text-right font-bold text-lg">
           Total: Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
+        </div>
+
+        {/* Note */}
+        <div className="mt-6 bg-[#f8f9fc] text-[#868DA6] text-xs px-4 py-3 rounded">
+          * Terima kasih telah berbelanja di CONNECT.IND. Invoice ini berlaku sebagai bukti pembelian resmi.
         </div>
       </div>
     </div>
