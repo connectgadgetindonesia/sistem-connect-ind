@@ -49,22 +49,16 @@ export default function InvoicePDF() {
 
       <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
         
-        {/* HEADER IMAGE */}
-<div style={{
-  width: "100%",
-  height: "80px",
-  borderRadius: "10px",
-  marginBottom: "20px",
-  backgroundImage: `url(${window.location.origin}/head-bg.png)`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "center",
-  backgroundSize: "cover",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center"
-}}>
-  <h2 style={{ color: "#000000ff", fontSize: "20px", margin: 0 }}>INVOICE</h2>
+     {/* HEADER IMAGE sebagai <img /> */}
+<div style={{ width: "100%", marginBottom: "20px", textAlign: "center" }}>
+  <img
+    src={`${window.location.origin}/head-bg.png`}
+    alt="Header"
+    style={{ width: "100%", borderRadius: "10px" }}
+  />
+  <h2 style={{ color: "#000000ff", fontSize: "20px", marginTop: "-60px" }}>INVOICE</h2>
 </div>
+
 
 
         {/* LOGO DAN INFO */}
