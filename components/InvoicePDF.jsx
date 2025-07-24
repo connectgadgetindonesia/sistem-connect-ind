@@ -49,23 +49,22 @@ export default function InvoicePDF() {
 
       <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
         
-        {/* HEADER BACKGROUND */}
+        {/* HEADER IMAGE */}
         <div style={{
-          backgroundImage: "url('/head-bg.png')",
-          backgroundSize: "cover",
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center",
-          height: "100px",
+          width: "100%",
+          height: "80px",
           borderRadius: "10px",
           marginBottom: "20px",
+          background: `url('/head-bg.png') no-repeat center`,
+          backgroundSize: "cover",
           display: "flex",
           alignItems: "center",
           justifyContent: "center"
         }}>
-          <h2 style={{ color: "#000000ff", fontSize: "20px", margin: 0 }}>INVOICE</h2>
+          <h2 style={{ color: "#0040FF", fontSize: "20px", margin: 0 }}>INVOICE</h2>
         </div>
 
-        {/* LOGO & INFO TOKO */}
+        {/* LOGO DAN INFO */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <img src="/logo-connect-transparan.png" alt="Logo CONNECT.IND" width="50" />
           <div style={{ textAlign: "right", fontSize: "12px" }}>
@@ -76,7 +75,7 @@ export default function InvoicePDF() {
           </div>
         </div>
 
-        {/* DATA INVOICE */}
+        {/* DETAIL INVOICE */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", margin: "20px 0" }}>
           <div>
             <div><strong>Invoice Number:</strong> {data.invoice_id}</div>
@@ -94,10 +93,10 @@ export default function InvoicePDF() {
         <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse", marginBottom: "20px" }}>
           <thead>
             <tr style={{ background: "#E5EDFB", color: "#000", textAlign: "center" }}>
-              <th style={{ padding: "10px", border: "1px solid #D0D7E2", borderRadius: "10px 0 0 0" }}>Item</th>
+              <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Item</th>
               <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Qty</th>
               <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Price</th>
-              <th style={{ padding: "10px", border: "1px solid #D0D7E2", borderRadius: "0 10px 0 0" }}>Total</th>
+              <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Total</th>
             </tr>
           </thead>
           <tbody>
