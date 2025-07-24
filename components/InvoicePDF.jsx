@@ -45,159 +45,139 @@ export default function InvoicePDF() {
   if (!data) return <div>Loading...</div>;
 
   return (
-    <div style={{ padding: "20px", fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
-      <button onClick={handleDownload} style={{ marginBottom: "20px" }}>Download PDF</button>
+    <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
+      <button onClick={handleDownload} style={{ marginBottom: 20 }}>Download PDF</button>
 
       <div
         ref={contentRef}
         style={{
           background: "#fff",
-          width: "595px",
-          height: "842px",
+          width: 595,
+          height: 842,
           margin: "auto",
-          padding: "32px",
-          borderRadius: "28px",
+          padding: 32,
+          borderRadius: 28,
           position: "relative",
-          overflow: "hidden",
+          overflow: "hidden"
         }}
       >
-        {/* HEADER BACKGROUND */}
+        {/* Header Background */}
         <img
           src="/head-bg.png"
-          alt="Header"
+          alt="Header Background"
           style={{
             position: "absolute",
-            top: "32px",
-            left: "32px",
-            width: "531px",
-            height: "218px",
-            borderRadius: "28px",
-            objectFit: "cover",
+            top: 32,
+            left: 32,
+            width: 531,
+            height: 218,
+            borderRadius: 28,
+            objectFit: "cover"
           }}
         />
 
-        {/* INVOICE TITLE & LOGO */}
+        {/* Header Content */}
         <div style={{
           position: "absolute",
-          top: "75px",
-          left: "60px",
+          top: 50,
+          left: 50,
+          width: 495,
           display: "flex",
-          alignItems: "center",
-          gap: "12px"
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          zIndex: 2
         }}>
-          <img src="/logo-connect-transparan.png" alt="Logo" width="28" />
-          <h1 style={{ margin: 0, fontSize: "20px", fontWeight: "600" }}>Invoice</h1>
+          {/* Kiri: Judul + Detail */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <img src="/logo-connect-transparan.png" alt="Logo" width={24} />
+              <h1 style={{ fontSize: 20, margin: 0 }}>Invoice</h1>
+            </div>
+            <div style={{ fontSize: 10, marginTop: 10, lineHeight: 1.6 }}>
+              <strong>Invoice Details:</strong><br />
+              Invoice number: {data.invoice_id}<br />
+              Invoice date: {data.tanggal}
+            </div>
+          </div>
+
+          {/* Tengah: Info Toko */}
+          <div style={{ fontSize: 10, textAlign: "left", lineHeight: 1.6 }}>
+            <strong>CONNECT.IND</strong><br />
+            (+62) 896-31-4000-31<br />
+            Jl. Srikuncoro Raya Ruko B2,<br />
+            Kalibanteng Kulon, Semarang Barat,<br />
+            Kota Semarang, Jawa Tengah<br />
+            50145
+          </div>
+
+          {/* Kanan: Customer */}
+          <div style={{ fontSize: 10, textAlign: "right", lineHeight: 1.6 }}>
+            <strong>Invoice To:</strong><br />
+            {data.nama_pembeli}<br />
+            {data.alamat}<br />
+            {data.no_wa}
+          </div>
         </div>
 
-        {/* INFO TOKO */}
-        <div style={{
-          position: "absolute",
-          top: "60px",
-          right: "50px",
-          fontSize: "10px",
-          textAlign: "right",
-          lineHeight: "1.6"
-        }}>
-          <strong>CONNECT.IND</strong><br />
-          (+62) 896-31-4000-31<br />
-          Jl. Srikuncoro Raya Ruko B2,<br />
-          Kalibanteng Kulon, Semarang Barat,<br />
-          Kota Semarang, Jawa Tengah<br />
-          50145
-        </div>
-
-        {/* INFO CUSTOMER */}
-        <div style={{
-          position: "absolute",
-          top: "140px",
-          right: "50px",
-          fontSize: "10px",
-          textAlign: "right",
-        }}>
-          <strong>Invoice To:</strong><br />
-          {data.nama_pembeli}<br />
-          {data.alamat}<br />
-          {data.no_wa}
-        </div>
-
-        {/* DETAIL INVOICE */}
-        <div style={{
-          position: "absolute",
-          top: "140px",
-          left: "60px",
-          fontSize: "10px"
-        }}>
-          <strong>Invoice Details:</strong><br />
-          Invoice number: {data.invoice_id}<br />
-          Invoice date: {data.tanggal}
-        </div>
-
-        {/* TABEL PRODUK */}
+        {/* Tabel Produk */}
         <table style={{
           position: "absolute",
-          top: "265px",
-          left: "32px",
-          width: "531px",
-          fontSize: "11px",
-          borderCollapse: "collapse"
+          top: 270,
+          left: 32,
+          width: 531,
+          fontSize: 11,
+          borderCollapse: "separate",
+          borderSpacing: 0,
+          borderRadius: 12,
+          overflow: "hidden"
         }}>
           <thead>
             <tr style={{ backgroundColor: "#E5EDFB", textAlign: "center" }}>
-              <th style={{ padding: "10px" }}>Item</th>
-              <th>Qty</th>
-              <th>Price</th>
-              <th>Total</th>
+              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Item</th>
+              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Qty</th>
+              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Price</th>
+              <th style={{ padding: 12, border: "1px solid #D0D7E2" }}>Total</th>
             </tr>
           </thead>
           <tbody>
             <tr style={{ background: "#F8FAFD" }}>
-              <td style={{ padding: "8px" }}>
+              <td style={{ padding: 12, border: "1px solid #D0D7E2" }}>
                 {data.nama_produk}<br />
                 SN: {data.sn_sku}<br />
-                Warna: {data.warna}<br />
-                {data.storage && <>Storage: {data.storage}<br /></>}
-                {data.garansi && <>Garansi: {data.garansi}</>}
+                Warna: {data.warna}
+                {data.storage && <><br />Storage: {data.storage}</>}
+                {data.garansi && <><br />Garansi: {data.garansi}</>}
               </td>
-              <td style={{ textAlign: "center" }}>1</td>
-              <td style={{ textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
-              <td style={{ textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ padding: 12, border: "1px solid #D0D7E2", textAlign: "center" }}>1</td>
+              <td style={{ padding: 12, border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
+              <td style={{ padding: 12, border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
             </tr>
           </tbody>
         </table>
 
-        {/* TOTAL */}
+        {/* Total */}
         <div style={{
           position: "absolute",
-          top: "540px",
-          right: "40px",
-          fontSize: "12px",
-          fontWeight: "bold"
+          top: 520,
+          right: 50,
+          fontSize: 12,
+          fontWeight: "bold",
+          textAlign: "right"
         }}>
+          Sub Total: {formatRupiah(data.harga_jual)}<br />
+          Discount: -<br />
           Total: {formatRupiah(data.harga_jual)}
         </div>
 
-        {/* FOOTER NOTES */}
+        {/* Notes */}
         <div style={{
           position: "absolute",
-          bottom: "88px",
-          left: "50px",
-          fontSize: "10px",
+          bottom: 60,
+          left: 50,
+          fontSize: 10,
           color: "#868DA6"
         }}>
           Notes:
-        </div>
-
-        {/* WATERMARK LUNAS */}
-        <div style={{
-          position: "absolute",
-          top: "400px",
-          left: "80px",
-          fontSize: "100px",
-          color: "#00000005",
-          fontWeight: "600",
-          transform: "rotate(-32.16deg)"
-        }}>
-          LUNAS
         </div>
       </div>
     </div>
