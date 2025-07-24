@@ -85,10 +85,10 @@ export default function InvoicePDF() {
           <img
             src="/head-new.png"
             alt="Header Background"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover"
+           style={{
+      display: "block",
+      margin: "0 auto",
+      maxWidth: "100%"
             }}
           />
         </div>
