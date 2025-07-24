@@ -5,7 +5,6 @@ import { useRouter } from "next/router";
 export default function InvoicePDF() {
   const router = useRouter();
   const { id } = router.query;
-
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const invoiceRef = useRef();
@@ -43,16 +42,16 @@ export default function InvoicePDF() {
     html2pdf().set(opt).from(invoiceRef.current).save();
   };
 
-  if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
-  if (!data) return <div style={{ color: "red", padding: 32 }}>Invoice not found</div>;
+  if (loading) return <div style={{ padding: 32, color: "#fff" }}>Loading...</div>;
+  if (!data) return <div style={{ padding: 32, color: "red" }}>Invoice not found</div>;
 
   return (
-    <div style={{ padding: "2rem", background: "white", minHeight: "100vh", color: "black" }}>
+    <div style={{ padding: "2rem", backgroundColor: "#fff", minHeight: "100vh", color: "#000" }}>
       <button
         onClick={handleDownload}
         style={{
           backgroundColor: "#3B82F6",
-          color: "white",
+          color: "#fff",
           padding: "0.5rem 1rem",
           borderRadius: "0.25rem",
           marginBottom: "1rem",
