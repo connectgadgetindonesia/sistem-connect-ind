@@ -45,8 +45,8 @@ export default function InvoicePDF() {
   if (!data) return <div>Loading...</div>;
 
   return (
-    <div style={{ padding: "20px", fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
-      <button onClick={handleDownload} style={{ marginBottom: "20px" }}>Download PDF</button>
+    <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
+      <button onClick={handleDownload} style={{ marginBottom: 20 }}>Download PDF</button>
 
       <div
         ref={contentRef}
@@ -56,95 +56,80 @@ export default function InvoicePDF() {
           height: "842px",
           margin: "auto",
           padding: "32px",
-          borderRadius: "28px",
+          borderRadius: "20px",
           position: "relative",
-          overflow: "hidden",
+          boxSizing: "border-box"
         }}
       >
-        {/* HEADER BACKGROUND */}
-        <img
-          src="/head-bg.png"
-          alt="Header"
-          style={{
-            position: "absolute",
-            top: "32px",
-            left: "32px",
-            width: "531px",
-            height: "218px",
-            borderRadius: "28px",
-            objectFit: "cover",
-          }}
-        />
+        {/* Logo + INVOICE */}
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <img src="/logo-connect-transparan.png" alt="Logo" width="28" />
+          <h1 style={{ margin: "8px 0 0", fontSize: "18px" }}>INVOICE</h1>
+        </div>
 
-        {/* CENTERED HEADER CONTENT */}
-        <div style={{ position: "relative", zIndex: 2, width: "100%", paddingTop: "50px", textAlign: "center" }}>
-          <img src="/logo-connect-transparan.png" alt="Logo" width="28" style={{ verticalAlign: "middle" }} />
-          <h1 style={{ display: "inline-block", marginLeft: "10px", fontSize: "20px", fontWeight: "600" }}>Invoice</h1>
+        {/* 3-Column Info */}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "24px" }}>
+          {/* Invoice Detail */}
+          <div style={{ width: "33%" }}>
+            <strong>Invoice Details</strong><br />
+            Invoice number: {data.invoice_id}<br />
+            Invoice date: {data.tanggal}
+          </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "20px", padding: "0 32px", fontSize: "10px" }}>
-            <div style={{ textAlign: "left" }}>
-              <strong>Invoice Details:</strong><br />
-              Invoice number: {data.invoice_id}<br />
-              Invoice date: {data.tanggal}
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <strong>CONNECT.IND</strong><br />
-              (+62) 896-31-4000-31<br />
-              Jl. Srikuncoro Raya Ruko B2,<br />
-              Kalibanteng Kulon, Semarang Barat,<br />
-              Kota Semarang, Jawa Tengah<br />
-              50145
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <strong>Invoice To:</strong><br />
-              {data.nama_pembeli}<br />
-              {data.alamat}<br />
-              {data.no_wa}
-            </div>
+          {/* Toko */}
+          <div style={{ width: "33%", textAlign: "center" }}>
+            <strong>CONNECT.IND</strong><br />
+            (+62) 896-31-4000-31<br />
+            Jl. Srikuncoro Raya Ruko B2<br />
+            Kalibanteng Kulon, Semarang Barat<br />
+            Kota Semarang, Jawa Tengah 50145
+          </div>
+
+          {/* Customer */}
+          <div style={{ width: "33%", textAlign: "right" }}>
+            <strong>Invoice To:</strong><br />
+            {data.nama_pembeli}<br />
+            {data.alamat}<br />
+            {data.no_wa}
           </div>
         </div>
 
-        {/* TABEL PRODUK */}
-        <table style={{
-          marginTop: "240px",
-          marginLeft: "auto",
-          marginRight: "auto",
-          width: "531px",
-          fontSize: "11px",
-          borderCollapse: "separate",
-          borderSpacing: 0,
-          border: "1px solid #D0D7E2",
+        {/* Produk Box */}
+        <div style={{
+          width: "100%",
+          border: "1px solid #000",
           borderRadius: "10px",
-          overflow: "hidden"
+          padding: "12px",
+          fontSize: "11px",
+          marginBottom: "16px",
+          boxSizing: "border-box"
         }}>
-          <thead>
-            <tr style={{ textAlign: "center" }}>
-              <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Item</th>
-              <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Qty</th>
-              <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Price</th>
-              <th style={{ padding: "10px", border: "1px solid #D0D7E2" }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={{ padding: "10px", border: "1px solid #D0D7E2" }}>
-                {data.nama_produk}<br />
-                SN: {data.sn_sku}<br />
-                Warna: {data.warna}<br />
-                {data.storage && <>Storage: {data.storage}<br /></>}
-                {data.garansi && <>Garansi: {data.garansi}</>}
-              </td>
-              <td style={{ border: "1px solid #D0D7E2", textAlign: "center" }}>1</td>
-              <td style={{ border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
-              <td style={{ border: "1px solid #D0D7E2", textAlign: "right" }}>{formatRupiah(data.harga_jual)}</td>
-            </tr>
-          </tbody>
-        </table>
+          <div style={{ fontWeight: "600", marginBottom: 4 }}>{data.nama_produk}</div>
+          <div>SN / SKU: {data.sn_sku}</div>
+          <div>Warna: {data.warna}</div>
+          {data.storage && <div>Storage: {data.storage}</div>}
+          {data.garansi && <div>Garansi: {data.garansi}</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+            <div>Qty: 1</div>
+            <div>Price: {formatRupiah(data.harga_jual)}</div>
+            <div>Total: {formatRupiah(data.harga_jual)}</div>
+          </div>
+        </div>
 
-        {/* TOTAL & NOTES */}
-        <div style={{ position: "absolute", bottom: "88px", width: "531px", left: "32px", display: "flex", justifyContent: "space-between", fontSize: "10px" }}>
-          <div style={{ color: "#868DA6" }}>Notes:</div>
-          <div style={{ textAlign: "right" }}>
+        {/* Total Summary */}
+        <div style={{
+          width: "100%",
+          fontSize: "11px",
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: "220px"
+        }}>
+          <div style={{ color: "#888" }}>
+            <strong>Notes:</strong><br />
+            Terima kasih telah berbelanja di CONNECT.IND.<br />
+            Invoice ini berlaku sebagai bukti pembelian resmi.
+          </div>
+          <div style={{ textAlign: "right", lineHeight: "1.8" }}>
             Sub Total: {formatRupiah(data.harga_jual)}<br />
             Discount: -<br />
             <strong>Total: {formatRupiah(data.harga_jual)}</strong>
