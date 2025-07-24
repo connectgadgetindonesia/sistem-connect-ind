@@ -8,7 +8,7 @@ export default function InvoicePDF() {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const contentRef = useRef(null);
+  const invoiceRef = useRef();
 
   useEffect(() => {
     if (!id) return;
@@ -17,14 +17,10 @@ export default function InvoicePDF() {
       try {
         const res = await fetch(`/api/invoice/${id}`);
         const result = await res.json();
-
-        if (result?.data) {
-          setData(result.data);
-        } else {
-          console.error("Invoice not found");
-        }
-      } catch (error) {
-        console.error("Failed to fetch invoice:", error);
+        if (result?.data) setData(result.data);
+        else console.error("Invoice not found");
+      } catch (err) {
+        console.error("Fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -34,69 +30,86 @@ export default function InvoicePDF() {
   }, [id]);
 
   const handleDownload = () => {
-    if (!data || !contentRef.current) return;
+    if (!invoiceRef.current) return;
 
     const opt = {
-      margin:       0.5,
-      filename:     `${data.invoice_id}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2 },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      margin: 0.5,
+      filename: `${data.invoice_id}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
     };
 
-    html2pdf().set(opt).from(contentRef.current).save();
+    html2pdf().set(opt).from(invoiceRef.current).save();
   };
 
   if (loading) return <div style={{ color: "white", padding: 32 }}>Loading...</div>;
   if (!data) return <div style={{ color: "red", padding: 32 }}>Invoice not found</div>;
 
   return (
-    <div className="p-8 bg-white min-h-screen">
+    <div style={{ padding: "2rem", background: "white", minHeight: "100vh", color: "black" }}>
       <button
         onClick={handleDownload}
-        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded mb-6"
+        style={{
+          backgroundColor: "#3B82F6",
+          color: "white",
+          padding: "0.5rem 1rem",
+          borderRadius: "0.25rem",
+          marginBottom: "1rem",
+          border: "none",
+        }}
       >
         Download PDF
       </button>
 
-      <div id="invoice-content" ref={contentRef} className="bg-white p-6 border border-gray-300 text-black">
-        <h2 className="text-blue-600 font-bold mb-2">INVOICE</h2>
+      <div
+        ref={invoiceRef}
+        style={{
+          backgroundColor: "white",
+          padding: "1.5rem",
+          border: "1px solid #ccc",
+          fontSize: "14px",
+          lineHeight: "1.5",
+          color: "#000",
+        }}
+      >
+        <h2 style={{ color: "#2563eb", fontWeight: "bold", marginBottom: "1rem" }}>INVOICE</h2>
         <p><strong>Invoice Number:</strong> {data.invoice_id}</p>
         <p><strong>Invoice Date:</strong> {data.tanggal}</p>
 
-        <div className="mt-6">
-          <p className="font-semibold">Invoice To:</p>
+        <div style={{ marginTop: "1rem" }}>
+          <p style={{ fontWeight: "bold" }}>Invoice To:</p>
           <p>{data.nama_pembeli}</p>
           <p>{data.alamat}</p>
           <p>{data.no_wa}</p>
         </div>
 
-        <table className="w-full mt-6 border border-gray-300 text-sm">
+        <table style={{ width: "100%", marginTop: "1rem", borderCollapse: "collapse", border: "1px solid #ccc" }}>
           <thead>
-            <tr className="bg-gray-100 border-b">
-              <th className="text-left px-2 py-1">Item</th>
-              <th className="text-left px-2 py-1">Qty</th>
-              <th className="text-left px-2 py-1">Price</th>
-              <th className="text-left px-2 py-1">Total</th>
+            <tr style={{ backgroundColor: "#f3f4f6", borderBottom: "1px solid #ccc" }}>
+              <th style={{ textAlign: "left", padding: "8px" }}>Item</th>
+              <th style={{ textAlign: "left", padding: "8px" }}>Qty</th>
+              <th style={{ textAlign: "left", padding: "8px" }}>Price</th>
+              <th style={{ textAlign: "left", padding: "8px" }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-t">
-              <td className="px-2 py-1">
+            <tr style={{ borderTop: "1px solid #ccc" }}>
+              <td style={{ padding: "8px" }}>
                 {data.nama_produk}<br />
                 SN: {data.sn_sku}<br />
                 Warna: {data.warna}<br />
                 Storage: {data.storage || "-"}<br />
                 Garansi: {data.garansi || "-"}
               </td>
-              <td className="px-2 py-1">1</td>
-              <td className="px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
-              <td className="px-2 py-1">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td style={{ padding: "8px" }}>1</td>
+              <td style={{ padding: "8px" }}>Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td style={{ padding: "8px" }}>Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
             </tr>
           </tbody>
         </table>
 
-        <div className="mt-4 text-right font-bold">
+        <div style={{ marginTop: "1rem", textAlign: "right", fontWeight: "bold" }}>
           Total: Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
         </div>
       </div>
