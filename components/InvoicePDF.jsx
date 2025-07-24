@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react"; // ← PENTING: tambahkan useState
 import html2pdf from "html2pdf.js";
 
 export default function InvoicePDF({ id }) {
