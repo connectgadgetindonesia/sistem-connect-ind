@@ -12,7 +12,8 @@ export default function StokAksesoris() {
   const [search, setSearch] = useState('')
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [selectedData, setSelectedData] = useState(null)
-  const [newStok, setNewStok] = useState(0)
+  const [tambahStok, setTambahStok] = useState(0)
+  const [kurangiStok, setKurangiStok] = useState(0)
 
   useEffect(() => {
     fetchData()
@@ -52,18 +53,26 @@ export default function StokAksesoris() {
 
   const handleOpenUpdateModal = (item) => {
     setSelectedData(item)
-    setNewStok(0)
+    setTambahStok(0)
+    setKurangiStok(0)
     setShowUpdateModal(true)
   }
 
   const handleUpdateStok = async () => {
-    if (!selectedData || isNaN(newStok)) return
+    if (!selectedData) return
 
-    const stokBaru = selectedData.stok + newStok
+    const hasilTambah = parseInt(tambahStok) || 0
+    const hasilKurang = parseInt(kurangiStok) || 0
+    const stokAkhir = selectedData.stok + hasilTambah - hasilKurang
+
+    if (stokAkhir < 0) {
+      alert('Stok tidak boleh negatif!')
+      return
+    }
 
     const { error } = await supabase
       .from('stok_aksesoris')
-      .update({ stok: stokBaru })
+      .update({ stok: stokAkhir })
       .eq('id', selectedData.id)
 
     if (error) {
@@ -116,13 +125,23 @@ export default function StokAksesoris() {
             <div className="bg-white p-6 rounded shadow-lg w-96">
               <h2 className="text-lg font-bold mb-2">Update Stok</h2>
               <p className="mb-2">SKU: <strong>{selectedData?.sku}</strong></p>
+
+              <label className="block mb-1">Tambah Stok</label>
               <input
                 type="number"
-                value={newStok}
-                onChange={(e) => setNewStok(Number(e.target.value))}
-                placeholder="Jumlah stok baru masuk"
+                value={tambahStok}
+                onChange={(e) => setTambahStok(e.target.value)}
+                className="border px-2 py-1 w-full mb-3"
+              />
+
+              <label className="block mb-1">Kurangi Stok</label>
+              <input
+                type="number"
+                value={kurangiStok}
+                onChange={(e) => setKurangiStok(e.target.value)}
                 className="border px-2 py-1 w-full mb-4"
               />
+
               <div className="flex justify-between">
                 <button onClick={handleUpdateStok} className="bg-blue-600 text-white px-4 py-2 rounded">Simpan</button>
                 <button onClick={() => setShowUpdateModal(false)} className="text-gray-600">Batal</button>
