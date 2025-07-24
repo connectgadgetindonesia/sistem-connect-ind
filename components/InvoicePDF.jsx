@@ -49,53 +49,59 @@ export default function InvoicePDF() {
 
       <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
         
-     {/* HEADER dengan background + isi di dalamnya */}
+   {/* HEADER DENGAN BACKGROUND + LOGO DI KIRI + INFO TOKO DI KANAN */}
 <div style={{
-  width: "100%",
-  height: "120px",
-  backgroundImage: `url(${window.location.origin}/head-bg.png)`,
-  backgroundSize: "cover",
-  backgroundPosition: "center",
-  borderRadius: "10px",
-  padding: "10px 30px",
-  color: "#000",
   position: "relative",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  flexDirection: "row"
+  width: "100%",
+  height: "130px",
+  marginBottom: "20px",
+  borderRadius: "10px",
+  overflow: "hidden",
 }}>
-  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-    <img src="/logo-connect-transparan.png" alt="Logo" width="40" />
-    <div style={{ fontSize: "10px", lineHeight: "1.4" }}>
+  {/* Background image */}
+  <img
+    src="/head-bg.png"
+    alt="Header Background"
+    style={{
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      position: "absolute",
+      top: 0,
+      left: 0,
+    }}
+  />
+
+  {/* Konten header */}
+  <div style={{
+    position: "relative",
+    zIndex: 2,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    height: "100%",
+    padding: "20px",
+    color: "#000",
+    fontSize: "12px",
+  }}>
+    {/* Logo di kiri */}
+    <img src="/logo-connect-transparan.png" alt="Logo" width="50" />
+
+    {/* Teks INVOICE di tengah */}
+    <div style={{ textAlign: "center", flex: 1 }}>
+      <h2 style={{ color: "#0040FF", margin: 0 }}>INVOICE</h2>
+    </div>
+
+    {/* Info toko di kanan */}
+    <div style={{ textAlign: "right", lineHeight: "1.5" }}>
       <strong>CONNECT.IND</strong><br />
       Jl. Srikuncoro Raya Ruko B1-B2<br />
       Kalibanteng Kulon, Semarang 50145<br />
       089-631-4000-31
     </div>
   </div>
-  <h2 style={{
-    position: "absolute",
-    top: "8px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    fontSize: "18px",
-    color: "#0040FF",
-    margin: 0
-  }}>
-    INVOICE
-  </h2>
 </div>
-        {/* LOGO DAN INFO */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <img src="/logo-connect-transparan.png" alt="Logo CONNECT.IND" width="50" />
-          <div style={{ textAlign: "right", fontSize: "12px" }}>
-            <strong>CONNECT.IND</strong><br />
-            Jl. Srikuncoro Raya Ruko B1-B2<br />
-            Kalibanteng Kulon, Semarang 50145<br />
-            089-631-4000-31
-          </div>
-        </div>
+
 
         {/* DETAIL INVOICE */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", margin: "20px 0" }}>
