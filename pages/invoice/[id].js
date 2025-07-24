@@ -1,8 +1,8 @@
+// pages/invoice/[id].js
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-// ✅ Hindari build error
 export const dynamic = 'force-dynamic'
 export async function getServerSideProps() {
   return { props: {} }
@@ -12,10 +12,12 @@ export default function InvoicePage() {
   const router = useRouter()
   const pdfRef = useRef()
   const [data, setData] = useState(null)
+  const [html2pdfLib, setHtml2pdfLib] = useState(null)
 
   useEffect(() => {
     if (router.isReady) {
       fetchData()
+      import('html2pdf.js').then((mod) => setHtml2pdfLib(mod.default))
     }
   }, [router.isReady])
 
@@ -36,6 +38,7 @@ export default function InvoicePage() {
     typeof num === 'number' ? 'Rp' + num.toLocaleString('id-ID') : '-'
 
   const generatePDF = () => {
+    if (!html2pdfLib) return alert('PDF engine not loaded')
     const opt = {
       margin: 0,
       filename: `${data.invoice_id}.pdf`,
@@ -44,12 +47,7 @@ export default function InvoicePage() {
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
     }
-
-    if (window.html2pdf) {
-      window.html2pdf().set(opt).from(pdfRef.current).save()
-    } else {
-      alert('Gagal memuat library PDF. Silakan refresh halaman.')
-    }
+    html2pdfLib().set(opt).from(pdfRef.current).save()
   }
 
   if (!router.isReady || !data) return <div>Loading...</div>
@@ -83,7 +81,10 @@ export default function InvoicePage() {
   return (
     <div className="p-4">
       <div className="mb-4">
-        <button onClick={generatePDF} className="bg-blue-600 text-white px-4 py-2 rounded">
+        <button
+          onClick={generatePDF}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
           Download PDF
         </button>
       </div>
@@ -135,8 +136,12 @@ export default function InvoicePage() {
                 <span className="text-gray-700">{produkDetail}</span>
               </td>
               <td className="border px-3 py-2 text-center">1</td>
-              <td className="border px-3 py-2 text-right">{formatRupiah(harga_jual)}</td>
-              <td className="border px-3 py-2 text-right">{formatRupiah(harga_jual)}</td>
+              <td className="border px-3 py-2 text-right">
+                {formatRupiah(harga_jual)}
+              </td>
+              <td className="border px-3 py-2 text-right">
+                {formatRupiah(harga_jual)}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -145,7 +150,9 @@ export default function InvoicePage() {
         <div className="text-right pr-2">
           <p className="mb-1">Sub Total: {formatRupiah(harga_jual)}</p>
           <p className="mb-1">Discount: -</p>
-          <h3 className="text-xl font-bold">Total: {formatRupiah(harga_jual)}</h3>
+          <h3 className="text-xl font-bold">
+            Total: {formatRupiah(harga_jual)}
+          </h3>
         </div>
 
         {/* Notes */}
