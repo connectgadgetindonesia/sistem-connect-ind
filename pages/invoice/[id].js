@@ -5,16 +5,25 @@ import html2pdf from 'html2pdf.js'
 
 export default function InvoicePage() {
   const router = useRouter()
-  const { id } = router.query
-  const [data, setData] = useState(null)
   const pdfRef = useRef()
+  const [data, setData] = useState(null)
 
   useEffect(() => {
-    if (id) fetchData()
-  }, [id])
+    if (router.isReady) {
+      fetchData()
+    }
+  }, [router.isReady])
 
   async function fetchData() {
-    const { data } = await supabase.from('penjualan_baru').select('*').eq('id', id).single()
+    const id = router.query.id
+    if (!id) return
+
+    const { data } = await supabase
+      .from('penjualan_baru')
+      .select('*')
+      .eq('id', id)
+      .single()
+
     setData(data)
   }
 
@@ -28,12 +37,12 @@ export default function InvoicePage() {
       image: { type: 'jpeg', quality: 1 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
     }
     html2pdf().set(opt).from(pdfRef.current).save()
   }
 
-  if (!data) return <div>Loading...</div>
+  if (!router.isReady || !data) return <div>Loading...</div>
 
   const {
     invoice_id,
@@ -57,17 +66,22 @@ export default function InvoicePage() {
     { label: 'Storage', value: storage },
     { label: 'Garansi', value: garansi },
   ]
-    .filter(item => item.value && item.value !== '-')
-    .map(item => `${item.label}: ${item.value}`)
+    .filter((item) => item.value && item.value !== '-')
+    .map((item) => `${item.label}: ${item.value}`)
     .join(' | ')
 
   return (
     <div className="p-4">
       <div className="mb-4">
-        <button onClick={generatePDF} className="bg-blue-600 text-white px-4 py-2 rounded">Download PDF</button>
+        <button onClick={generatePDF} className="bg-blue-600 text-white px-4 py-2 rounded">
+          Download PDF
+        </button>
       </div>
 
-      <div ref={pdfRef} className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto text-sm leading-relaxed">
+      <div
+        ref={pdfRef}
+        className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto text-sm leading-relaxed"
+      >
         {/* Header */}
         <div className="flex justify-between items-start mb-8">
           <div>
