@@ -68,9 +68,11 @@ export default function InvoicePDF() {
   overflow: "hidden",
   marginBottom: "20px"
 }}>
+  {/* HEADER IMAGE */}
+<div style={{ position: "relative", height: "130px", marginBottom: 20 }}>
   <img
     src="/head-bg.png"
-    alt="Header Background"
+    alt="Header"
     style={{
       position: "absolute",
       top: 0,
@@ -78,14 +80,26 @@ export default function InvoicePDF() {
       width: "100%",
       height: "100%",
       objectFit: "cover",
-      zIndex: 0
+      zIndex: 0,
+      borderRadius: "20px",
     }}
   />
 
-  <div style={{ position: "relative", zIndex: 1, textAlign: "center", paddingTop: 16 }}>
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}></div>
-    <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 32, marginBottom: 8 }} />
-    <h2 style={{ margin: 0, fontSize: 16, color: "#000" }}>INVOICE</h2>
+  {/* LOGO + INVOICE DALAM SATU BARIS */}
+  <div
+    style={{
+      position: "relative",
+      zIndex: 1,
+      height: "100%",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <img src="/logo-connect-transparan.png" alt="Logo" style={{ width: 28 }} />
+      <h2 style={{ margin: 0, fontSize: 16, color: "#000" }}>INVOICE</h2>
+    </div>
   </div>
 </div>
 
@@ -118,10 +132,10 @@ export default function InvoicePDF() {
         <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", marginBottom: 24 }}>
           <thead style={{ background: "#f3f6fd" }}>
             <tr>
-              <th style={{ textAlign: "center", padding: 8 }}>Item</th>
-              <th style={{ textAlign: "center" }}>Qty</th>
-              <th style={{ textAlign: "center" }}>Price</th>
-              <th style={{ textAlign: "cemter" }}>Total</th>
+              <th style={{ textAlign: "left", padding: 8 }}>Item</th>
+              <th style={{ textAlign: "left" }}>Qty</th>
+              <th style={{ textAlign: "left" }}>Price</th>
+              <th style={{ textAlign: "left" }}>Total</th>
             </tr>
           </thead>
           <tbody>
