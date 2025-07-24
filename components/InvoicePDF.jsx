@@ -68,11 +68,9 @@ export default function InvoicePDF() {
   overflow: "hidden",
   marginBottom: "20px"
 }}>
-  {/* HEADER IMAGE */}
-<div style={{ position: "relative", height: "130px", marginBottom: 20 }}>
   <img
     src="/head-bg.png"
-    alt="Header"
+    alt="Header Background"
     style={{
       position: "absolute",
       top: 0,
@@ -80,13 +78,11 @@ export default function InvoicePDF() {
       width: "100%",
       height: "100%",
       objectFit: "cover",
-      zIndex: 0,
-      borderRadius: "20px",
+      zIndex: 0
     }}
   />
 
-  {/* LOGO + INVOICE DALAM SATU BARIS */}
-  <div
+<div
     style={{
       position: "relative",
       zIndex: 1,
