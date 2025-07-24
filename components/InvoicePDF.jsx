@@ -48,23 +48,23 @@ export default function InvoicePDF() {
       <button onClick={handleDownload} style={{ marginBottom: "20px" }}>Download PDF</button>
 
       <div ref={contentRef} style={{ background: "#fff", padding: "30px", maxWidth: "800px", margin: "auto", borderRadius: "10px" }}>
-        
-        {/* HEADER: pakai ukuran asli background, tulisan INVOICE & logo kiri, info toko kanan */}
-        <div style={{ position: "relative", width: "100%", height: "180px", marginBottom: "20px", borderRadius: "10px", overflow: "hidden" }}>
-          {/* Background header */}
+
+        {/* HEADER SESUAI FIGMA */}
+        <div style={{ position: "relative", width: "100%", height: "180px", marginBottom: "20px", overflow: "hidden", borderRadius: "12px" }}>
+          {/* Background header image */}
           <img
             src="/head-bg.png"
             alt="Header Background"
             style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
               position: "absolute",
               top: 0,
               left: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
             }}
           />
-          {/* Konten header */}
+          {/* Konten di atas header */}
           <div style={{
             position: "relative",
             zIndex: 2,
@@ -74,18 +74,16 @@ export default function InvoicePDF() {
             justifyContent: "space-between",
             alignItems: "flex-start",
           }}>
-            {/* Kiri: logo + invoice */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <img src="/logo-connect-transparan.png" alt="Logo" width="48" />
-              <h2 style={{
-                margin: 0,
-                fontSize: "20px",
-                color: "#000",
-                fontWeight: 600
-              }}>INVOICE</h2>
+            {/* Kiri: logo + INVOICE */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <img src="/logo-connect-transparan.png" alt="Logo" width="40" />
+                <span style={{ fontSize: "20px", fontWeight: "600", color: "#000" }}>Invoice</span>
+              </div>
             </div>
+
             {/* Kanan: info toko */}
-            <div style={{ textAlign: "right", fontSize: "12px", lineHeight: "1.5" }}>
+            <div style={{ textAlign: "right", fontSize: "12px", lineHeight: "1.6" }}>
               <strong>CONNECT.IND</strong><br />
               Jl. Srikuncoro Raya Ruko B1-B2<br />
               Kalibanteng Kulon, Semarang 50145<br />
