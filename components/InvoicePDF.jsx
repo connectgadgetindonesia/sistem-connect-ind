@@ -1,137 +1,128 @@
-import { useEffect, useState } from "react";
-import html2pdf from "html2pdf.js";
+// components/InvoicePDF.jsx
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import { supabase } from "@/lib/supabaseClient";
+import html2pdf from "html2pdf.js";
 
-export default function InvoicePDF() {
-  const router = useRouter();
-  const { id } = router.query;
+export default function InvoicePDF({ id }) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [readyToDownload, setReadyToDownload] = useState(false);
+  const printRef = useRef();
+
+  const fetchData = async () => {
+    const { data, error } = await supabase
+      .from("penjualan_baru")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (data) setData(data);
+    else console.error("Fetch error:", error);
+  };
 
   useEffect(() => {
-    if (!id) return;
-    const fetchData = async () => {
-      try {
-        const res = await fetch(`/api/invoice/${id}`);
-        const result = await res.json();
-        if (result?.data) setData(result.data);
-      } catch (error) {
-        console.error("Failed to fetch invoice:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, [id]);
 
-  useEffect(() => {
-    if (data) {
-      // Tunggu render layout selesai
-      setTimeout(() => setReadyToDownload(true), 500); // kasih delay biar aman
-    }
-  }, [data]);
-
   const handleDownload = () => {
-    const element = document.getElementById("invoice-content");
-    if (!element) return;
+    if (!printRef.current) return;
     html2pdf()
-      .from(element)
+      .from(printRef.current)
       .set({
         margin: 0,
-        filename: `INV-${data.invoice_id}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
+        filename: `${data.invoice_id}.pdf`,
         html2canvas: { scale: 2 },
-        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       })
       .save();
   };
 
-  if (loading) return <div className="p-10 text-white">Loading...</div>;
-  if (!data) return <div className="p-10 text-red-500">Invoice not found.</div>;
+  if (!data) return <p style={{ padding: 32 }}>Loading invoice...</p>;
 
   return (
-    <div className="p-8 bg-white min-h-screen font-sans">
-      <button
-        onClick={handleDownload}
-        disabled={!readyToDownload}
-        className={`px-4 py-2 rounded mb-6 text-white ${
-          readyToDownload ? "bg-blue-500 hover:bg-blue-600" : "bg-gray-400 cursor-not-allowed"
-        }`}
-      >
+    <div style={{ padding: 32 }}>
+      <button onClick={handleDownload} style={{ marginBottom: 16 }}>
         Download PDF
       </button>
-
       <div
-        id="invoice-content"
-        className="max-w-3xl mx-auto bg-white p-8 shadow-lg border border-gray-300 rounded-lg"
-        style={{ fontSize: "14px", color: "#333" }}
+        ref={printRef}
+        style={{
+          fontFamily: "Arial, sans-serif",
+          width: "210mm",
+          minHeight: "297mm",
+          background: "white",
+          padding: 32,
+          borderRadius: 8,
+          border: "1px solid #ccc",
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <img src="/logo-connect-transparan.png" alt="CONNECT.IND" style={{ height: 48 }} />
-          </div>
-          <div className="text-right text-sm text-gray-600">
-            <p><strong>CONNECT.IND</strong></p>
-            <p>Jl. Srikuncoro Raya Ruko B1-B2</p>
-            <p>Kalibanteng Kulon, Semarang 50145</p>
-            <p>089-631-4000-31</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <img
+            src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAA+W0/XAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAB/5JREFUeNrs3Q1y2jYUBuBfBcyTuXMEYjIpGTl2wP0+yKyTIT7gE0wn6qpDPu/hSVAsJZckfznwAAAAAAAAAAAPCFLu/7Tb3SnUcyoZ3s+e9b1/0Fbb0AAAAAAAAAAABAfYJZTx6+Z0OGay3O7NVl6KM5ZgvA4O9aZD/gYeBGvOjv2xw09znrBIBGv+I/NZt+GLG0zms7JZNGYvPEo6WeU+tfRB4D3VtfQ+GWLP3FrbK94AYDE5O4k+oYbrMynF6Ut+cQyDRgeAzMyJeOkok3Czj4UzSOsUgAAY3iCNVR9Q3Ycytv5g8zwyjoAKIsq1bGvPVuYOtdMIgoRk7ADs15YPKZYCrz2zzcZAWtsw95diPO8Ns0G0XeG25Wyc9z+q/ezDADAK6zEox6MDgA6k/RuGyDvMEh4MoedfcY2fbmZQIvfshLxkFgOwBQZblDazOCgQvlLvMj7k6ONdh5OaxcfR7CrkuVZYiZPjTfKM8YFgOwCU9HtlbZJwcMoGHqGLZ58DqKysPb1z3QU3O1LDR29XvGLdEYD4LEOgOQ7B8ZLZuQu9F1rE8ZTW1hgh8rqoytkPQDAEMcgW9W9TLyVRffz7WxbgwH8BQEwyKtb9M5OmlhA/A2/YfC3ZzkdZqQ9vbzv7p5hEDwy7eEddAoV5rgwPAOfKvZ0oGz8GJnu1WRItSpxeZtNFFN4Zbd4eB1O40HoZPbaTso/tel1RJjo9pvCWqPiTszPMB8DDMkKNHH8Esl3EfEXlzGJjjVvExhFS4mK7eK1ti7+g9ZBPbCVX1iTQAkG63LV+q5KVZlNKtTKe/URZVFuayvKMuUbi1ijxXszLAgCrKhzXFqKeKSSWVyz2qI+I+GgNmqxmeuz41vN54nOBbNlgCUl04ABpvspbpkmFe2af6ORJ2w7LNRn+d3GT+jrH5ZH9b2yFoH5bIAAHFz/So/P23bXtc+CMiQ7w0EcYAFWsn7ppPCbM5veN5/Cz+6Av4X/JGRW99VxpjT8cCMCc0H1D98xtngl+8CV/wdPu2ujBvf5B8S2qZ/DEW77oLsAHp//2L8PAAAAAADgfZsfATXuNgsI4bB7AAAAAElFTkSuQmCC"
+            alt="CONNECT.IND"
+            style={{ height: 48 }}
+          />
+          <div style={{ textAlign: "right", fontSize: 14 }}>
+            <strong>CONNECT.IND</strong><br />
+            Jl. Srikuncoro Raya Ruko B1-B2<br />
+            Kalibanteng Kulon, Semarang 50145<br />
+            089-631-4000-31
           </div>
         </div>
 
-        {/* Invoice Title */}
-        <div className="bg-[#F1F4FB] text-blue-700 px-4 py-3 rounded-full text-xl font-bold mb-6 text-center">
+        {/* Tagihan */}
+        <div style={{ marginTop: 24, background: "#eef2f7", padding: 12, borderRadius: 12, fontWeight: "bold", color: "#2362eb" }}>
           INVOICE
         </div>
 
-        {/* Invoice & Buyer Info */}
-        <div className="flex justify-between mb-6">
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 16 }}>
           <div>
-            <p><span className="font-semibold text-gray-600">Invoice Number:</span> {data.invoice_id}</p>
-            <p><span className="font-semibold text-gray-600">Invoice Date:</span> {data.tanggal}</p>
+            <strong>Invoice Number:</strong> {data.invoice_id}<br />
+            <strong>Invoice Date:</strong> {data.tanggal}
           </div>
-          <div className="text-right">
-            <p className="font-semibold text-gray-600">Invoice To:</p>
-            <p>{data.nama_pembeli}</p>
-            <p>{data.alamat}</p>
-            <p>{data.no_wa}</p>
+          <div>
+            <strong>Invoice To:</strong><br />
+            {data.nama_pembeli}<br />
+            {data.alamat}<br />
+            {data.no_wa}
           </div>
         </div>
 
-        {/* Produk Table */}
-        <table className="w-full text-sm border border-gray-300">
-          <thead className="bg-gray-100 border-b">
+        {/* Tabel */}
+        <table style={{ width: "100%", marginTop: 24, borderCollapse: "collapse" }}>
+          <thead style={{ backgroundColor: "#f3f6fa", borderBottom: "1px solid #ccc" }}>
             <tr>
-              <th className="text-left px-2 py-1 border-r">Item</th>
-              <th className="text-left px-2 py-1 border-r">Qty</th>
-              <th className="text-left px-2 py-1 border-r">Price</th>
-              <th className="text-left px-2 py-1">Total</th>
+              <th style={{ textAlign: "left", padding: 8 }}>Item</th>
+              <th style={{ textAlign: "center", padding: 8 }}>Qty</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Price</th>
+              <th style={{ textAlign: "right", padding: 8 }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-t">
-              <td className="px-2 py-2 border-r">
-                {data.nama_produk}<br />
-                <span className="text-xs text-gray-600">SN: {data.sn_sku}</span><br />
-                <span className="text-xs text-gray-600">Warna: {data.warna}</span><br />
-                <span className="text-xs text-gray-600">Storage: {data.storage}</span><br />
-                <span className="text-xs text-gray-600">Garansi: {data.garansi}</span>
+            <tr style={{ borderBottom: "1px solid #ccc" }}>
+              <td style={{ padding: 8 }}>
+                <strong>{data.nama_produk}</strong><br />
+                SN: {data.sn_sku}<br />
+                Warna: {data.warna}<br />
+                Storage: {data.storage}<br />
+                Garansi: {data.garansi}
               </td>
-              <td className="px-2 py-2 border-r">1</td>
-              <td className="px-2 py-2 border-r">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
-              <td className="px-2 py-2">Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}</td>
+              <td style={{ textAlign: "center", padding: 8 }}>1</td>
+              <td style={{ textAlign: "right", padding: 8 }}>
+                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
+              </td>
+              <td style={{ textAlign: "right", padding: 8 }}>
+                Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
+              </td>
             </tr>
           </tbody>
         </table>
 
-        {/* Total */}
-        <div className="mt-6 text-right font-bold text-lg">
+        <div style={{ textAlign: "right", fontWeight: "bold", fontSize: 16, marginTop: 16 }}>
           Total: Rp {parseInt(data.harga_jual).toLocaleString("id-ID")}
         </div>
 
-        {/* Note */}
-        <div className="mt-6 bg-[#f8f9fc] text-[#868DA6] text-xs px-4 py-3 rounded">
+        <div style={{ fontSize: 12, color: "#868DA6", marginTop: 32 }}>
           * Terima kasih telah berbelanja di CONNECT.IND. Invoice ini berlaku sebagai bukti pembelian resmi.
         </div>
       </div>
