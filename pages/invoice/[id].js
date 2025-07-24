@@ -1,28 +1,16 @@
-// pages/api/invoice/[id].js
+import dynamic from "next/dynamic";
+import { useRouter } from "next/router";
 
-import { createClient } from '@supabase/supabase-js'
+const InvoicePDF = dynamic(() => import("@/components/InvoicePDF"), {
+  ssr: false,
+  loading: () => <p style={{ padding: 32 }}>Loading invoice...</p>,
+});
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+export default function InvoicePage() {
+  const router = useRouter();
+  const id = router?.query?.id;
 
-export default async function handler(req, res) {
-  const { id } = req.query;
+  if (!id) return <p style={{ padding: 32 }}>Loading invoice ID...</p>;
 
-  if (!id) {
-    return res.status(400).json({ error: 'Missing invoice ID' });
-  }
-
-  const { data, error } = await supabase
-    .from('penjualan_baru')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error || !data) {
-    return res.status(404).json({ error: 'Invoice not found' });
-  }
-
-  return res.status(200).json(data);
+  return <InvoicePDF id={id} />;
 }
