@@ -1,25 +1,31 @@
-import { useRef, useEffect } from "react";
-import html2pdf from "html2pdf.js";
-import html2canvas from "html2canvas";
+import { useRef, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function PricelistKategori({ data, kategoriParam }) {
   const contentRef = useRef();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true); // memastikan hanya jalan di browser
+  }, []);
 
   const handleDownload = async (format) => {
-    if (typeof window === 'undefined') return;
-    const element = contentRef.current;
-    const opt = {
-      margin:       0.3,
-      filename:     `pricelist-${kategoriParam}.${format}`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2 },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
-    };
+    if (!isClient || typeof window === "undefined") return;
 
-    if (format === 'pdf') {
+    const element = contentRef.current;
+
+    if (format === "pdf") {
+      const html2pdf = (await import("html2pdf.js")).default;
+      const opt = {
+        margin: 0.3,
+        filename: `pricelist-${kategoriParam}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+      };
       html2pdf().set(opt).from(element).save();
-    } else if (format === 'jpg') {
+    } else if (format === "jpg") {
+      const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(element);
       const image = canvas.toDataURL("image/jpeg");
       const link = document.createElement("a");
@@ -36,11 +42,15 @@ export default function PricelistKategori({ data, kategoriParam }) {
         <button
           className="bg-green-600 text-white px-4 py-2 rounded"
           onClick={() => handleDownload("jpg")}
-        >Download JPG</button>
+        >
+          Download JPG
+        </button>
         <button
           className="bg-blue-600 text-white px-4 py-2 rounded"
           onClick={() => handleDownload("pdf")}
-        >Download PDF</button>
+        >
+          Download PDF
+        </button>
       </div>
 
       <div ref={contentRef} className="overflow-x-auto">
@@ -56,7 +66,11 @@ export default function PricelistKategori({ data, kategoriParam }) {
           </thead>
           <tbody>
             {data.length === 0 ? (
-              <tr><td colSpan="5" className="text-center py-2">Belum ada data</td></tr>
+              <tr>
+                <td colSpan="5" className="text-center py-2">
+                  Belum ada data
+                </td>
+              </tr>
             ) : (
               data.map((item, i) => (
                 <tr key={i}>
