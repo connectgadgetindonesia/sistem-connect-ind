@@ -2,7 +2,6 @@
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { useRouter } from 'next/router'
 
 export default function TransaksiIndent() {
   const [form, setForm] = useState({
@@ -19,7 +18,6 @@ export default function TransaksiIndent() {
   })
   const [list, setList] = useState([])
   const [search, setSearch] = useState('')
-  const router = useRouter()
 
   useEffect(() => {
     fetchList()
@@ -33,6 +31,22 @@ export default function TransaksiIndent() {
     setList(data || [])
   }
 
+  const generateInvoiceId = async () => {
+    const now = new Date()
+    const bulan = String(now.getMonth() + 1).padStart(2, '0')
+    const tahun = now.getFullYear()
+
+    const { data, error } = await supabase
+      .from('transaksi_indent')
+      .select('invoice_id, tanggal')
+      .like('invoice_id', `INV-DP-CTI-${bulan}-${tahun}-%`)
+
+    const urut = (data?.length || 0) + 1
+    const nomorUrut = String(urut).padStart(3, '0')
+
+    return `INV-DP-CTI-${bulan}-${tahun}-${nomorUrut}`
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
 
@@ -40,6 +54,7 @@ export default function TransaksiIndent() {
     const dp = parseInt(form.dp)
     const harga_jual = parseInt(form.harga_jual)
     const sisa_pembayaran = harga_jual - dp
+    const invoice_id = await generateInvoiceId()
 
     const { error } = await supabase.from('transaksi_indent').insert({
       ...form,
@@ -47,7 +62,8 @@ export default function TransaksiIndent() {
       harga_jual,
       tanggal,
       sisa_pembayaran,
-      status: 'DP Masuk'
+      status: 'DP Masuk',
+      invoice_id
     })
 
     if (!error) {
@@ -110,14 +126,6 @@ export default function TransaksiIndent() {
               <div className="text-sm">DP: Rp {item.dp.toLocaleString()} | Harga Jual: Rp {item.harga_jual.toLocaleString()}</div>
               <div className="text-sm font-medium text-green-600">
                 Status: {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 DP Masuk, sisa Rp ' + (item.harga_jual - item.dp).toLocaleString()}
-              </div>
-              <div className="mt-2">
-                <button
-                  onClick={() => router.push(`/invoiceindent/${item.id}`)}
-                  className="bg-purple-600 text-white px-4 py-1 rounded text-sm"
-                >
-                  Cetak Invoice
-                </button>
               </div>
             </div>
           ))}
