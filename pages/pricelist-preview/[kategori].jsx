@@ -117,4 +117,7 @@ export default function PricelistPreview() {
       </div>
     </div>
   )
+}// ⬇️ Taruh ini paling bawah file [kategori].js
+export async function getServerSideProps() {
+  return { props: {} }
 }
