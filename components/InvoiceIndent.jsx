@@ -96,8 +96,6 @@ export default function InvoiceIndent({ id }) {
             <strong>Invoice Details</strong><br />
             Invoice ID:<br />
             {data.invoice_id || '-'}<br />
-            Transaction ID:<br />
-            {data.id}<br />
             Transaction date:<br />
             {data.tanggal}
           </div>
