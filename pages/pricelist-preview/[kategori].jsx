@@ -1,9 +1,15 @@
-// pages/pricelist-preview/[kategori].jsx
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { createClient } from "@supabase/supabase-js";
-import html2canvas from "html2canvas";
-import html2pdf from "html2pdf.js";
+
+let html2canvas = null;
+let html2pdf = null;
+
+if (typeof window !== "undefined") {
+  // Import di sisi client
+  html2canvas = require("html2canvas");
+  html2pdf = require("html2pdf.js");
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -18,9 +24,7 @@ export default function PricelistPreview() {
   const tableRef = useRef();
 
   useEffect(() => {
-    if (router.isReady && kategori) {
-      fetchData();
-    }
+    if (router.isReady && kategori) fetchData();
   }, [router.isReady, kategori]);
 
   const fetchData = async () => {
@@ -30,16 +34,15 @@ export default function PricelistPreview() {
       .eq("kategori", kategori);
 
     if (error) {
-      console.error("Fetch error:", error);
+      console.error("Supabase fetch error:", error);
     } else {
       setData(data);
     }
   };
 
   const downloadJPG = async () => {
-    const element = tableRef.current;
-    if (!element) return;
-    const canvas = await html2canvas(element);
+    if (!html2canvas || !tableRef.current) return;
+    const canvas = await html2canvas(tableRef.current);
     const link = document.createElement("a");
     link.download = `Pricelist-${kategori}.jpg`;
     link.href = canvas.toDataURL("image/jpeg");
@@ -47,9 +50,7 @@ export default function PricelistPreview() {
   };
 
   const downloadPDF = async () => {
-    const element = tableRef.current;
-    if (!element) return;
-
+    if (!html2pdf || !tableRef.current) return;
     const opt = {
       margin: 0.5,
       filename: `Pricelist-${kategori}.pdf`,
@@ -57,8 +58,7 @@ export default function PricelistPreview() {
       html2canvas: { scale: 2 },
       jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
     };
-
-    html2pdf().set(opt).from(element).save();
+    html2pdf().set(opt).from(tableRef.current).save();
   };
 
   return (
@@ -110,7 +110,6 @@ export default function PricelistPreview() {
   );
 }
 
-// Penting agar Next.js tidak error saat build di Vercel
 export async function getServerSideProps() {
   return { props: {} };
 }
