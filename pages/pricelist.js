@@ -44,7 +44,16 @@ export default function Pricelist() {
     const element = document.getElementById(`kategori-${kategori}`)
     if (!element) return
 
-    const canvas = await html2canvas(element)
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      scrollY: -window.scrollY,
+      windowWidth: document.body.scrollWidth
+    })
+
     const link = document.createElement('a')
     link.download = `Pricelist-${kategori}.jpg`
     link.href = canvas.toDataURL('image/jpeg')
