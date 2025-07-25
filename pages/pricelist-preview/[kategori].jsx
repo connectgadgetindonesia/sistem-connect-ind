@@ -65,7 +65,7 @@ export default function PricelistKategori({ kategoriParam }) {
       </div>
 
       <div ref={contentRef} className="overflow-x-auto">
-        <table className="min-w-full border border-black">
+        <table className="min-w-full border border-black text-sm">
           <thead>
             <tr>
               <th className="border px-2 py-1">Nama Produk</th>
@@ -87,9 +87,9 @@ export default function PricelistKategori({ kategoriParam }) {
                 <tr key={i}>
                   <td className="border px-2 py-1">{item.nama_produk}</td>
                   <td className="border px-2 py-1">{item.kategori}</td>
-                  <td className="border px-2 py-1">{item.harga_tokped || 0}</td>
-                  <td className="border px-2 py-1">{item.harga_shopee || 0}</td>
-                  <td className="border px-2 py-1">{item.harga_offline || 0}</td>
+                  <td className="border px-2 py-1">Rp {parseInt(item.harga_tokped || 0).toLocaleString()}</td>
+                  <td className="border px-2 py-1">Rp {parseInt(item.harga_shopee || 0).toLocaleString()}</td>
+                  <td className="border px-2 py-1 font-bold">Rp {parseInt(item.harga_offline || 0).toLocaleString()}</td>
                 </tr>
               ))
             )}
@@ -100,10 +100,11 @@ export default function PricelistKategori({ kategoriParam }) {
   );
 }
 
-// Ubah ini juga:
+// ✅ Tetap pakai getServerSideProps
 export async function getServerSideProps(context) {
   const kategori = context.params.kategori;
-  const formattedKategori = kategori.charAt(0).toUpperCase() + kategori.slice(1);
+  const formattedKategori =
+    kategori.charAt(0).toUpperCase() + kategori.slice(1);
   return {
     props: {
       kategoriParam: formattedKategori,
