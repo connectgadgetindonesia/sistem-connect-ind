@@ -42,37 +42,46 @@ export default function RiwayatPenjualan() {
     setData(grouped)
   }
 
+  async function handleDelete(invoice_id) {
+    const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
+    if (!konfirmasi) return
+
+    // 1. Ambil semua data penjualan dengan invoice ini
+    const { data: penjualan } = await supabase
+      .from('penjualan_baru')
+      .select('*')
+      .eq('invoice_id', invoice_id)
+
+    for (const item of penjualan) {
+      // 2. Jika barang dari stok utama, kembalikan statusnya ke READY
+      const { data: stokData } = await supabase
+        .from('stok')
+        .select('id')
+        .eq('sn', item.sn_sku)
+        .maybeSingle()
+
+      if (stokData) {
+        await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+      }
+    }
+
+    // 3. Hapus semua data penjualan dengan invoice tersebut
+    await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
+
+    alert('Data berhasil dihapus!')
+    fetchData()
+  }
+
   return (
     <Layout>
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
 
         <div className="flex flex-wrap gap-2 mb-4">
-          <input
-            type="date"
-            value={filter.tanggal_awal}
-            onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })}
-            className="border p-2"
-          />
-          <input
-            type="date"
-            value={filter.tanggal_akhir}
-            onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })}
-            className="border p-2"
-          />
-          <input
-            type="text"
-            placeholder="Cari nama, produk, SN/SKU..."
-            value={filter.search}
-            onChange={(e) => setFilter({ ...filter, search: e.target.value })}
-            className="border p-2 flex-1"
-          />
-          <button
-            onClick={fetchData}
-            className="bg-blue-600 text-white px-4 rounded"
-          >
-            Cari
-          </button>
+          <input type="date" value={filter.tanggal_awal} onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })} className="border p-2" />
+          <input type="date" value={filter.tanggal_akhir} onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })} className="border p-2" />
+          <input type="text" placeholder="Cari nama, produk, SN/SKU..." value={filter.search} onChange={(e) => setFilter({ ...filter, search: e.target.value })} className="border p-2 flex-1" />
+          <button onClick={fetchData} className="bg-blue-600 text-white px-4 rounded">Cari</button>
         </div>
 
         <table className="w-full table-auto border">
@@ -113,7 +122,7 @@ export default function RiwayatPenjualan() {
                 </td>
                 <td className="border px-2 py-1">
                   <button
-                    onClick={() => alert('Untuk hapus invoice, silakan ke fitur khusus')}
+                    onClick={() => handleDelete(item.invoice_id)}
                     className="bg-red-600 text-white px-2 py-1 rounded"
                   >
                     Hapus

@@ -135,6 +135,11 @@ export default function Penjualan() {
       else await supabase.rpc('kurangi_stok_aksesoris', { sku_input: produk.sn_sku })
     }
 
+    // Update status di transaksi_indent jika nama pembeli cocok
+    await supabase.from('transaksi_indent')
+      .update({ status: 'Sudah Diambil' })
+      .eq('nama', formData.nama_pembeli.toUpperCase())
+
     alert('Berhasil simpan multi produk!')
     setFormData({ tanggal: '', nama_pembeli: '', alamat: '', no_wa: '', referral: '', dilayani_oleh: '' })
     setProdukList([])
