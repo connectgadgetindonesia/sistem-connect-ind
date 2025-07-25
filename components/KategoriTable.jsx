@@ -1,6 +1,6 @@
-// components/KategoriTable.js
 import { useState, useRef } from 'react'
 import html2canvas from 'html2canvas'
+import html2pdf from 'html2pdf.js'
 
 export default function KategoriTable({ title, data, onEdit, onDelete }) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -20,6 +20,21 @@ export default function KategoriTable({ title, data, onEdit, onDelete }) {
     link.click()
   }
 
+  const downloadPDF = () => {
+    const element = tableRef.current
+    if (!element) return
+
+    const opt = {
+      margin:       0.5,
+      filename:     `${title.replace(/\s+/g, '_')}_pricelist.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    }
+
+    html2pdf().from(element).set(opt).save()
+  }
+
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-2">
@@ -37,6 +52,12 @@ export default function KategoriTable({ title, data, onEdit, onDelete }) {
             className="bg-green-600 text-white px-4 py-1 rounded"
           >
             Download JPG
+          </button>
+          <button
+            onClick={downloadPDF}
+            className="bg-blue-600 text-white px-4 py-1 rounded"
+          >
+            Download PDF
           </button>
         </div>
       </div>
