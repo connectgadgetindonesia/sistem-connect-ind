@@ -119,30 +119,55 @@ export default function InvoicePDF() {
         </div>
 
         {/* Tabel produk */}
-        <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", marginBottom: 24 }}>
-          <thead style={{ background: "#f3f6fd" }}>
-            <tr>
-              <th style={{ textAlign: "left", padding: 8 }}>Item</th>
-              <th style={{ textAlign: "left" }}>Qty</th>
-              <th style={{ textAlign: "left" }}>Price</th>
-              <th style={{ textAlign: "left" }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={{ padding: 8 }}>
-                <strong>{data.nama_produk}</strong><br />
-                <span style={{ color: "#7b88a8" }}>SN: {data.sn_sku}</span><br />
-                <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
-                {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
-                {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
-              </td>
-              <td style={{ textAlign: "left" }}>1</td>
-              <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
-              <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
-            </tr>
-          </tbody>
-        </table>
+<table
+  style={{
+    width: "100%",
+    fontSize: 11,
+    borderCollapse: "separate", // ⬅️ Penting untuk bikin rounded
+    borderSpacing: 0,           // ⬅️ Pastikan gak ada spasi antar sel
+    marginBottom: 24,
+    overflow: "hidden",
+  }}
+>
+  <thead>
+    <tr style={{ background: "#f3f6fd" }}>
+      <th
+        style={{
+          textAlign: "left",
+          padding: 8,
+          borderTopLeftRadius: 8,
+        }}
+      >
+        Item
+      </th>
+      <th style={{ textAlign: "left" }}>Qty</th>
+      <th style={{ textAlign: "left" }}>Price</th>
+      <th
+        style={{
+          textAlign: "left",
+          borderTopRightRadius: 8,
+        }}
+      >
+        Total
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ padding: 8 }}>
+        <strong>{data.nama_produk}</strong><br />
+        <span style={{ color: "#7b88a8" }}>SN: {data.sn_sku}</span><br />
+        <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
+        {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
+        {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
+      </td>
+      <td style={{ textAlign: "left" }}>1</td>
+      <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
+      <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
+    </tr>
+  </tbody>
+</table>
+
 
         {/* Total */}
         <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
