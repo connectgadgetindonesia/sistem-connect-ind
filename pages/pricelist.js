@@ -24,6 +24,7 @@ export default function Pricelist() {
     e.preventDefault()
     if (!form.nama_produk || !form.kategori) return alert('Nama dan kategori wajib diisi')
     await supabase.from('pricelist').insert({
+      id: crypto.randomUUID(), // ✅ Tambahkan UUID manual saat insert
       nama_produk: form.nama_produk,
       harga_tokped: form.harga_tokped,
       harga_shopee: form.harga_shopee,
@@ -115,7 +116,7 @@ export default function Pricelist() {
                             <button onClick={() => {
                               setEditData(item)
                               setForm({
-                                id: item.id, // ← tambahkan ID ke form
+                                id: item.id,
                                 nama_produk: item.nama_produk,
                                 harga_tokped: item.harga_tokped,
                                 harga_shopee: item.harga_shopee,
