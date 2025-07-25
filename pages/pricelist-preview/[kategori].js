@@ -1,5 +1,3 @@
-// pages/pricelist-preview/[kategori].js
-
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabaseClient'
@@ -24,24 +22,27 @@ export default function PricelistPreview() {
     setProduk(data || [])
   }
 
-  async function downloadImage() {
-    const area = document.getElementById('area-download')
-    if (!area) return alert('Area tidak ditemukan')
+  const handleDownload = async () => {
+    const target = document.getElementById('area-download')
+    if (!target) return alert('Element area-download tidak ditemukan')
 
-    window.scrollTo({ top: 0, behavior: 'instant' })
-    await new Promise(res => setTimeout(res, 500))
+    // Scroll ke atas dan beri jeda agar layout stabil
+    window.scrollTo(0, 0)
+    await new Promise(res => setTimeout(res, 800))
 
-    const canvas = await html2canvas(area, {
+    html2canvas(target, {
       scale: 2,
       useCORS: true,
-      scrollY: -window.scrollY,
-      windowWidth: document.body.scrollWidth
+      scrollY: 0
+    }).then(canvas => {
+      const link = document.createElement('a')
+      link.download = `Pricelist-${kategori}.jpg`
+      link.href = canvas.toDataURL('image/jpeg')
+      link.click()
+    }).catch(err => {
+      alert('Gagal generate gambar')
+      console.error(err)
     })
-
-    const link = document.createElement('a')
-    link.href = canvas.toDataURL('image/jpeg')
-    link.download = `Pricelist-${kategori}.jpg`
-    link.click()
   }
 
   return (
@@ -79,7 +80,7 @@ export default function PricelistPreview() {
 
       {produk.length > 0 && (
         <button
-          onClick={downloadImage}
+          onClick={handleDownload}
           className="bg-green-600 text-white px-4 py-2 rounded mt-6"
         >
           Download JPG
