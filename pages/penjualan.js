@@ -5,35 +5,30 @@ import dayjs from 'dayjs'
 import Select from 'react-select'
 
 export default function Penjualan() {
+  const [produkList, setProdukList] = useState([])
   const [formData, setFormData] = useState({
     tanggal: '',
-    sn_sku: '',
     nama_pembeli: '',
-    harga_jual: '',
     alamat: '',
     no_wa: '',
     referral: '',
-    dilayani_oleh: '',
+    dilayani_oleh: ''
+  })
+  const [produkBaru, setProdukBaru] = useState({
+    sn_sku: '',
+    harga_jual: '',
     nama_produk: '',
     warna: '',
     harga_modal: '',
-    laba: '',
     garansi: '',
     storage: ''
   })
-
   const [options, setOptions] = useState([])
 
   useEffect(() => {
     async function fetchOptions() {
-      const { data: stokReady } = await supabase
-        .from('stok')
-        .select('sn, nama_produk, warna')
-        .eq('status', 'READY')
-
-      const { data: aksesoris } = await supabase
-        .from('stok_aksesoris')
-        .select('sku, nama_produk, warna')
+      const { data: stokReady } = await supabase.from('stok').select('sn, nama_produk, warna').eq('status', 'READY')
+      const { data: aksesoris } = await supabase.from('stok_aksesoris').select('sku, nama_produk, warna')
 
       const combinedOptions = [
         ...(stokReady?.map((item) => ({
@@ -51,21 +46,15 @@ export default function Penjualan() {
   }, [])
 
   useEffect(() => {
-    if (formData.sn_sku.length > 0) {
-      cariStok(formData.sn_sku)
+    if (produkBaru.sn_sku.length > 0) {
+      cariStok(produkBaru.sn_sku)
     }
-  }, [formData.sn_sku])
+  }, [produkBaru.sn_sku])
 
   async function cariStok(snsku) {
-    const { data: unit } = await supabase
-      .from('stok')
-      .select('*')
-      .eq('sn', snsku)
-      .eq('status', 'READY')
-      .maybeSingle()
-
+    const { data: unit } = await supabase.from('stok').select('*').eq('sn', snsku).eq('status', 'READY').maybeSingle()
     if (unit) {
-      setFormData((prev) => ({
+      setProdukBaru((prev) => ({
         ...prev,
         nama_produk: unit.nama_produk,
         warna: unit.warna,
@@ -75,15 +64,9 @@ export default function Penjualan() {
       }))
       return
     }
-
-    const { data: aks } = await supabase
-      .from('stok_aksesoris')
-      .select('*')
-      .eq('sku', snsku)
-      .maybeSingle()
-
+    const { data: aks } = await supabase.from('stok_aksesoris').select('*').eq('sku', snsku).maybeSingle()
     if (aks) {
-      setFormData((prev) => ({
+      setProdukBaru((prev) => ({
         ...prev,
         nama_produk: aks.nama_produk,
         warna: aks.warna,
@@ -94,156 +77,78 @@ export default function Penjualan() {
     }
   }
 
+  function tambahProdukKeList() {
+    if (!produkBaru.sn_sku || !produkBaru.harga_jual) return alert('Lengkapi SN/SKU dan Harga Jual')
+    setProdukList([...produkList, produkBaru])
+    setProdukBaru({ sn_sku: '', harga_jual: '', nama_produk: '', warna: '', harga_modal: '', garansi: '', storage: '' })
+  }
+
   async function generateInvoiceId(tanggal) {
     const bulan = dayjs(tanggal).format('MM')
     const tahun = dayjs(tanggal).format('YYYY')
-
-    const { data } = await supabase
-      .from('penjualan_baru')
-      .select('id')
-      .gte('tanggal', `${tahun}-${bulan}-01`)
-      .lte('tanggal', `${tahun}-${bulan}-31`)
-
+    const { data } = await supabase.from('penjualan_baru').select('id').gte('tanggal', `${tahun}-${bulan}-01`).lte('tanggal', `${tahun}-${bulan}-31`)
     const nomorUrut = (data?.length || 0) + 1
     return `INV-CTI-${bulan}-${tahun}-${nomorUrut}`
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-
-    if (!formData.tanggal) {
-      alert('Tanggal tidak boleh kosong')
-      return
-    }
-
-    const harga_jual = parseInt(formData.harga_jual)
-    const harga_modal = parseInt(formData.harga_modal)
-    const laba = harga_jual - harga_modal
+    if (!formData.tanggal || produkList.length === 0) return alert('Tanggal & minimal 1 produk wajib diisi')
     const invoice = await generateInvoiceId(formData.tanggal)
 
-    const { error } = await supabase.from('penjualan_baru').insert({
-      sn_sku: formData.sn_sku,
-      tanggal: formData.tanggal,
-      nama_pembeli: formData.nama_pembeli,
-      harga_jual,
-      alamat: formData.alamat,
-      no_wa: formData.no_wa,
-      referral: formData.referral,
-      dilayani_oleh: formData.dilayani_oleh,
-      nama_produk: formData.nama_produk,
-      warna: formData.warna,
-      harga_modal,
-      laba,
-      garansi: formData.garansi,
-      storage: formData.storage,
-      invoice_id: invoice
-    })
+    for (const produk of produkList) {
+      const harga_jual = parseInt(produk.harga_jual)
+      const harga_modal = parseInt(produk.harga_modal)
+      const laba = harga_jual - harga_modal
 
-    if (error) {
-      alert('Gagal simpan: ' + error.message)
-      console.error(error)
-      return
+      await supabase.from('penjualan_baru').insert({
+        ...formData,
+        ...produk,
+        harga_jual,
+        harga_modal,
+        laba,
+        invoice_id: invoice
+      })
+
+      const { data: stokUnit } = await supabase.from('stok').select('id').eq('sn', produk.sn_sku).maybeSingle()
+      if (stokUnit) await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', produk.sn_sku)
+      else await supabase.rpc('kurangi_stok_aksesoris', { sku_input: produk.sn_sku })
     }
 
-    const { data: stokUnit } = await supabase
-      .from('stok')
-      .select('id')
-      .eq('sn', formData.sn_sku)
-      .maybeSingle()
-
-    if (stokUnit) {
-      await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', formData.sn_sku)
-    } else {
-      await supabase.rpc('kurangi_stok_aksesoris', { sku_input: formData.sn_sku })
-    }
-
-    // Update status transaksi_indent jika ada
-    const { data: indentRow } = await supabase
-      .from('transaksi_indent')
-      .select('id')
-      .eq('nama', formData.nama_pembeli.trim())
-      .order('tanggal', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (indentRow) {
-      await supabase
-        .from('transaksi_indent')
-        .update({ status: 'Sudah Diambil' })
-        .eq('id', indentRow.id)
-    }
-
-    alert('Berhasil simpan!')
-    setFormData({
-      tanggal: '',
-      sn_sku: '',
-      nama_pembeli: '',
-      harga_jual: '',
-      alamat: '',
-      no_wa: '',
-      referral: '',
-      dilayani_oleh: '',
-      nama_produk: '',
-      warna: '',
-      harga_modal: '',
-      laba: '',
-      garansi: '',
-      storage: ''
-    })
+    alert('Berhasil simpan multi produk!')
+    setFormData({ tanggal: '', nama_pembeli: '', alamat: '', no_wa: '', referral: '', dilayani_oleh: '' })
+    setProdukList([])
   }
 
   return (
     <Layout>
       <div className="p-4">
-        <h1 className="text-2xl font-bold mb-4">Input Penjualan CONNECT.IND</h1>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <input
-            type="date"
-            className="border p-2"
-            placeholder="Tanggal Transaksi"
-            value={formData.tanggal}
-            onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
-            required
-          />
-
-          <Select
-            className="text-sm"
-            options={options}
-            placeholder="Cari SN / SKU"
-            value={options.find((opt) => opt.value === formData.sn_sku) || null}
-            onChange={(selected) => setFormData({ ...formData, sn_sku: selected?.value || '' })}
-            isClearable
-          />
-
-          {[ 
-            ['Nama Pembeli', 'nama_pembeli'],
-            ['Alamat', 'alamat'],
-            ['No. WA', 'no_wa'],
-            ['Harga Jual', 'harga_jual', 'number'],
-            ['Referral', 'referral'],
-            ['Dilayani Oleh', 'dilayani_oleh'],
-          ].map(([label, field, type = 'text']) => (
-            <input
-              key={field}
-              type={type}
-              className="border p-2"
-              placeholder={label}
-              value={formData[field]}
-              onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
-              required
-            />
+        <h1 className="text-2xl font-bold mb-4">Input Penjualan Multi Produk</h1>
+        <form onSubmit={handleSubmit} className="grid gap-4 mb-6">
+          <input type="date" className="border p-2" value={formData.tanggal} onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })} required />
+          {[['Nama Pembeli', 'nama_pembeli'], ['Alamat', 'alamat'], ['No. WA', 'no_wa'], ['Referral', 'referral'], ['Dilayani Oleh', 'dilayani_oleh']].map(([label, field]) => (
+            <input key={field} className="border p-2" placeholder={label} value={formData[field]} onChange={(e) => setFormData({ ...formData, [field]: e.target.value })} required />
           ))}
 
-          <div className="md:col-span-2 text-sm text-gray-600">
-            <p>Nama Produk: {formData.nama_produk || '-'}</p>
-            <p>Warna: {formData.warna || '-'}</p>
-            <p>Harga Modal: Rp {formData.harga_modal?.toLocaleString() || '-'}</p>
-            <p>Laba: Rp {formData.harga_jual && formData.harga_modal ? (formData.harga_jual - formData.harga_modal).toLocaleString() : '-'}</p>
+          <div className="border p-4 rounded bg-gray-50">
+            <h2 className="font-semibold mb-2">Tambah Produk</h2>
+            <Select className="text-sm mb-2" options={options} placeholder="Cari SN / SKU" value={options.find((opt) => opt.value === produkBaru.sn_sku) || null} onChange={(selected) => setProdukBaru({ ...produkBaru, sn_sku: selected?.value || '' })} isClearable />
+            <input className="border p-2 mb-2" placeholder="Harga Jual" type="number" value={produkBaru.harga_jual} onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })} />
+            <button type="button" onClick={tambahProdukKeList} className="bg-blue-600 text-white px-4 py-1 rounded">Tambah Produk</button>
           </div>
 
-          <button className="bg-blue-600 text-white py-2 rounded md:col-span-2" type="submit">
-            Simpan Penjualan
-          </button>
+          {produkList.length > 0 && (
+            <div className="border rounded p-4 bg-white">
+              <h3 className="font-semibold mb-2">Daftar Produk</h3>
+              <ul className="text-sm list-disc ml-4">
+                {produkList.map((p, i) => (
+                  <li key={i}>{p.nama_produk} ({p.sn_sku}) - Rp {parseInt(p.harga_jual).toLocaleString()}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <button className="bg-green-600 text-white py-2 rounded" type="submit">Simpan Penjualan</button>
         </form>
       </div>
     </Layout>
