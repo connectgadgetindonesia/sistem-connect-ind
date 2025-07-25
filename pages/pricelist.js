@@ -1,7 +1,7 @@
 import Layout from '@/components/Layout'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import html2canvas from 'html2canvas'
 
 export default function Pricelist() {
   const [produkList, setProdukList] = useState([])
@@ -42,29 +42,6 @@ export default function Pricelist() {
     }
   }
 
-  async function downloadJPGByKategori(kategori) {
-    const element = document.getElementById(`kategori-${kategori}`)
-    if (!element) return alert('Element tidak ditemukan')
-
-    element.scrollIntoView({ behavior: 'auto', block: 'center' })
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    element.style.overflow = 'visible'
-    element.style.maxHeight = 'unset'
-
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      scrollY: -window.scrollY,
-      windowWidth: document.body.scrollWidth
-    })
-
-    const link = document.createElement('a')
-    link.download = `Pricelist-${kategori}.jpg`
-    link.href = canvas.toDataURL('image/jpeg')
-    link.click()
-  }
-
   return (
     <Layout>
       <div className="p-6">
@@ -99,7 +76,9 @@ export default function Pricelist() {
                     className="border px-2 py-1 text-sm"
                     onChange={(e) => setSearch({ ...search, [kategori]: e.target.value })}
                   />
-                  <button onClick={() => downloadJPGByKategori(kategori)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Download JPG</button>
+                  <Link href={`/pricelist-preview/${kategori.toLowerCase()}`}>
+                    <button className="bg-green-600 text-white px-3 py-1 rounded text-sm">Download JPG</button>
+                  </Link>
                 </div>
               </div>
               <div id={`kategori-${kategori}`}>
