@@ -2,6 +2,7 @@
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useRouter } from 'next/router'
 
 export default function TransaksiIndent() {
   const [form, setForm] = useState({
@@ -18,6 +19,7 @@ export default function TransaksiIndent() {
   })
   const [list, setList] = useState([])
   const [search, setSearch] = useState('')
+  const router = useRouter()
 
   useEffect(() => {
     fetchList()
@@ -108,6 +110,14 @@ export default function TransaksiIndent() {
               <div className="text-sm">DP: Rp {item.dp.toLocaleString()} | Harga Jual: Rp {item.harga_jual.toLocaleString()}</div>
               <div className="text-sm font-medium text-green-600">
                 Status: {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 DP Masuk, sisa Rp ' + (item.harga_jual - item.dp).toLocaleString()}
+              </div>
+              <div className="mt-2">
+                <button
+                  onClick={() => router.push(`/invoiceindent/${item.id}`)}
+                  className="bg-purple-600 text-white px-4 py-1 rounded text-sm"
+                >
+                  Cetak Invoice
+                </button>
               </div>
             </div>
           ))}
