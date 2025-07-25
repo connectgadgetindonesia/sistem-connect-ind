@@ -1,10 +1,15 @@
 // pages/rekap.js
+
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import * as XLSX from 'xlsx'
 
 export default function RekapBulanan() {
+  const [akses, setAkses] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const passwordBenar = 'rekap123' // ✅ Ganti dengan password rahasia Bapak
+
   const [data, setData] = useState([])
   const [tanggalAwal, setTanggalAwal] = useState('')
   const [tanggalAkhir, setTanggalAkhir] = useState('')
@@ -39,6 +44,35 @@ export default function RekapBulanan() {
 
   const totalOmset = rekap.reduce((sum, item) => sum + parseInt(item.harga_jual || 0), 0)
   const totalLaba = rekap.reduce((sum, item) => sum + parseInt(item.laba || 0), 0)
+
+  if (!akses) {
+    return (
+      <Layout>
+        <div className="p-8">
+          <h1 className="text-xl font-bold mb-4">🔒 Halaman Terkunci</h1>
+          <input
+            type="password"
+            className="border px-4 py-2 rounded mr-2"
+            placeholder="Masukkan Password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+          />
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+            onClick={() => {
+              if (passwordInput === passwordBenar) {
+                setAkses(true)
+              } else {
+                alert('Password salah!')
+              }
+            }}
+          >
+            Buka Halaman
+          </button>
+        </div>
+      </Layout>
+    )
+  }
 
   return (
     <Layout>
