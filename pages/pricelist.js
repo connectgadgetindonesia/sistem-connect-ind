@@ -9,14 +9,12 @@ export default function Pricelist() {
   const [editData, setEditData] = useState(null)
   const [search, setSearch] = useState({})
 
-  const kategoriList = ['Mac', 'iPad', 'iPhone', 'Apple Watch', 'AirPods', 'Aksesoris']
-
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
-    const { data } = await supabase.from('pricelist').select('*')
+    const { data } = await supabase.from('pricelist').select('*').order('nama_produk', { ascending: true })
     setProdukList(data || [])
   }
 
@@ -42,14 +40,18 @@ export default function Pricelist() {
     }
   }
 
-  async function downloadTableAsImage(kategori) {
-    const element = document.getElementById(`export-${kategori}`)
+  async function downloadJPGByKategori(kategori) {
+    const element = document.getElementById(`kategori-${kategori}`)
+    if (!element) return
+
     const canvas = await html2canvas(element)
     const link = document.createElement('a')
-    link.download = `pricelist-${kategori}.jpg`
+    link.download = `Pricelist-${kategori}.jpg`
     link.href = canvas.toDataURL('image/jpeg')
     link.click()
   }
+
+  const kategoriList = ['Mac', 'iPad', 'iPhone', 'Apple Watch', 'AirPods', 'Aksesoris']
 
   return (
     <Layout>
@@ -63,7 +65,9 @@ export default function Pricelist() {
           <input className="border p-2" placeholder="Harga Offline" value={form.harga_offline} onChange={(e) => setForm({ ...form, harga_offline: e.target.value })} />
           <select className="border p-2" value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })}>
             <option value="">Pilih Kategori</option>
-            {kategoriList.map((kat) => <option key={kat} value={kat}>{kat}</option>)}
+            {kategoriList.map((kat) => (
+              <option key={kat} value={kat}>{kat}</option>
+            ))}
           </select>
           <button type="submit" className="bg-blue-600 text-white py-2 rounded">
             {editData ? 'Update Produk' : 'Tambah Produk'}
@@ -71,12 +75,11 @@ export default function Pricelist() {
         </form>
 
         {kategoriList.map((kategori) => {
-          const dataKategori = produkList.filter(item => item.kategori === kategori && (!search[kategori] || item.nama_produk.toLowerCase().includes(search[kategori].toLowerCase())))
-
+          const dataKategori = produkList.filter(p => p.kategori === kategori && (!search[kategori] || p.nama_produk.toLowerCase().includes(search[kategori].toLowerCase())))
           return (
-            <div key={kategori} className="mb-8">
+            <div key={kategori} className="mb-10">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold">{kategori}</h2>
+                <h2 className="text-lg font-semibold">{kategori}</h2>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -84,12 +87,11 @@ export default function Pricelist() {
                     className="border px-2 py-1 text-sm"
                     onChange={(e) => setSearch({ ...search, [kategori]: e.target.value })}
                   />
-                  <button onClick={() => downloadTableAsImage(kategori)} className="bg-green-600 text-white px-4 py-1 rounded text-sm">Download JPG</button>
+                  <button onClick={() => downloadJPGByKategori(kategori)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Download JPG</button>
                 </div>
               </div>
-
-              <div id={`export-${kategori}`} className="overflow-x-auto">
-                <table className="min-w-full text-sm border">
+              <div id={`kategori-${kategori}`} className="overflow-auto">
+                <table className="min-w-full border text-sm">
                   <thead className="bg-gray-100">
                     <tr>
                       <th className="border px-2 py-1">Nama Produk</th>
@@ -101,16 +103,16 @@ export default function Pricelist() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dataKategori.map((item) => (
+                    {dataKategori.map(item => (
                       <tr key={item.id}>
                         <td className="border px-2 py-1">{item.nama_produk}</td>
                         <td className="border px-2 py-1">{item.kategori}</td>
                         <td className="border px-2 py-1">Rp {parseInt(item.harga_tokped || 0).toLocaleString()}</td>
                         <td className="border px-2 py-1">Rp {parseInt(item.harga_shopee || 0).toLocaleString()}</td>
-                        <td className="border px-2 py-1 font-semibold">Rp {parseInt(item.harga_offline || 0).toLocaleString()}</td>
+                        <td className="border px-2 py-1 font-bold">Rp {parseInt(item.harga_offline || 0).toLocaleString()}</td>
                         <td className="border px-2 py-1">
-                          <button
-                            onClick={() => {
+                          <div className="flex gap-2">
+                            <button onClick={() => {
                               setEditData(item)
                               setForm({
                                 nama_produk: item.nama_produk,
@@ -119,13 +121,9 @@ export default function Pricelist() {
                                 harga_offline: item.harga_offline,
                                 kategori: item.kategori
                               })
-                            }}
-                            className="bg-yellow-500 text-white px-2 py-1 rounded mr-1"
-                          >Edit</button>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="bg-red-600 text-white px-2 py-1 rounded"
-                          >Hapus</button>
+                            }} className="bg-yellow-500 text-white px-2 py-1 rounded text-xs">Edit</button>
+                            <button onClick={() => handleDelete(item.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs">Hapus</button>
+                          </div>
                         </td>
                       </tr>
                     ))}
