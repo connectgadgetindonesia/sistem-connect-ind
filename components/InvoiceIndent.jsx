@@ -32,7 +32,7 @@ export default function InvoiceIndent({ id }) {
     const element = contentRef.current;
     const opt = {
       margin: 0,
-      filename: `${data.nama.replaceAll(" ", "_")}_${data.id}.pdf`,
+      filename: `${data.invoice_id || data.nama.replaceAll(" ", "_")}_${data.id}.pdf`,
       image: { type: "jpeg", quality: 1 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
@@ -47,7 +47,7 @@ export default function InvoiceIndent({ id }) {
     const image = canvas.toDataURL("image/jpeg", 1.0);
     const link = document.createElement("a");
     link.href = image;
-    link.download = `${data.nama.replaceAll(" ", "_")}_${data.id}.jpg`;
+    link.download = `${data.invoice_id || data.nama.replaceAll(" ", "_")}_${data.id}.jpg`;
     link.click();
   };
 
@@ -94,6 +94,8 @@ export default function InvoiceIndent({ id }) {
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20, marginTop: 10 }}>
           <div>
             <strong>Invoice Details</strong><br />
+            Invoice ID:<br />
+            {data.invoice_id || '-'}<br />
             Transaction ID:<br />
             {data.id}<br />
             Transaction date:<br />
