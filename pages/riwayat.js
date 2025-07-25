@@ -1,4 +1,3 @@
-// pages/riwayat.js
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -16,51 +15,31 @@ export default function RiwayatPenjualan() {
     fetchData()
   }, [])
 
+  function groupByInvoice(data) {
+    const grouped = {}
+    data.forEach((item) => {
+      if (!grouped[item.invoice_id]) {
+        grouped[item.invoice_id] = {
+          ...item,
+          produk: [item]
+        }
+      } else {
+        grouped[item.invoice_id].produk.push(item)
+      }
+    })
+    return Object.values(grouped)
+  }
+
   async function fetchData() {
     let query = supabase.from('penjualan_baru').select('*')
 
-    if (filter.tanggal_awal) {
-      query = query.gte('tanggal', filter.tanggal_awal)
-    }
-    if (filter.tanggal_akhir) {
-      query = query.lte('tanggal', filter.tanggal_akhir)
-    }
-    if (filter.search) {
-      query = query.ilike('nama_pembeli', `%${filter.search}%`)
-    }
+    if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal)
+    if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
+    if (filter.search) query = query.ilike('nama_pembeli', `%${filter.search}%`)
 
     const { data } = await query.order('tanggal', { ascending: false })
-    setData(data)
-  }
-
-  const handleHapus = async (id, sn_sku) => {
-    const konfirmasi = confirm('Yakin ingin hapus transaksi ini?')
-    if (!konfirmasi) return
-
-    const { error: deleteError } = await supabase
-      .from('penjualan_baru')
-      .delete()
-      .eq('id', id)
-
-    if (deleteError) {
-      alert('Gagal hapus transaksi!')
-      return
-    }
-
-    const { data: snUnit } = await supabase
-      .from('stok')
-      .select('id')
-      .eq('sn', sn_sku)
-      .maybeSingle()
-
-    if (snUnit) {
-      await supabase.from('stok').update({ status: 'READY' }).eq('sn', sn_sku)
-    } else {
-      await supabase.rpc('tambah_stok_aksesoris', { sku_input: sn_sku })
-    }
-
-    alert('Transaksi berhasil dihapus dan stok dikembalikan')
-    fetchData()
+    const grouped = groupByInvoice(data)
+    setData(grouped)
   }
 
   return (
@@ -102,7 +81,6 @@ export default function RiwayatPenjualan() {
               <th className="border px-2 py-1">Tanggal</th>
               <th className="border px-2 py-1">Nama</th>
               <th className="border px-2 py-1">Produk</th>
-              <th className="border px-2 py-1">SN/SKU</th>
               <th className="border px-2 py-1">Harga Jual</th>
               <th className="border px-2 py-1">Laba</th>
               <th className="border px-2 py-1">Invoice</th>
@@ -111,16 +89,21 @@ export default function RiwayatPenjualan() {
           </thead>
           <tbody>
             {data.map((item) => (
-              <tr key={item.id}>
+              <tr key={item.invoice_id}>
                 <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
                 <td className="border px-2 py-1">{item.nama_pembeli}</td>
-                <td className="border px-2 py-1">{item.nama_produk}</td>
-                <td className="border px-2 py-1">{item.sn_sku}</td>
-                <td className="border px-2 py-1">Rp {item.harga_jual.toLocaleString()}</td>
-                <td className="border px-2 py-1">Rp {item.laba.toLocaleString()}</td>
+                <td className="border px-2 py-1">
+                  {item.produk.map(p => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
+                </td>
+                <td className="border px-2 py-1">
+                  Rp {item.produk.reduce((total, p) => total + parseInt(p.harga_jual), 0).toLocaleString()}
+                </td>
+                <td className="border px-2 py-1">
+                  Rp {item.produk.reduce((total, p) => total + parseInt(p.laba), 0).toLocaleString()}
+                </td>
                 <td className="border px-2 py-1">
                   <a
-                    href={`/invoice/${item.id}`}
+                    href={`/invoice/${item.invoice_id}`}
                     className="text-blue-600 underline"
                     target="_blank"
                     rel="noreferrer"
@@ -130,7 +113,7 @@ export default function RiwayatPenjualan() {
                 </td>
                 <td className="border px-2 py-1">
                   <button
-                    onClick={() => handleHapus(item.id, item.sn_sku)}
+                    onClick={() => alert('Untuk hapus invoice, silakan ke fitur khusus')}
                     className="bg-red-600 text-white px-2 py-1 rounded"
                   >
                     Hapus
