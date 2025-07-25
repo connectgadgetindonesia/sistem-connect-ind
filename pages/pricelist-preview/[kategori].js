@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabaseClient'
 import html2canvas from 'html2canvas'
+import html2pdf from 'html2pdf.js'
 
 export default function PricelistPreview() {
   const router = useRouter()
@@ -16,13 +17,13 @@ export default function PricelistPreview() {
     const { data } = await supabase
       .from('pricelist')
       .select('*')
-      .ilike('kategori', kategori) // ⬅️ gunakan ilike agar fleksibel
+      .ilike('kategori', kategori)
       .order('nama_produk', { ascending: true })
 
     setProduk(data || [])
   }
 
-  async function downloadImage() {
+  async function downloadJPG() {
     const area = document.getElementById('area-download')
     if (!area || produk.length === 0) {
       alert('Gagal generate gambar: data kosong')
@@ -45,6 +46,29 @@ export default function PricelistPreview() {
       link.click()
     } catch (err) {
       alert('Gagal generate gambar')
+      console.error(err)
+    }
+  }
+
+  async function downloadPDF() {
+    const area = document.getElementById('area-download')
+    if (!area || produk.length === 0) {
+      alert('Gagal generate PDF: data kosong')
+      return
+    }
+
+    const opt = {
+      margin: 0.5,
+      filename: `Pricelist-${kategori}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+    }
+
+    try {
+      await html2pdf().set(opt).from(area).save()
+    } catch (err) {
+      alert('Gagal generate PDF')
       console.error(err)
     }
   }
@@ -77,12 +101,20 @@ export default function PricelistPreview() {
         </table>
       </div>
 
-      <button
-        onClick={downloadImage}
-        className="bg-green-600 text-white px-4 py-2 rounded mt-6"
-      >
-        Download JPG
-      </button>
+      <div className="mt-6 flex justify-center gap-4">
+        <button
+          onClick={downloadJPG}
+          className="bg-green-600 text-white px-4 py-2 rounded"
+        >
+          Download JPG
+        </button>
+        <button
+          onClick={downloadPDF}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Download PDF
+        </button>
+      </div>
     </div>
   )
 }
