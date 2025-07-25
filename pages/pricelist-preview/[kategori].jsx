@@ -91,15 +91,16 @@ export default function PricelistKategori({ data, kategoriParam }) {
 
 export async function getServerSideProps(context) {
   const kategori = context.params.kategori;
+  const formattedKategori = kategori.charAt(0).toUpperCase() + kategori.slice(1); // "mac" -> "Mac"
   const { data } = await supabase
     .from("pricelist")
     .select("*")
-    .ilike("kategori", `%${kategori}%`);
+    .eq("kategori", formattedKategori); // pakai eq, bukan ilike
 
   return {
     props: {
       data: data || [],
-      kategoriParam: kategori || "",
+      kategoriParam: formattedKategori,
     },
   };
 }
