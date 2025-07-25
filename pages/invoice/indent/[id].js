@@ -1,7 +1,7 @@
 import dynamic from "next/dynamic";
 
 // Import komponen InvoiceIndent dengan SSR dimatikan
-const InvoiceIndent = dynamic(() => import("../../components/InvoiceIndent"), {
+const InvoiceIndent = dynamic(() => import("../../../components/InvoiceIndent"), {
   ssr: false,
 });
 
