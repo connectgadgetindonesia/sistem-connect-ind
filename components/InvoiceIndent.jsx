@@ -9,10 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function InvoicePDF() {
-  const router = useRouter();
-  const { id } = router.query;
-  const [data, setData] = useState([]);
+export default function InvoiceIndent({ id }) {
+  const [data, setData] = useState(null);
   const contentRef = useRef();
 
   useEffect(() => {
@@ -21,11 +19,10 @@ export default function InvoicePDF() {
 
   const fetchData = async () => {
     const { data, error } = await supabase
-      .from("penjualan_baru")
+      .from("transaksi_indent")
       .select("*")
-      .eq("invoice_id", id)
-      .eq("is_bonus", false)
-      .order("id", { ascending: true });
+      .eq("id", id)
+      .single();
 
     if (!error) setData(data);
     else console.error("Fetch error:", error);
@@ -35,7 +32,7 @@ export default function InvoicePDF() {
     const element = contentRef.current;
     const opt = {
       margin: 0,
-      filename: `${id}.pdf`,
+      filename: `${data.nama.replaceAll(" ", "_")}_${data.id}.pdf`,
       image: { type: "jpeg", quality: 1 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
@@ -50,13 +47,13 @@ export default function InvoicePDF() {
     const image = canvas.toDataURL("image/jpeg", 1.0);
     const link = document.createElement("a");
     link.href = image;
-    link.download = `${id}.jpg`;
+    link.download = `${data.nama.replaceAll(" ", "_")}_${data.id}.jpg`;
     link.click();
   };
 
-  if (!data || data.length === 0) return <div>Loading...</div>;
+  if (!data) return <div>Loading...</div>;
 
-  const totalHarga = data.reduce((acc, item) => acc + parseInt(item.harga_jual), 0);
+  const sisaPembayaran = parseInt(data.harga_jual) - parseInt(data.dp);
 
   return (
     <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
@@ -97,10 +94,10 @@ export default function InvoicePDF() {
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20, marginTop: 10 }}>
           <div>
             <strong>Invoice Details</strong><br />
-            Invoice number:<br />
-            {data[0].invoice_id}<br />
-            Invoice date:<br />
-            {data[0].tanggal}
+            Transaction ID:<br />
+            {data.id}<br />
+            Transaction date:<br />
+            {data.tanggal}
           </div>
           <div style={{ textAlign: "left" }}>
             <strong>CONNECT.IND</strong><br />
@@ -112,9 +109,9 @@ export default function InvoicePDF() {
           </div>
           <div style={{ textAlign: "right" }}>
             <strong>Invoice To:</strong><br />
-            {data[0].nama_pembeli}<br />
-            {data[0].alamat}<br />
-            {data[0].no_wa}
+            {data.nama}<br />
+            {data.alamat}<br />
+            {data.no_wa}
           </div>
         </div>
 
@@ -133,55 +130,32 @@ export default function InvoicePDF() {
             <tr style={{ background: "#f3f6fd" }}>
               <th style={{ textAlign: "left", padding: 8, borderTopLeftRadius: 8 }}>Item</th>
               <th style={{ textAlign: "left" }}>Qty</th>
-              <th style={{ textAlign: "left" }}>Price</th>
+              <th style={{ textAlign: "left" }}>DP</th>
               <th style={{ textAlign: "left", borderTopRightRadius: 8 }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            {data.map((item, i) => (
-              <tr key={i}>
-                <td style={{ padding: 8 }}>
-                  <strong>{item.nama_produk}</strong><br />
-                  <span style={{ color: "#7b88a8" }}>SN: {item.sn_sku}</span><br />
-                  <span style={{ color: "#7b88a8" }}>Warna: {item.warna}</span><br />
-                  {item.storage && <span style={{ color: "#7b88a8" }}>Storage: {item.storage}<br /></span>}
-                  {item.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {item.garansi}</span>}
-                </td>
-                <td style={{ textAlign: "left" }}>1</td>
-                <td style={{ textAlign: "left" }}>{formatRupiah(item.harga_jual)}</td>
-                <td style={{ textAlign: "left" }}>{formatRupiah(item.harga_jual)}</td>
-              </tr>
-            ))}
+            <tr>
+              <td style={{ padding: 8 }}>
+                <strong>{data.nama_produk}</strong><br />
+                <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
+                {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
+                {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
+              </td>
+              <td style={{ textAlign: "left" }}>1</td>
+              <td style={{ textAlign: "left" }}>{formatRupiah(data.dp)}</td>
+              <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
+            </tr>
           </tbody>
         </table>
 
-        {/* Total */}
-        <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-          <table style={{ fontSize: 11, lineHeight: "1.8", textAlign: "left" }}>
-            <tbody>
-              <tr>
-                <td style={{ color: "#7b88a8", textAlign: "left" }}>Sub Total:</td>
-                <td style={{ paddingLeft: 20 }}>{formatRupiah(totalHarga)}</td>
-              </tr>
-              <tr>
-                <td style={{ color: "#7b88a8", textAlign: "left" }}>Discount:</td>
-                <td style={{ paddingLeft: 20 }}>-</td>
-              </tr>
-              <tr>
-                <td style={{ textAlign: "left" }}><strong>Total:</strong></td>
-                <td style={{ paddingLeft: 20 }}><strong>{formatRupiah(totalHarga)}</strong></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
         {/* Notes */}
-       <div style={{ fontSize: 10, background: "#f3f6fd", padding: "10px 16px", borderRadius: "10px" }}>
-  <strong>Notes:</strong><br />
-  Pesanan yang sudah masuk tidak dapat dibatalkan / diubah, maksimal pelunasan H+3 setelah tanggal yang disepakati.<br />
-  Kekurangan pembayaran sebesar <strong>{formatRupiah(data[0].harga_jual - data[0].dp)}.</strong><br />
-  DP dianggap hangus apabila kekurangan pembayaran telat/pesanan dibatalkan secara sepihak.
-</div>
+        <div style={{ fontSize: 10, background: "#f3f6fd", padding: "10px 16px", borderRadius: "10px" }}>
+          <strong>Notes:</strong><br />
+          Pesanan yang sudah masuk tidak dapat dibatalkan / diubah, maksimal pelunasan H+3 setelah tanggal yang disepakati.<br />
+          Kekurangan pembayaran sebesar <strong>{formatRupiah(sisaPembayaran)}</strong>.<br />
+          DP dianggap hangus apabila kekurangan pembayaran telat/pesanan dibatalkan secara sepihak.
+        </div>
       </div>
     </div>
   );
