@@ -12,7 +12,7 @@ const supabase = createClient(
 export default function InvoicePDF() {
   const router = useRouter();
   const { id } = router.query;
-  const [data, setData] = useState(null);
+  const [data, setData] = useState([]);
   const contentRef = useRef();
 
   useEffect(() => {
@@ -23,8 +23,9 @@ export default function InvoicePDF() {
     const { data, error } = await supabase
       .from("penjualan_baru")
       .select("*")
-      .eq("id", id)
-      .single();
+      .eq("invoice_id", id)
+      .order("id", { ascending: true });
+
     if (!error) setData(data);
     else console.error("Fetch error:", error);
   };
@@ -33,7 +34,7 @@ export default function InvoicePDF() {
     const element = contentRef.current;
     const opt = {
       margin: 0,
-      filename: `${data.invoice_id}.pdf`,
+      filename: `${id}.pdf`,
       image: { type: "jpeg", quality: 1 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
@@ -48,11 +49,13 @@ export default function InvoicePDF() {
     const image = canvas.toDataURL("image/jpeg", 1.0);
     const link = document.createElement("a");
     link.href = image;
-    link.download = `${data.invoice_id}.jpg`;
+    link.download = `${id}.jpg`;
     link.click();
   };
 
-  if (!data) return <div>Loading...</div>;
+  if (!data || data.length === 0) return <div>Loading...</div>;
+
+  const totalHarga = data.reduce((acc, item) => acc + parseInt(item.harga_jual), 0);
 
   return (
     <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
@@ -85,11 +88,7 @@ export default function InvoicePDF() {
           <img
             src="/head-new.png"
             alt="Header Background"
-           style={{
-      display: "block",
-      margin: "0 auto",
-      maxWidth: "100%"
-            }}
+            style={{ display: "block", margin: "0 auto", maxWidth: "100%" }}
           />
         </div>
 
@@ -98,9 +97,9 @@ export default function InvoicePDF() {
           <div>
             <strong>Invoice Details</strong><br />
             Invoice number:<br />
-            {data.invoice_id}<br />
+            {data[0].invoice_id}<br />
             Invoice date:<br />
-            {data.tanggal}
+            {data[0].tanggal}
           </div>
           <div style={{ textAlign: "left" }}>
             <strong>CONNECT.IND</strong><br />
@@ -112,62 +111,48 @@ export default function InvoicePDF() {
           </div>
           <div style={{ textAlign: "right" }}>
             <strong>Invoice To:</strong><br />
-            {data.nama_pembeli}<br />
-            {data.alamat}<br />
-            {data.no_wa}
+            {data[0].nama_pembeli}<br />
+            {data[0].alamat}<br />
+            {data[0].no_wa}
           </div>
         </div>
 
         {/* Tabel produk */}
-<table
-  style={{
-    width: "100%",
-    fontSize: 11,
-    borderCollapse: "separate", // ⬅️ Penting untuk bikin rounded
-    borderSpacing: 0,           // ⬅️ Pastikan gak ada spasi antar sel
-    marginBottom: 24,
-    overflow: "hidden",
-  }}
->
-  <thead>
-    <tr style={{ background: "#f3f6fd" }}>
-      <th
-        style={{
-          textAlign: "left",
-          padding: 8,
-          borderTopLeftRadius: 8,
-        }}
-      >
-        Item
-      </th>
-      <th style={{ textAlign: "left" }}>Qty</th>
-      <th style={{ textAlign: "left" }}>Price</th>
-      <th
-        style={{
-          textAlign: "left",
-          borderTopRightRadius: 8,
-        }}
-      >
-        Total
-      </th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style={{ padding: 8 }}>
-        <strong>{data.nama_produk}</strong><br />
-        <span style={{ color: "#7b88a8" }}>SN: {data.sn_sku}</span><br />
-        <span style={{ color: "#7b88a8" }}>Warna: {data.warna}</span><br />
-        {data.storage && <span style={{ color: "#7b88a8" }}>Storage: {data.storage}<br /></span>}
-        {data.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {data.garansi}</span>}
-      </td>
-      <td style={{ textAlign: "left" }}>1</td>
-      <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
-      <td style={{ textAlign: "left" }}>{formatRupiah(data.harga_jual)}</td>
-    </tr>
-  </tbody>
-</table>
-
+        <table
+          style={{
+            width: "100%",
+            fontSize: 11,
+            borderCollapse: "separate",
+            borderSpacing: 0,
+            marginBottom: 24,
+            overflow: "hidden",
+          }}
+        >
+          <thead>
+            <tr style={{ background: "#f3f6fd" }}>
+              <th style={{ textAlign: "left", padding: 8, borderTopLeftRadius: 8 }}>Item</th>
+              <th style={{ textAlign: "left" }}>Qty</th>
+              <th style={{ textAlign: "left" }}>Price</th>
+              <th style={{ textAlign: "left", borderTopRightRadius: 8 }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((item, i) => (
+              <tr key={i}>
+                <td style={{ padding: 8 }}>
+                  <strong>{item.nama_produk}</strong><br />
+                  <span style={{ color: "#7b88a8" }}>SN: {item.sn_sku}</span><br />
+                  <span style={{ color: "#7b88a8" }}>Warna: {item.warna}</span><br />
+                  {item.storage && <span style={{ color: "#7b88a8" }}>Storage: {item.storage}<br /></span>}
+                  {item.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {item.garansi}</span>}
+                </td>
+                <td style={{ textAlign: "left" }}>1</td>
+                <td style={{ textAlign: "left" }}>{formatRupiah(item.harga_jual)}</td>
+                <td style={{ textAlign: "left" }}>{formatRupiah(item.harga_jual)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
         {/* Total */}
         <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
@@ -175,7 +160,7 @@ export default function InvoicePDF() {
             <tbody>
               <tr>
                 <td style={{ color: "#7b88a8", textAlign: "left" }}>Sub Total:</td>
-                <td style={{ paddingLeft: 20 }}>{formatRupiah(data.harga_jual)}</td>
+                <td style={{ paddingLeft: 20 }}>{formatRupiah(totalHarga)}</td>
               </tr>
               <tr>
                 <td style={{ color: "#7b88a8", textAlign: "left" }}>Discount:</td>
@@ -183,19 +168,14 @@ export default function InvoicePDF() {
               </tr>
               <tr>
                 <td style={{ textAlign: "left" }}><strong>Total:</strong></td>
-                <td style={{ paddingLeft: 20 }}><strong>{formatRupiah(data.harga_jual)}</strong></td>
+                <td style={{ paddingLeft: 20 }}><strong>{formatRupiah(totalHarga)}</strong></td>
               </tr>
             </tbody>
           </table>
         </div>
 
         {/* Notes */}
-        <div style={{
-          fontSize: 10,
-          background: "#f3f6fd",
-          padding: "10px 16px",
-          borderRadius: "10px"
-        }}>
+        <div style={{ fontSize: 10, background: "#f3f6fd", padding: "10px 16px", borderRadius: "10px" }}>
           <strong>Notes:</strong><br />
           Terima kasih telah berbelanja di CONNECT.IND. Invoice ini berlaku sebagai bukti pembelian resmi.
         </div>
