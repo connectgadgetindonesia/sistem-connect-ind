@@ -1,17 +1,26 @@
 import { useRef, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function PricelistKategori({ data, kategoriParam }) {
+export default function PricelistKategori({ kategoriParam }) {
   const contentRef = useRef();
+  const [data, setData] = useState([]);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // memastikan hanya jalan di browser
+    setIsClient(true);
+    fetchData();
   }, []);
+
+  async function fetchData() {
+    const { data } = await supabase
+      .from("pricelist")
+      .select("*")
+      .eq("kategori", kategoriParam);
+    setData(data || []);
+  }
 
   const handleDownload = async (format) => {
     if (!isClient || typeof window === "undefined") return;
-
     const element = contentRef.current;
 
     if (format === "pdf") {
@@ -37,7 +46,9 @@ export default function PricelistKategori({ data, kategoriParam }) {
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-bold text-center mb-4">PRICELIST {kategoriParam.toUpperCase()}</h1>
+      <h1 className="text-xl font-bold text-center mb-4">
+        PRICELIST {kategoriParam.toUpperCase()}
+      </h1>
       <div className="flex gap-2 mb-4 justify-center">
         <button
           className="bg-green-600 text-white px-4 py-2 rounded"
@@ -89,17 +100,12 @@ export default function PricelistKategori({ data, kategoriParam }) {
   );
 }
 
+// Ubah ini juga:
 export async function getServerSideProps(context) {
   const kategori = context.params.kategori;
-  const formattedKategori = kategori.charAt(0).toUpperCase() + kategori.slice(1); // "mac" -> "Mac"
-  const { data } = await supabase
-    .from("pricelist")
-    .select("*")
-    .eq("kategori", formattedKategori); // pakai eq, bukan ilike
-
+  const formattedKategori = kategori.charAt(0).toUpperCase() + kategori.slice(1);
   return {
     props: {
-      data: data || [],
       kategoriParam: formattedKategori,
     },
   };
