@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient'
 
 export default function Pricelist() {
   const [produkList, setProdukList] = useState([])
-  const [form, setForm] = useState({ nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
+  const [form, setForm] = useState({ id: null, nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
   const [editData, setEditData] = useState(null)
   const [search, setSearch] = useState({})
 
@@ -23,15 +23,22 @@ export default function Pricelist() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.nama_produk || !form.kategori) return alert('Nama dan kategori wajib diisi')
-    await supabase.from('pricelist').insert(form)
-    setForm({ nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
+    await supabase.from('pricelist').insert({
+      nama_produk: form.nama_produk,
+      harga_tokped: form.harga_tokped,
+      harga_shopee: form.harga_shopee,
+      harga_offline: form.harga_offline,
+      kategori: form.kategori
+    })
+    setForm({ id: null, nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
     fetchData()
   }
 
   async function handleUpdate() {
-    await supabase.from('pricelist').update(form).eq('id', editData.id)
+    const { id, ...updateData } = form
+    await supabase.from('pricelist').update(updateData).eq('id', id)
     setEditData(null)
-    setForm({ nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
+    setForm({ id: null, nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
     fetchData()
   }
 
@@ -108,6 +115,7 @@ export default function Pricelist() {
                             <button onClick={() => {
                               setEditData(item)
                               setForm({
+                                id: item.id, // ← tambahkan ID ke form
                                 nama_produk: item.nama_produk,
                                 harga_tokped: item.harga_tokped,
                                 harga_shopee: item.harga_shopee,
