@@ -16,19 +16,22 @@ export default function PricelistPreview() {
     const { data } = await supabase
       .from('pricelist')
       .select('*')
-      .eq('kategori', kategori)
+      .ilike('kategori', kategori) // ⬅️ gunakan ilike agar fleksibel
       .order('nama_produk', { ascending: true })
 
     setProduk(data || [])
   }
 
   async function downloadImage() {
-    try {
-      const area = document.getElementById('area-download')
-      if (!area) return alert('Area tidak ditemukan')
+    const area = document.getElementById('area-download')
+    if (!area || produk.length === 0) {
+      alert('Gagal generate gambar: data kosong')
+      return
+    }
 
+    try {
       window.scrollTo(0, 0)
-      await new Promise(res => setTimeout(res, 700)) // jeda ekstra untuk render sempurna
+      await new Promise(res => setTimeout(res, 500))
 
       const canvas = await html2canvas(area, {
         scale: 2,
