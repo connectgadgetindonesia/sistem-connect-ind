@@ -7,13 +7,14 @@ export default function Pricelist() {
   const [produkList, setProdukList] = useState([])
   const [form, setForm] = useState({ nama_produk: '', harga_tokped: '', harga_shopee: '', harga_offline: '', kategori: '' })
   const [editData, setEditData] = useState(null)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
-    const { data } = await supabase.from('pricelist').select('*').order('nama_produk', { ascending: true })
+    const { data } = await supabase.from('pricelist').select('*').order('kategori', { ascending: true }).order('nama_produk', { ascending: true })
     setProdukList(data || [])
   }
 
@@ -48,6 +49,10 @@ export default function Pricelist() {
     link.click()
   }
 
+  const filteredProduk = produkList.filter(item =>
+    item.nama_produk.toLowerCase().includes(search.toLowerCase())
+  )
+
   return (
     <Layout>
       <div className="p-6">
@@ -72,37 +77,60 @@ export default function Pricelist() {
           </button>
         </form>
 
-        <button onClick={downloadAsImage} className="mb-4 bg-green-600 text-white px-4 py-2 rounded">Download JPG</button>
+        <div className="flex items-center gap-2 mb-4">
+          <input
+            type="text"
+            placeholder="Cari produk..."
+            className="border p-2"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <button onClick={downloadAsImage} className="bg-green-600 text-white px-4 py-2 rounded">Download JPG</button>
+        </div>
 
-        <div id="export-area" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {produkList.map((item) => (
-            <div key={item.id} className="border p-4 rounded bg-white shadow">
-              <h2 className="text-lg font-semibold">{item.nama_produk}</h2>
-              <p className="text-sm text-gray-600">Kategori: {item.kategori}</p>
-              <p>Tokopedia: Rp {parseInt(item.harga_tokped || 0).toLocaleString()}</p>
-              <p>Shopee: Rp {parseInt(item.harga_shopee || 0).toLocaleString()}</p>
-              <p className="font-bold">Offline: Rp {parseInt(item.harga_offline || 0).toLocaleString()}</p>
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => {
-                    setEditData(item)
-                    setForm({
-                      nama_produk: item.nama_produk,
-                      harga_tokped: item.harga_tokped,
-                      harga_shopee: item.harga_shopee,
-                      harga_offline: item.harga_offline,
-                      kategori: item.kategori
-                    })
-                  }}
-                  className="bg-yellow-500 text-white px-3 py-1 rounded"
-                >Edit</button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="bg-red-600 text-white px-3 py-1 rounded"
-                >Hapus</button>
-              </div>
-            </div>
-          ))}
+        <div id="export-area" className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border px-2 py-1">Nama Produk</th>
+                <th className="border px-2 py-1">Kategori</th>
+                <th className="border px-2 py-1">Harga Tokopedia</th>
+                <th className="border px-2 py-1">Harga Shopee</th>
+                <th className="border px-2 py-1">Harga Offline</th>
+                <th className="border px-2 py-1">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProduk.map((item) => (
+                <tr key={item.id} className="bg-white">
+                  <td className="border px-2 py-1">{item.nama_produk}</td>
+                  <td className="border px-2 py-1">{item.kategori}</td>
+                  <td className="border px-2 py-1">Rp {parseInt(item.harga_tokped || 0).toLocaleString()}</td>
+                  <td className="border px-2 py-1">Rp {parseInt(item.harga_shopee || 0).toLocaleString()}</td>
+                  <td className="border px-2 py-1 font-bold">Rp {parseInt(item.harga_offline || 0).toLocaleString()}</td>
+                  <td className="border px-2 py-1">
+                    <button
+                      onClick={() => {
+                        setEditData(item)
+                        setForm({
+                          nama_produk: item.nama_produk,
+                          harga_tokped: item.harga_tokped,
+                          harga_shopee: item.harga_shopee,
+                          harga_offline: item.harga_offline,
+                          kategori: item.kategori
+                        })
+                      }}
+                      className="bg-yellow-500 text-white px-3 py-1 rounded mr-2"
+                    >Edit</button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="bg-red-600 text-white px-3 py-1 rounded"
+                    >Hapus</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </Layout>
