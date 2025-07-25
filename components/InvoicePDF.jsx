@@ -24,6 +24,7 @@ export default function InvoicePDF() {
       .from("penjualan_baru")
       .select("*")
       .eq("invoice_id", id)
+      .eq("is_bonus", false)
       .order("id", { ascending: true });
 
     if (!error) setData(data);
