@@ -76,8 +76,10 @@ export default function Pricelist() {
                     className="border px-2 py-1 text-sm"
                     onChange={(e) => setSearch({ ...search, [kategori]: e.target.value })}
                   />
-                  <Link href={`/pricelist-preview/${kategori.toLowerCase()}`}>
-                    <button className="bg-green-600 text-white px-3 py-1 rounded text-sm">Download JPG</button>
+                  <Link href={`/pricelist-preview/${kategori.toLowerCase()}`} legacyBehavior>
+                    <a target="_blank" rel="noopener noreferrer">
+                      <button className="bg-green-600 text-white px-3 py-1 rounded text-sm">Download JPG</button>
+                    </a>
                   </Link>
                 </div>
               </div>
