@@ -1,79 +1,70 @@
-// pages/pricelist-preview/[kategori].jsx
 import { useRef, useEffect } from "react";
+import html2pdf from "html2pdf.js";
+import html2canvas from "html2canvas";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function PricelistKategori({ data, kategoriParam }) {
   const contentRef = useRef();
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      import("html2canvas").then((html2canvas) => {
-        import("html2pdf.js").then((html2pdf) => {
-          const generatePDF = () => {
-            const element = contentRef.current;
-            html2pdf().from(element).save(`${kategoriParam}.pdf`);
-          };
+  const handleDownload = async (format) => {
+    if (typeof window === 'undefined') return;
+    const element = contentRef.current;
+    const opt = {
+      margin:       0.3,
+      filename:     `pricelist-${kategoriParam}.${format}`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+    };
 
-          const generateJPG = () => {
-            const element = contentRef.current;
-            html2canvas.default(element).then((canvas) => {
-              const link = document.createElement("a");
-              link.download = `${kategoriParam}.jpg`;
-              link.href = canvas.toDataURL("image/jpeg", 1.0);
-              link.click();
-            });
-          };
-
-          window.generatePDF = generatePDF;
-          window.generateJPG = generateJPG;
-        });
-      });
+    if (format === 'pdf') {
+      html2pdf().set(opt).from(element).save();
+    } else if (format === 'jpg') {
+      const canvas = await html2canvas(element);
+      const image = canvas.toDataURL("image/jpeg");
+      const link = document.createElement("a");
+      link.href = image;
+      link.download = `pricelist-${kategoriParam}.jpg`;
+      link.click();
     }
-  }, [kategoriParam]);
+  };
 
   return (
-    <div className="p-6">
-      <h1 className="text-center text-xl font-bold mb-4 uppercase">Pricelist {kategoriParam}</h1>
-
-      <div className="flex justify-center mt-4 gap-3">
+    <div className="p-4">
+      <h1 className="text-xl font-bold text-center mb-4">PRICELIST {kategoriParam.toUpperCase()}</h1>
+      <div className="flex gap-2 mb-4 justify-center">
         <button
           className="bg-green-600 text-white px-4 py-2 rounded"
-          onClick={() => window.generateJPG?.()}
-        >
-          Download JPG
-        </button>
+          onClick={() => handleDownload("jpg")}
+        >Download JPG</button>
         <button
           className="bg-blue-600 text-white px-4 py-2 rounded"
-          onClick={() => window.generatePDF?.()}
-        >
-          Download PDF
-        </button>
+          onClick={() => handleDownload("pdf")}
+        >Download PDF</button>
       </div>
 
-      <div className="overflow-x-auto mt-6" ref={contentRef}>
-        <table className="min-w-full border-collapse border border-black text-center">
+      <div ref={contentRef} className="overflow-x-auto">
+        <table className="min-w-full border border-black">
           <thead>
-            <tr className="bg-gray-200">
-              <th className="border border-black px-2 py-1">Nama Produk</th>
-              <th className="border border-black px-2 py-1">Kategori</th>
-              <th className="border border-black px-2 py-1">Harga Tokopedia</th>
-              <th className="border border-black px-2 py-1">Harga Shopee</th>
-              <th className="border border-black px-2 py-1">Harga Offline</th>
+            <tr>
+              <th className="border px-2 py-1">Nama Produk</th>
+              <th className="border px-2 py-1">Kategori</th>
+              <th className="border px-2 py-1">Harga Tokopedia</th>
+              <th className="border px-2 py-1">Harga Shopee</th>
+              <th className="border px-2 py-1">Harga Offline</th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="py-4 text-gray-500">Belum ada data</td>
-              </tr>
+              <tr><td colSpan="5" className="text-center py-2">Belum ada data</td></tr>
             ) : (
               data.map((item, i) => (
                 <tr key={i}>
                   <td className="border px-2 py-1">{item.nama_produk}</td>
                   <td className="border px-2 py-1">{item.kategori}</td>
-                  <td className="border px-2 py-1">{item.harga_tokped || '-'}</td>
-                  <td className="border px-2 py-1">{item.harga_shopee || '-'}</td>
-                  <td className="border px-2 py-1">{item.harga_offline || '-'}</td>
+                  <td className="border px-2 py-1">{item.harga_tokped || 0}</td>
+                  <td className="border px-2 py-1">{item.harga_shopee || 0}</td>
+                  <td className="border px-2 py-1">{item.harga_offline || 0}</td>
                 </tr>
               ))
             )}
@@ -89,7 +80,7 @@ export async function getServerSideProps(context) {
   const { data } = await supabase
     .from("pricelist")
     .select("*")
-    .ilike("kategori", kategori);
+    .ilike("kategori", `%${kategori}%`);
 
   return {
     props: {
