@@ -1,12 +1,11 @@
+// pages/pricelist-preview/[kategori].jsx
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { createClient } from "@supabase/supabase-js";
 
 let html2canvas = null;
 let html2pdf = null;
-
 if (typeof window !== "undefined") {
-  // Import di sisi client
   html2canvas = require("html2canvas");
   html2pdf = require("html2pdf.js");
 }
