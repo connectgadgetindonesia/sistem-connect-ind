@@ -9,6 +9,8 @@ export default function Pricelist() {
   const [editData, setEditData] = useState(null)
   const [search, setSearch] = useState({})
 
+  const kategoriList = ['Mac', 'iPad', 'iPhone', 'Apple Watch', 'AirPods', 'Aksesoris']
+
   useEffect(() => {
     fetchData()
   }, [])
@@ -42,10 +44,13 @@ export default function Pricelist() {
 
   async function downloadJPGByKategori(kategori) {
     const element = document.getElementById(`kategori-${kategori}`)
-    if (!element) return
+    if (!element) return alert('Element tidak ditemukan')
 
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    await new Promise(resolve => setTimeout(resolve, 400))
+    element.scrollIntoView({ behavior: 'auto', block: 'center' })
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    element.style.overflow = 'visible'
+    element.style.maxHeight = 'unset'
 
     const canvas = await html2canvas(element, {
       scale: 2,
@@ -59,8 +64,6 @@ export default function Pricelist() {
     link.href = canvas.toDataURL('image/jpeg')
     link.click()
   }
-
-  const kategoriList = ['Mac', 'iPad', 'iPhone', 'Apple Watch', 'AirPods', 'Aksesoris']
 
   return (
     <Layout>
@@ -99,7 +102,7 @@ export default function Pricelist() {
                   <button onClick={() => downloadJPGByKategori(kategori)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Download JPG</button>
                 </div>
               </div>
-              <div id={`kategori-${kategori}`} className="overflow-auto">
+              <div id={`kategori-${kategori}`}>
                 <table className="min-w-full border text-sm">
                   <thead className="bg-gray-100">
                     <tr>
