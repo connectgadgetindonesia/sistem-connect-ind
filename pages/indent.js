@@ -1,7 +1,7 @@
-// pages/indent.js
 import Layout from '@/components/Layout'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import Link from 'next/link'
 
 export default function TransaksiIndent() {
   const [form, setForm] = useState({
@@ -36,9 +36,9 @@ export default function TransaksiIndent() {
     const bulan = String(now.getMonth() + 1).padStart(2, '0')
     const tahun = now.getFullYear()
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('transaksi_indent')
-      .select('invoice_id, tanggal')
+      .select('invoice_id')
       .like('invoice_id', `INV-DP-CTI-${bulan}-${tahun}-%`)
 
     const urut = (data?.length || 0) + 1
@@ -120,13 +120,29 @@ export default function TransaksiIndent() {
         <div className="space-y-4">
           {filtered.map((item, i) => (
             <div key={i} className="border p-4 rounded">
-              <div className="font-semibold">{item.nama} ({item.tanggal})</div>
+              <div className="font-semibold text-lg">{item.nama} ({item.tanggal})</div>
+              {item.invoice_id && (
+                <div className="text-xs text-gray-600 mb-1">
+                  Invoice: <span className="font-mono">{item.invoice_id}</span>
+                </div>
+              )}
               <div className="text-sm">{item.nama_produk} - {item.warna} - {item.storage} - Garansi: {item.garansi}</div>
               <div className="text-sm">Alamat: {item.alamat} | WA: {item.no_wa}</div>
               <div className="text-sm">DP: Rp {item.dp.toLocaleString()} | Harga Jual: Rp {item.harga_jual.toLocaleString()}</div>
               <div className="text-sm font-medium text-green-600">
                 Status: {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 DP Masuk, sisa Rp ' + (item.harga_jual - item.dp).toLocaleString()}
               </div>
+              {item.invoice_id && (
+                <div className="mt-2">
+                  <Link
+                    href={`/invoice/indent/${item.id}`}
+                    target="_blank"
+                    className="inline-block bg-gray-800 text-white text-xs px-3 py-1 rounded hover:bg-black"
+                  >
+                    🧾 Cetak Invoice
+                  </Link>
+                </div>
+              )}
             </div>
           ))}
         </div>
