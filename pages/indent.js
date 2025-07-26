@@ -18,20 +18,22 @@ export default function TransaksiIndent() {
   })
   const [list, setList] = useState([])
   const [search, setSearch] = useState('')
+  const [editId, setEditId] = useState(null)
+  const isEditing = editId !== null
 
   useEffect(() => {
     fetchList()
   }, [])
 
   const fetchList = async () => {
-  const { data } = await supabase
-    .from('transaksi_indent')
-    .select('*')
-    .order('tanggal', { ascending: false }) // ✅ Urutkan dari tanggal terbaru
-    .order('id', { ascending: false })       // ✅ Tambahan: kalau tanggal sama, tetap urut input terbaru
+    const { data } = await supabase
+      .from('transaksi_indent')
+      .select('*')
+      .order('tanggal', { ascending: false })
+      .order('id', { ascending: false })
 
-  setList(data || [])
-}
+    setList(data || [])
+  }
 
   const generateInvoiceId = async () => {
     const now = new Date()
@@ -56,26 +58,58 @@ export default function TransaksiIndent() {
     const dp = parseInt(form.dp)
     const harga_jual = parseInt(form.harga_jual)
     const sisa_pembayaran = harga_jual - dp
-    const invoice_id = await generateInvoiceId()
 
-    const { error } = await supabase.from('transaksi_indent').insert({
-      ...form,
-      dp,
-      harga_jual,
-      tanggal,
-      sisa_pembayaran,
-      status: 'DP Masuk',
-      invoice_id
-    })
+    if (isEditing) {
+      const { error } = await supabase
+        .from('transaksi_indent')
+        .update({ ...form, dp, harga_jual, sisa_pembayaran, tanggal })
+        .eq('id', editId)
 
-    if (!error) {
-      setForm({
-        nama: '', alamat: '', no_wa: '', nama_produk: '',
-        warna: '', storage: '', garansi: '',
-        dp: '', harga_jual: '', tanggal: ''
+      if (!error) {
+        resetForm()
+        fetchList()
+      } else alert('Gagal update')
+    } else {
+      const invoice_id = await generateInvoiceId()
+      const { error } = await supabase.from('transaksi_indent').insert({
+        ...form,
+        dp,
+        harga_jual,
+        tanggal,
+        sisa_pembayaran,
+        status: 'DP Masuk',
+        invoice_id
       })
-      fetchList()
-    } else alert('Gagal simpan')
+
+      if (!error) {
+        resetForm()
+        fetchList()
+      } else alert('Gagal simpan')
+    }
+  }
+
+  const resetForm = () => {
+    setForm({
+      nama: '', alamat: '', no_wa: '', nama_produk: '',
+      warna: '', storage: '', garansi: '',
+      dp: '', harga_jual: '', tanggal: ''
+    })
+    setEditId(null)
+  }
+
+  const handleEdit = (item) => {
+    setForm({ ...item })
+    setEditId(item.id)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleDelete = async (id) => {
+    const konfirmasi = confirm('Yakin ingin hapus transaksi ini?')
+    if (!konfirmasi) return
+
+    const { error } = await supabase.from('transaksi_indent').delete().eq('id', id)
+    if (!error) fetchList()
+    else alert('Gagal hapus')
   }
 
   const filtered = list.filter((item) =>
@@ -108,7 +142,9 @@ export default function TransaksiIndent() {
               />
             )
           ))}
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded col-span-full">Simpan Transaksi</button>
+          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded col-span-full">
+            {isEditing ? 'Update Transaksi' : 'Simpan Transaksi'}
+          </button>
         </form>
 
         <input
@@ -135,7 +171,7 @@ export default function TransaksiIndent() {
                 Status: {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 DP Masuk, sisa Rp ' + (item.harga_jual - item.dp).toLocaleString()}
               </div>
               {item.invoice_id && (
-                <div className="mt-2">
+                <div className="mt-2 flex gap-2 items-center">
                   <Link
                     href={`/invoice/indent/${item.id}`}
                     target="_blank"
@@ -143,6 +179,8 @@ export default function TransaksiIndent() {
                   >
                     🧾 Cetak Invoice
                   </Link>
+                  <button onClick={() => handleEdit(item)} className="text-blue-600 text-xs">Edit</button>
+                  <button onClick={() => handleDelete(item.id)} className="text-red-600 text-xs">Hapus</button>
                 </div>
               )}
             </div>
