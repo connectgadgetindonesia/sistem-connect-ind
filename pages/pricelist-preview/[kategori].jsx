@@ -15,7 +15,7 @@ export default function PricelistKategori({ kategoriParam }) {
     const { data } = await supabase
       .from("pricelist")
       .select("*")
-      .eq("kategori", kategoriParam);
+      .ilike("kategori", kategoriParam.toLowerCase()); // ✅ fix agar tidak case-sensitive
     setData(data || []);
   }
 
@@ -75,31 +75,31 @@ export default function PricelistKategori({ kategoriParam }) {
               <th className="border px-2 py-1">Harga Offline</th>
             </tr>
           </thead>
-    <tbody>
-  {data.length === 0 ? (
-    <tr>
-      <td colSpan="5" className="text-center py-2">
-        Belum ada data
-      </td>
-    </tr>
-  ) : (
-    data.map((item, i) => (
-      <tr key={i}>
-        <td className="border px-2 py-1">{item.nama_produk}</td>
-        <td className="border px-2 py-1">{item.kategori}</td>
-        <td className="border px-2 py-1">
-          Rp {(parseInt(item.harga_tokped) || 0).toLocaleString()}
-        </td>
-        <td className="border px-2 py-1">
-          Rp {(parseInt(item.harga_shopee) || 0).toLocaleString()}
-        </td>
-        <td className="border px-2 py-1 font-bold">
-          Rp {(parseInt(item.harga_offline) || 0).toLocaleString()}
-        </td>
-      </tr>
-    ))
-  )}
-</tbody>
+          <tbody>
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="text-center py-2">
+                  Belum ada data
+                </td>
+              </tr>
+            ) : (
+              data.map((item, i) => (
+                <tr key={i}>
+                  <td className="border px-2 py-1">{item.nama_produk}</td>
+                  <td className="border px-2 py-1">{item.kategori}</td>
+                  <td className="border px-2 py-1">
+                    Rp {(parseInt(item.harga_tokped) || 0).toLocaleString()}
+                  </td>
+                  <td className="border px-2 py-1">
+                    Rp {(parseInt(item.harga_shopee) || 0).toLocaleString()}
+                  </td>
+                  <td className="border px-2 py-1 font-bold">
+                    Rp {(parseInt(item.harga_offline) || 0).toLocaleString()}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
         </table>
       </div>
     </div>
