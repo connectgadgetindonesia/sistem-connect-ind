@@ -24,25 +24,36 @@ export default function StokAksesoris() {
     setData(data)
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!sku || !namaProduk || !warna || !stok || !hargaModal) return alert('Lengkapi semua data')
+async function handleSubmit(e) {
+  e.preventDefault();
+  if (!sku || !namaProduk || !warna || !stok || !hargaModal) return alert('Lengkapi semua data');
 
-    await supabase.from('stok_aksesoris').insert({
-      sku: sku.toUpperCase(),
-      nama_produk: namaProduk.toUpperCase(),
-      warna: warna.toUpperCase(),
-      stok: parseInt(stok),
-      harga_modal: parseInt(hargaModal)
-    })
+  // ✅ Cek apakah SKU sudah ada
+  const { data: existing } = await supabase
+    .from('stok_aksesoris')
+    .select('id')
+    .eq('sku', sku.toUpperCase());
 
-    setSku('')
-    setNamaProduk('')
-    setWarna('')
-    setStok('')
-    setHargaModal('')
-    fetchData()
+  if (existing && existing.length > 0) {
+    alert('❗ SKU sudah ada, silakan klik "Update" untuk ubah stok.');
+    return;
   }
+
+  await supabase.from('stok_aksesoris').insert({
+    sku: sku.toUpperCase(),
+    nama_produk: namaProduk.toUpperCase(),
+    warna: warna.toUpperCase(),
+    stok: parseInt(stok),
+    harga_modal: parseInt(hargaModal)
+  });
+
+  setSku('');
+  setNamaProduk('');
+  setWarna('');
+  setStok('');
+  setHargaModal('');
+  fetchData();
+}
 
   async function handleDelete(id) {
     if (confirm('Yakin ingin hapus?')) {
