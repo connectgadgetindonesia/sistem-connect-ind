@@ -24,12 +24,14 @@ export default function TransaksiIndent() {
   }, [])
 
   const fetchList = async () => {
-    const { data } = await supabase
-      .from('transaksi_indent')
-      .select('*')
-      .order('tanggal', { ascending: false })
-    setList(data || [])
-  }
+  const { data } = await supabase
+    .from('transaksi_indent')
+    .select('*')
+    .order('tanggal', { ascending: false }) // ✅ Urutkan dari tanggal terbaru
+    .order('id', { ascending: false })       // ✅ Tambahan: kalau tanggal sama, tetap urut input terbaru
+
+  setList(data || [])
+}
 
   const generateInvoiceId = async () => {
     const now = new Date()
