@@ -75,7 +75,7 @@ export default function PricelistKategori({ kategoriParam }) {
               <th className="border px-2 py-1">Harga Offline</th>
             </tr>
           </thead>
-          <tbody>
+    <tbody>
   {data.length === 0 ? (
     <tr>
       <td colSpan="5" className="text-center py-2">
