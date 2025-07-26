@@ -35,25 +35,37 @@ export default function Home() {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    if (isEditing) {
-      const { error } = await supabase.from('stok').update(formData).eq('id', editId)
-      if (error) alert('Gagal update data')
-      else {
-        alert('Berhasil diupdate')
-        resetForm()
-        fetchData()
-      }
-    } else {
-      const { error } = await supabase.from('stok').insert([formData])
-      if (error) alert('Gagal tambah data')
-      else {
-        alert('Berhasil ditambahkan')
-        resetForm()
-        fetchData()
-      }
+  e.preventDefault();
+
+  if (isEditing) {
+    const { error } = await supabase.from('stok').update(formData).eq('id', editId);
+    if (error) alert('Gagal update data');
+    else {
+      alert('Berhasil diupdate');
+      resetForm();
+      fetchData();
+    }
+  } else {
+    // ✅ Cek apakah SN sudah ada
+    const { data: existing } = await supabase
+      .from('stok')
+      .select('id')
+      .eq('sn', formData.sn.trim());
+
+    if (existing && existing.length > 0) {
+      alert('❗ SN sudah ada, silakan klik "Edit" untuk ubah data.');
+      return;
+    }
+
+    const { error } = await supabase.from('stok').insert([formData]);
+    if (error) alert('Gagal tambah data');
+    else {
+      alert('Berhasil ditambahkan');
+      resetForm();
+      fetchData();
     }
   }
+}
 
   async function handleDelete(id) {
     if (confirm('Yakin hapus data ini?')) {
