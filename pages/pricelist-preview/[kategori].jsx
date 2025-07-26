@@ -15,7 +15,8 @@ export default function PricelistKategori({ kategoriParam }) {
     const { data } = await supabase
       .from("pricelist")
       .select("*")
-      .ilike("kategori", kategoriParam.toLowerCase()); // ✅ fix agar tidak case-sensitive
+      .ilike("kategori", kategoriParam.toLowerCase())
+      .order("nama_produk", { ascending: true }); // ✅ fix agar tidak case-sensitive     
     setData(data || []);
   }
 
