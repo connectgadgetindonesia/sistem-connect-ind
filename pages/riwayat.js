@@ -31,16 +31,23 @@ export default function RiwayatPenjualan() {
   }
 
   async function fetchData() {
-    let query = supabase.from('penjualan_baru').select('*')
+  let query = supabase.from('penjualan_baru').select('*');
 
-    if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal)
-    if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
-    if (filter.search) query = query.ilike('nama_pembeli', `%${filter.search}%`)
-
-    const { data } = await query.order('tanggal', { ascending: false })
-    const grouped = groupByInvoice(data)
-    setData(grouped)
+  if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal);
+  if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir);
+  if (filter.search) {
+    query = query.or(
+      `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
+    );
   }
+
+  const { data, error } = await query
+    .order('tanggal', { ascending: false }) // ✅ Urut dari transaksi terbaru
+    .order('invoice_id', { ascending: false }); // ✅ Tambahan supaya urut invoice terbaru dulu
+
+  const grouped = groupByInvoice(data || []);
+  setData(grouped);
+}
 
   async function handleDelete(invoice_id) {
     const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
