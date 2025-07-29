@@ -7,6 +7,7 @@ export default function DataCustomer() {
   const [search, setSearch] = useState('')
   const [tanggalAwal, setTanggalAwal] = useState('')
   const [tanggalAkhir, setTanggalAkhir] = useState('')
+  const [sortBy, setSortBy] = useState('nama') // ✅ NEW: filter urutan
 
   useEffect(() => {
     fetchData()
@@ -42,14 +43,22 @@ export default function DataCustomer() {
     customerMap[nama].nominal += parseInt(item.harga_jual)
   })
 
-  const hasil = Object.values(customerMap).filter((c) => {
-    const s = search.toLowerCase()
-    return (
-      c.nama.toLowerCase().includes(s) ||
-      c.alamat?.toLowerCase().includes(s) ||
-      c.no_wa?.toLowerCase().includes(s)
-    )
-  })
+  // ✅ FILTER + SORT
+  const hasil = Object.values(customerMap)
+    .filter((c) => {
+      const s = search.toLowerCase()
+      return (
+        c.nama.toLowerCase().includes(s) ||
+        c.alamat?.toLowerCase().includes(s) ||
+        c.no_wa?.toLowerCase().includes(s)
+      )
+    })
+    .sort((a, b) => {
+      if (sortBy === 'nama') return a.nama.localeCompare(b.nama)
+      if (sortBy === 'transaksi') return b.jumlah - a.jumlah
+      if (sortBy === 'nominal') return b.nominal - a.nominal
+      return 0
+    })
 
   return (
     <Layout>
@@ -66,6 +75,15 @@ export default function DataCustomer() {
             onChange={(e) => setSearch(e.target.value)}
             className="border px-2 py-1 w-full md:w-1/3"
           />
+          <select
+            className="border p-2"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="nama">Urut Abjad (A-Z)</option>
+            <option value="transaksi">Transaksi Terbanyak</option>
+            <option value="nominal">Nominal Tertinggi</option>
+          </select>
         </div>
 
         <div className="overflow-x-auto">
