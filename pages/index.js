@@ -29,7 +29,10 @@ export default function Home() {
   }, [])
 
   async function fetchData() {
-    const { data, error } = await supabase.from('stok').select('*')
+    const { data, error } = await supabase
+  .from('stok')
+  .select('*')
+  .order('nama_produk', { ascending: true }) // ✅ urut abjad A-Z
     if (error) console.error('Gagal ambil data:', error)
     else setStok(data)
   }
