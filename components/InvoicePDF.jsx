@@ -9,6 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+const toNumber = (v) => (typeof v === "number" ? v : parseInt(String(v || "0"), 10) || 0);
+
 export default function InvoicePDF() {
   const router = useRouter();
   const { id } = router.query;
@@ -24,10 +26,10 @@ export default function InvoicePDF() {
       .from("penjualan_baru")
       .select("*")
       .eq("invoice_id", id)
-      .eq("is_bonus", false)
+      .eq("is_bonus", false)                    // hanya item berbayar yang ditampilkan
       .order("id", { ascending: true });
 
-    if (!error) setData(data);
+    if (!error) setData(data || []);
     else console.error("Fetch error:", error);
   };
 
@@ -56,7 +58,19 @@ export default function InvoicePDF() {
 
   if (!data || data.length === 0) return <div>Loading...</div>;
 
-  const totalHarga = data.reduce((acc, item) => acc + parseInt(item.harga_jual), 0);
+  // ===== Hitung Subtotal / Discount / Total =====
+  const subtotal = data.reduce((acc, item) => acc + toNumber(item.harga_jual), 0);
+
+  // Diskon disimpan di setiap baris: diskon_invoice (sama untuk semua baris) & diskon_item (alokasi per item)
+  const discountByItems = data.reduce((acc, item) => acc + toNumber(item.diskon_item), 0);
+  const discountByInvoice = data.reduce(
+    (max, item) => Math.max(max, toNumber(item.diskon_invoice)),
+    0
+  );
+  // Pakai sum(diskon_item) jika ada; fallback ke max(diskon_invoice)
+  const rawDiscount = discountByItems > 0 ? discountByItems : discountByInvoice;
+  const discount = Math.min(subtotal, rawDiscount);       // clamp agar tidak melebihi subtotal
+  const total = Math.max(0, subtotal - discount);
 
   return (
     <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
@@ -77,7 +91,7 @@ export default function InvoicePDF() {
           borderRadius: "20px",
         }}
       >
-        {/* Header Baru */}
+        {/* Header */}
         <div style={{
           position: "relative",
           width: "100%",
@@ -93,7 +107,7 @@ export default function InvoicePDF() {
           />
         </div>
 
-        {/* Tiga kolom informasi */}
+        {/* Info */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20, marginTop: 10 }}>
           <div>
             <strong>Invoice Details</strong><br />
@@ -148,8 +162,8 @@ export default function InvoicePDF() {
                   {item.garansi && <span style={{ color: "#7b88a8" }}>Garansi: {item.garansi}</span>}
                 </td>
                 <td style={{ textAlign: "left" }}>1</td>
-                <td style={{ textAlign: "left" }}>{formatRupiah(item.harga_jual)}</td>
-                <td style={{ textAlign: "left" }}>{formatRupiah(item.harga_jual)}</td>
+                <td style={{ textAlign: "left" }}>{formatRupiah(toNumber(item.harga_jual))}</td>
+                <td style={{ textAlign: "left" }}>{formatRupiah(toNumber(item.harga_jual))}</td>
               </tr>
             ))}
           </tbody>
@@ -161,15 +175,15 @@ export default function InvoicePDF() {
             <tbody>
               <tr>
                 <td style={{ color: "#7b88a8", textAlign: "left" }}>Sub Total:</td>
-                <td style={{ paddingLeft: 20 }}>{formatRupiah(totalHarga)}</td>
+                <td style={{ paddingLeft: 20 }}>{formatRupiah(subtotal)}</td>
               </tr>
               <tr>
                 <td style={{ color: "#7b88a8", textAlign: "left" }}>Discount:</td>
-                <td style={{ paddingLeft: 20 }}>-</td>
+                <td style={{ paddingLeft: 20 }}>{discount > 0 ? formatRupiah(discount) : "-"}</td>
               </tr>
               <tr>
                 <td style={{ textAlign: "left" }}><strong>Total:</strong></td>
-                <td style={{ paddingLeft: 20 }}><strong>{formatRupiah(totalHarga)}</strong></td>
+                <td style={{ paddingLeft: 20 }}><strong>{formatRupiah(total)}</strong></td>
               </tr>
             </tbody>
           </table>
