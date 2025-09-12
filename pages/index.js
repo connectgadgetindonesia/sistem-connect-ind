@@ -7,8 +7,6 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editId, setEditId] = useState(null)
-
-  // ⚠️ default READY agar page ringan
   const [filterStatus, setFilterStatus] = useState('READY')
   const [filterStartDate, setFilterStartDate] = useState('')
   const [filterEndDate, setFilterEndDate] = useState('')
@@ -27,52 +25,55 @@ export default function Home() {
   })
 
   useEffect(() => {
-    fetchData('READY') // load awal: hanya READY
+    fetchData()
   }, [])
 
-  // 🔁 refetch bila status diganti (READY ↔ SOLD)
-  useEffect(() => {
-    fetchData(filterStatus || 'READY')
-  }, [filterStatus])
-
-  async function fetchData(status = 'READY') {
-    let query = supabase.from('stok').select('*').order('nama_produk', { ascending: true })
-    if (status) query = query.eq('status', status) // ambil hanya status terpilih
-    const { data, error } = await query
+  async function fetchData() {
+    const { data, error } = await supabase
+  .from('stok')
+  .select('*')
+  .order('nama_produk', { ascending: true }) // ✅ urut abjad A-Z
     if (error) console.error('Gagal ambil data:', error)
-    else setStok(data || [])
+    else setStok(data)
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    if (isEditing) {
-      const { error } = await supabase.from('stok').update(formData).eq('id', editId);
-      if (error) alert('Gagal update data');
-      else {
-        alert('Berhasil diupdate');
-        resetForm();
-        fetchData(filterStatus || 'READY');
-      }
-    } else {
-      const { data: existing } = await supabase.from('stok').select('id').eq('sn', formData.sn.trim());
-      if (existing && existing.length > 0) {
-        alert('❗ SN sudah ada, silakan klik "Edit" untuk ubah data.');
-        return;
-      }
-      const { error } = await supabase.from('stok').insert([formData]);
-      if (error) alert('Gagal tambah data');
-      else {
-        alert('Berhasil ditambahkan');
-        resetForm();
-        fetchData(filterStatus || 'READY');
-      }
+  e.preventDefault();
+
+  if (isEditing) {
+    const { error } = await supabase.from('stok').update(formData).eq('id', editId);
+    if (error) alert('Gagal update data');
+    else {
+      alert('Berhasil diupdate');
+      resetForm();
+      fetchData();
+    }
+  } else {
+    // ✅ Cek apakah SN sudah ada
+    const { data: existing } = await supabase
+      .from('stok')
+      .select('id')
+      .eq('sn', formData.sn.trim());
+
+    if (existing && existing.length > 0) {
+      alert('❗ SN sudah ada, silakan klik "Edit" untuk ubah data.');
+      return;
+    }
+
+    const { error } = await supabase.from('stok').insert([formData]);
+    if (error) alert('Gagal tambah data');
+    else {
+      alert('Berhasil ditambahkan');
+      resetForm();
+      fetchData();
     }
   }
+}
 
   async function handleDelete(id) {
     if (confirm('Yakin hapus data ini?')) {
       const { error } = await supabase.from('stok').delete().eq('id', id)
-      if (!error) fetchData(filterStatus || 'READY')
+      if (!error) fetchData()
     }
   }
 
@@ -99,14 +100,14 @@ export default function Home() {
     setEditId(null)
   }
 
-  // Filter lokal di dataset yang sudah dipersempit (READY atau SOLD)
   const filteredStok = stok.filter(item => {
     const matchSearch = [item.nama_produk, item.sn, item.warna].some(field =>
       field?.toLowerCase().includes(searchTerm.toLowerCase())
     )
+    const matchStatus = filterStatus ? item.status === filterStatus : true
     const matchStart = filterStartDate ? new Date(item.tanggal_masuk) >= new Date(filterStartDate) : true
     const matchEnd = filterEndDate ? new Date(item.tanggal_masuk) <= new Date(filterEndDate) : true
-    return matchSearch && matchStart && matchEnd
+    return matchSearch && matchStatus && matchStart && matchEnd
   })
 
   return (
@@ -114,7 +115,37 @@ export default function Home() {
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Form Stok Barang CONNECT.IND</h1>
 
-        {/* ... (form input tetap seperti semula) ... */}
+        <form onSubmit={handleSubmit} className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            ['Nama Produk', 'nama_produk'],
+            ['Serial Number (SN)', 'sn'],
+            ['IMEI', 'imei'],
+            ['Warna', 'warna'],
+            ['Storage', 'storage'],
+            ['Garansi', 'garansi'],
+            ['Asal Produk', 'asal_produk'],
+            ['Harga Modal (Rp)', 'harga_modal'],
+            ['Tanggal Masuk', 'tanggal_masuk']
+          ].map(([label, field]) => (
+            <input
+              key={field}
+              className="border p-2"
+              type={field === 'harga_modal' ? 'number' : field === 'tanggal_masuk' ? 'date' : 'text'}
+              placeholder={label}
+              value={formData[field]}
+              onChange={(e) =>
+                setFormData({ ...formData, [field]: e.target.value })
+              }
+            />
+          ))}
+
+          <button
+            className="bg-green-600 text-white px-4 py-2 rounded col-span-1 md:col-span-2"
+            type="submit"
+          >
+            {isEditing ? 'Update Data' : 'Simpan ke Database'}
+          </button>
+        </form>
 
         <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-4">
           <input
@@ -129,7 +160,7 @@ export default function Home() {
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
           >
-            {/* hanya dua opsi, default READY */}
+            <option value="">Semua Status</option>
             <option value="READY">READY</option>
             <option value="SOLD">SOLD</option>
           </select>
@@ -151,7 +182,7 @@ export default function Home() {
         <ul className="space-y-2 text-sm">
           {filteredStok.map((item) => (
             <li key={item.id} className="border-b pb-2">
-              <strong>{item.nama_produk}</strong> | SN: {item.sn} | IMEI: {item.imei} | Warna: {item.warna} | Storage: {item.storage} | Garansi: {item.garansi} | Modal: Rp{parseInt(item.harga_modal || 0).toLocaleString()} | Status: {item.status} | Asal: {item.asal_produk} | Masuk: {item.tanggal_masuk}
+              <strong>{item.nama_produk}</strong> | SN: {item.sn} | IMEI: {item.imei} | Warna: {item.warna} | Storage: {item.storage} | Garansi: {item.garansi} | Modal: Rp{item.harga_modal?.toLocaleString()} | Status: {item.status} | Asal: {item.asal_produk} | Masuk: {item.tanggal_masuk}
               <div className="mt-1 space-x-2">
                 <button onClick={() => handleEdit(item)} className="text-blue-600">Edit</button>
                 <button onClick={() => handleDelete(item.id)} className="text-red-600">Hapus</button>
