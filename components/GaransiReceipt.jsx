@@ -1,75 +1,68 @@
 // components/GaransiReceipt.jsx
-import React, { forwardRef, useMemo } from "react";
+import React, { forwardRef } from "react";
 
 const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
-  // fallback dokumen & tanggal agar tidak kosong
-  const docNo = useMemo(() => {
-    if (row?.doc_no) return row.doc_no;
-    const tgl = (row?.tanggal_terima || row?.created_at || "").slice(0, 10) || "0000-00-00";
-    const frag = String(row?.id || "").split("-")[0].toUpperCase();
-    return `GAR-${tgl}-${frag}`;
-  }, [row]);
+  // --- gaya dasar ---
+  const page = {
+    width: "595px",           // A4 @ 72dpi (sesuai invoice lain)
+    minHeight: "842px",
+    margin: "0 auto",
+    background: "#fff",
+    padding: "32px",
+    boxSizing: "border-box",
+    borderRadius: "20px",
+    fontFamily: "'Inter', sans-serif",
+  };
 
-  const terimaDate =
-    (row?.tanggal_terima || row?.created_at || "").slice(0, 10) || "-";
+  const infoBase = {
+    fontSize: 10,
+    lineHeight: 1.5,
+  };
 
-  // util style
-  const base = { fontSize: 11, lineHeight: 1.45, wordBreak: "break-word" };
-  const cell = { ...base, padding: 10, verticalAlign: "top", textAlign: "left" };
+  // sel tabel yang aman untuk wrap, tidak memotong baris
+  const cell = {
+    padding: "10px 8px",
+    fontSize: 11,
+    verticalAlign: "top",
+    lineHeight: 1.6,
+    wordBreak: "break-word",
+    whiteSpace: "pre-line",
+    textAlign: "left",
+  };
 
   return (
-    <div
-      ref={ref}
-      style={{
-        width: "595px",          // sama seperti invoice indent
-        minHeight: "842px",      // A4 portrait @pt
-        margin: "auto",
-        background: "#fff",
-        padding: "32px",
-        boxSizing: "border-box",
-        borderRadius: "20px",
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
+    <div ref={ref} style={page}>
       {/* Header */}
       <div
         style={{
-          position: "relative",
           width: "100%",
-          height: "130px",
-          borderRadius: "20px",
+          height: 130,
+          borderRadius: 20,
           overflow: "hidden",
-          marginBottom: "12px",
+          marginBottom: 12,
         }}
       >
         <img
           src="/head-new.png"
           alt="Header"
-          style={{ display: "block", margin: "0 auto", maxWidth: "100%" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
         />
       </div>
 
       {/* 3 kolom info */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 10.5,
-          margin: "10px 0 20px",
-        }}
-      >
-        <div style={{ ...base }}>
+      <div style={{ display: "flex", gap: 16, margin: "10px 0 20px" }}>
+        <div style={{ ...infoBase, flex: "1 1 33%" }}>
           <strong>Receiving Details</strong>
           <br />
           Document No.:<br />
-          {docNo}
+          {row?.doc_no || "—"}
           <br />
           Receive date:
           <br />
-          {terimaDate}
+          {row?.tanggal_terima || "—"}
         </div>
 
-        <div style={{ ...base }}>
+        <div style={{ ...infoBase, flex: "1 1 33%" }}>
           <strong>CONNECT.IND</strong>
           <br />
           (+62) 896-31-4000-31
@@ -83,14 +76,14 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
           50145
         </div>
 
-        <div style={{ ...base, textAlign: "right" }}>
+        <div style={{ ...infoBase, flex: "1 1 33%", textAlign: "right" }}>
           <strong>Customer</strong>
           <br />
-          {row?.nama || "-"}
+          {row?.nama || "—"}
           <br />
-          {row?.alamat || "-"}
+          {row?.alamat || "—"}
           <br />
-          {row?.no_wa || "-"}
+          {row?.no_wa || "—"}
         </div>
       </div>
 
@@ -100,43 +93,38 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
           width: "100%",
           borderCollapse: "separate",
           borderSpacing: 0,
+          tableLayout: "fixed",     // biar kolom tidak menyusut aneh
           marginBottom: 24,
-          tableLayout: "fixed", // penting agar kolom stabil
-          overflow: "hidden",
         }}
       >
-        {/* Lebar kolom supaya wrap rapi */}
         <colgroup>
-          <col style={{ width: "42%" }} />
-          <col style={{ width: "18%" }} />
-          <col style={{ width: "26%" }} />
+          <col style={{ width: "40%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "32%" }} />
           <col style={{ width: "14%" }} />
         </colgroup>
-
         <thead>
           <tr style={{ background: "#f3f6fd" }}>
-            <th style={{ ...cell, borderTopLeftRadius: 8 }}>Item</th>
-            <th style={cell}>SN</th>
-            <th style={cell}>Keterangan</th>
-            <th style={{ ...cell, borderTopRightRadius: 8 }}>Status</th>
+            <th style={{ ...cell, borderTopLeftRadius: 8, paddingTop: 8, paddingBottom: 8 }}>Item</th>
+            <th style={{ ...cell, paddingTop: 8, paddingBottom: 8 }}>SN</th>
+            <th style={{ ...cell, paddingTop: 8, paddingBottom: 8 }}>Keterangan</th>
+            <th style={{ ...cell, borderTopRightRadius: 8, paddingTop: 8, paddingBottom: 8 }}>Status</th>
           </tr>
         </thead>
-
         <tbody>
           <tr>
             <td style={cell}>
-              <strong>{row?.nama_produk || "-"}</strong>
+              <strong>{row?.nama_produk || "—"}</strong>
             </td>
-
-            <td style={cell}>{row?.sn || "-"}</td>
-
+            <td style={cell}>{row?.sn || "—"}</td>
             <td style={cell}>
-              <div>Rusak: {row?.keterangan_rusak || "—"}</div>
-              <div>Nomor SO: {row?.no_so || "—"}</div>
-              <div>SN Pengganti: {row?.sn_pengganti || "—"}</div>
+              Rusak: {row?.keterangan_rusak || "—"}
+              {"\n"}
+              Nomor SO: {row?.no_so || "—"}
+              {"\n"}
+              SN Pengganti: {row?.sn_pengganti || "—"}
             </td>
-
-            <td style={{ ...cell, textAlign: "left" }}>{row?.status || "-"}</td>
+            <td style={cell}>{row?.status || "—"}</td>
           </tr>
         </tbody>
       </table>
@@ -144,18 +132,16 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
       {/* Notes */}
       <div
         style={{
-          ...base,
-          fontSize: 10.5,
+          ...infoBase,
           background: "#f3f6fd",
           padding: "12px 16px",
-          borderRadius: "10px",
+          borderRadius: 10,
         }}
       >
         <strong>Notes:</strong>
         <br />
-        Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi dari
-        pelanggan untuk proses pemeriksaan/servis. Simpan dokumen ini untuk
-        pengambilan unit.
+        Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi dari pelanggan untuk proses
+        pemeriksaan/servis. Simpan dokumen ini untuk pengambilan unit.
       </div>
     </div>
   );
