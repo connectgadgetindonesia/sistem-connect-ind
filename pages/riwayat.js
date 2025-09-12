@@ -4,16 +4,23 @@ import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 
 export default function RiwayatPenjualan() {
-  const [data, setData] = useState([])
+  const [rows, setRows] = useState([])
+  const [mode, setMode] = useState('harian') // 'harian' | 'history'
+  const today = dayjs().format('YYYY-MM-DD')
   const [filter, setFilter] = useState({
-    tanggal_awal: '',
-    tanggal_akhir: '',
+    tanggal_awal: today,
+    tanggal_akhir: today,
     search: ''
   })
 
   useEffect(() => {
+    // saat ganti mode, set default tanggal untuk harian
+    if (mode === 'harian') {
+      setFilter((f) => ({ ...f, tanggal_awal: today, tanggal_akhir: today }))
+    }
     fetchData()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   function groupByInvoice(data) {
     const grouped = {}
@@ -31,64 +38,129 @@ export default function RiwayatPenjualan() {
   }
 
   async function fetchData() {
-  let query = supabase.from('penjualan_baru').select('*');
+    let query = supabase.from('penjualan_baru').select('*')
 
-  if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal);
-  if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir);
-  if (filter.search) {
-    query = query.or(
-      `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
-    );
+    // Mode harian: paksa hanya hari ini agar ringan
+    if (mode === 'harian') {
+      query = query.eq('tanggal', today)
+    } else {
+      // Mode history: gunakan filter tanggal bila ada
+      if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal)
+      if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
+    }
+
+    // Pencarian (berlaku untuk dua mode)
+    if (filter.search) {
+      query = query.or(
+        `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
+      )
+    }
+
+    const { data, error } = await query
+      .order('tanggal', { ascending: false })
+      .order('invoice_id', { ascending: false })
+
+    if (error) {
+      console.error(error)
+      setRows([])
+      return
+    }
+    setRows(groupByInvoice(data || []))
   }
-
-  const { data, error } = await query
-    .order('tanggal', { ascending: false }) // ✅ Urut dari transaksi terbaru
-    .order('invoice_id', { ascending: false }); // ✅ Tambahan supaya urut invoice terbaru dulu
-
-  const grouped = groupByInvoice(data || []);
-  setData(grouped);
-}
 
   async function handleDelete(invoice_id) {
     const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
     if (!konfirmasi) return
 
-    // 1. Ambil semua data penjualan dengan invoice ini
+    // ambil semua baris invoice ini
     const { data: penjualan } = await supabase
       .from('penjualan_baru')
       .select('*')
       .eq('invoice_id', invoice_id)
 
-    for (const item of penjualan) {
-      // 2. Jika barang dari stok utama, kembalikan statusnya ke READY
+    // kembalikan stok unit (jika dari tabel stok utama)
+    for (const item of penjualan || []) {
       const { data: stokData } = await supabase
         .from('stok')
         .select('id')
         .eq('sn', item.sn_sku)
         .maybeSingle()
-
       if (stokData) {
         await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
       }
     }
 
-    // 3. Hapus semua data penjualan dengan invoice tersebut
+    // hapus transaksi
     await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
 
     alert('Data berhasil dihapus!')
     fetchData()
   }
 
+  const totalHarga = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
+  const totalLaba = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+
   return (
     <Layout>
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
 
-        <div className="flex flex-wrap gap-2 mb-4">
-          <input type="date" value={filter.tanggal_awal} onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })} className="border p-2" />
-          <input type="date" value={filter.tanggal_akhir} onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })} className="border p-2" />
-          <input type="text" placeholder="Cari nama, produk, SN/SKU..." value={filter.search} onChange={(e) => setFilter({ ...filter, search: e.target.value })} className="border p-2 flex-1" />
-          <button onClick={fetchData} className="bg-blue-600 text-white px-4 rounded">Cari</button>
+        {/* Tabs */}
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => setMode('harian')}
+            className={`px-3 py-1 rounded border ${mode === 'harian' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}
+          >
+            Harian (Hari ini)
+          </button>
+          <button
+            onClick={() => setMode('history')}
+            className={`px-3 py-1 rounded border ${mode === 'history' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'}`}
+          >
+            History
+          </button>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
+          <input
+            type="date"
+            value={filter.tanggal_awal}
+            onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })}
+            className="border p-2"
+            disabled={mode === 'harian'}
+          />
+          <input
+            type="date"
+            value={filter.tanggal_akhir}
+            onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })}
+            className="border p-2"
+            disabled={mode === 'harian'}
+          />
+          <input
+            type="text"
+            placeholder="Cari nama, produk, SN/SKU..."
+            value={filter.search}
+            onChange={(e) => setFilter({ ...filter, search: e.target.value })}
+            className="border p-2 flex-1 min-w-[220px]"
+          />
+          <button onClick={fetchData} className="bg-blue-600 text-white px-4 rounded">
+            Cari
+          </button>
+          {mode === 'history' && (
+            <button
+              onClick={() =>
+                setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}>
+              Reset Tanggal
+            </button>
+          )}
+          {mode === 'harian' && (
+            <span className="text-sm text-gray-600 ml-2">
+              Menampilkan transaksi tanggal <b>{dayjs(today).format('DD MMM YYYY')}</b>
+            </span>
+          )}
         </div>
 
         <table className="w-full table-auto border">
@@ -104,18 +176,18 @@ export default function RiwayatPenjualan() {
             </tr>
           </thead>
           <tbody>
-            {data.map((item) => (
+            {rows.map((item) => (
               <tr key={item.invoice_id}>
                 <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
                 <td className="border px-2 py-1">{item.nama_pembeli}</td>
                 <td className="border px-2 py-1">
-                  {item.produk.map(p => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
+                  {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
                 </td>
                 <td className="border px-2 py-1">
-                  Rp {item.produk.reduce((total, p) => total + parseInt(p.harga_jual), 0).toLocaleString()}
+                  Rp {totalHarga(item.produk).toLocaleString()}
                 </td>
                 <td className="border px-2 py-1">
-                  Rp {item.produk.reduce((total, p) => total + parseInt(p.laba), 0).toLocaleString()}
+                  Rp {totalLaba(item.produk).toLocaleString()}
                 </td>
                 <td className="border px-2 py-1">
                   <a
@@ -137,6 +209,13 @@ export default function RiwayatPenjualan() {
                 </td>
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr>
+                <td className="border px-2 py-4 text-center text-gray-500" colSpan={7}>
+                  Tidak ada data.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
