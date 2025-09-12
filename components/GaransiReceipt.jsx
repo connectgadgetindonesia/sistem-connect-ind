@@ -2,18 +2,27 @@
 import React, { forwardRef, useMemo } from "react";
 
 const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
-  const nomorDok = useMemo(() => {
-    const tgl = (row?.tanggal_diterima || row?.created_at || "").slice(0, 10);
-    const idFrag = String(row?.id || "").slice(0, 6).toUpperCase();
-    return `GAR-${tgl}-${idFrag}`;
+  // fallback dokumen & tanggal agar tidak kosong
+  const docNo = useMemo(() => {
+    if (row?.doc_no) return row.doc_no;
+    const tgl = (row?.tanggal_terima || row?.created_at || "").slice(0, 10) || "0000-00-00";
+    const frag = String(row?.id || "").split("-")[0].toUpperCase();
+    return `GAR-${tgl}-${frag}`;
   }, [row]);
+
+  const terimaDate =
+    (row?.tanggal_terima || row?.created_at || "").slice(0, 10) || "-";
+
+  // util style
+  const base = { fontSize: 11, lineHeight: 1.45, wordBreak: "break-word" };
+  const cell = { ...base, padding: 10, verticalAlign: "top", textAlign: "left" };
 
   return (
     <div
       ref={ref}
       style={{
-        width: "595px",
-        minHeight: "842px",
+        width: "595px",          // sama seperti invoice indent
+        minHeight: "842px",      // A4 portrait @pt
         margin: "auto",
         background: "#fff",
         padding: "32px",
@@ -30,7 +39,7 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
           height: "130px",
           borderRadius: "20px",
           overflow: "hidden",
-          marginBottom: "10px",
+          marginBottom: "12px",
         }}
       >
         <img
@@ -40,28 +49,27 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
         />
       </div>
 
-      {/* Tiga kolom informasi */}
+      {/* 3 kolom info */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          fontSize: 10,
-          marginBottom: 20,
-          marginTop: 10,
+          fontSize: 10.5,
+          margin: "10px 0 20px",
         }}
       >
-        <div>
+        <div style={{ ...base }}>
           <strong>Receiving Details</strong>
           <br />
           Document No.:<br />
-          {nomorDok}
+          {docNo}
           <br />
           Receive date:
           <br />
-          {(row?.tanggal_diterima || row?.created_at || "").slice(0, 10)}
+          {terimaDate}
         </div>
 
-        <div>
+        <div style={{ ...base }}>
           <strong>CONNECT.IND</strong>
           <br />
           (+62) 896-31-4000-31
@@ -75,10 +83,10 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
           50145
         </div>
 
-        <div style={{ textAlign: "right" }}>
+        <div style={{ ...base, textAlign: "right" }}>
           <strong>Customer</strong>
           <br />
-          {row?.nama_customer}
+          {row?.nama || "-"}
           <br />
           {row?.alamat || "-"}
           <br />
@@ -90,37 +98,45 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
       <table
         style={{
           width: "100%",
-          fontSize: 11,
           borderCollapse: "separate",
           borderSpacing: 0,
           marginBottom: 24,
+          tableLayout: "fixed", // penting agar kolom stabil
           overflow: "hidden",
         }}
       >
+        {/* Lebar kolom supaya wrap rapi */}
+        <colgroup>
+          <col style={{ width: "42%" }} />
+          <col style={{ width: "18%" }} />
+          <col style={{ width: "26%" }} />
+          <col style={{ width: "14%" }} />
+        </colgroup>
+
         <thead>
           <tr style={{ background: "#f3f6fd" }}>
-            <th style={{ textAlign: "left", padding: 8, borderTopLeftRadius: 8 }}>
-              Item
-            </th>
-            <th style={{ textAlign: "left" }}>SN</th>
-            <th style={{ textAlign: "left" }}>Keterangan</th>
-            <th style={{ textAlign: "left", borderTopRightRadius: 8 }}>Status</th>
+            <th style={{ ...cell, borderTopLeftRadius: 8 }}>Item</th>
+            <th style={cell}>SN</th>
+            <th style={cell}>Keterangan</th>
+            <th style={{ ...cell, borderTopRightRadius: 8 }}>Status</th>
           </tr>
         </thead>
+
         <tbody>
           <tr>
-            <td style={{ padding: 8 }}>
-              <strong>{row?.nama_produk}</strong>
+            <td style={cell}>
+              <strong>{row?.nama_produk || "-"}</strong>
             </td>
-            <td>{row?.serial_number}</td>
-            <td>
-              Rusak: {row?.keterangan_rusak || "-"}
-              <br />
-              Nomor SO: {row?.service_order_no || "-"}
-              <br />
-              SN Pengganti: {row?.serial_number_pengganti || "—"}
+
+            <td style={cell}>{row?.sn || "-"}</td>
+
+            <td style={cell}>
+              <div>Rusak: {row?.keterangan_rusak || "—"}</div>
+              <div>Nomor SO: {row?.no_so || "—"}</div>
+              <div>SN Pengganti: {row?.sn_pengganti || "—"}</div>
             </td>
-            <td>{row?.status}</td>
+
+            <td style={{ ...cell, textAlign: "left" }}>{row?.status || "-"}</td>
           </tr>
         </tbody>
       </table>
@@ -128,16 +144,17 @@ const GaransiReceipt = forwardRef(function GaransiReceipt({ row }, ref) {
       {/* Notes */}
       <div
         style={{
-          fontSize: 10,
+          ...base,
+          fontSize: 10.5,
           background: "#f3f6fd",
-          padding: "10px 16px",
+          padding: "12px 16px",
           borderRadius: "10px",
         }}
       >
         <strong>Notes:</strong>
         <br />
-        Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi
-        dari pelanggan untuk proses pemeriksaan/servis. Simpan dokumen ini untuk
+        Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi dari
+        pelanggan untuk proses pemeriksaan/servis. Simpan dokumen ini untuk
         pengambilan unit.
       </div>
     </div>
