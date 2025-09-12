@@ -10,50 +10,63 @@ export default function StokAksesoris() {
   const [hargaModal, setHargaModal] = useState('')
   const [data, setData] = useState([])
   const [search, setSearch] = useState('')
+
+  // Modal update stok
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [selectedData, setSelectedData] = useState(null)
   const [tambahStok, setTambahStok] = useState(0)
   const [kurangiStok, setKurangiStok] = useState(0)
+
+  // Modal edit data (sku/nama/warna/harga_modal)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editSku, setEditSku] = useState('')
+  const [editNama, setEditNama] = useState('')
+  const [editWarna, setEditWarna] = useState('')
+  const [editHargaModal, setEditHargaModal] = useState('')
 
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
-    const { data } = await supabase.from('stok_aksesoris').select('*').order('nama_produk', { ascending: true })
-    setData(data)
+    const { data } = await supabase
+      .from('stok_aksesoris')
+      .select('*')
+      .order('nama_produk', { ascending: true })
+    setData(data || [])
   }
 
-async function handleSubmit(e) {
-  e.preventDefault();
-  if (!sku || !namaProduk || !warna || !stok || !hargaModal) return alert('Lengkapi semua data');
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!sku || !namaProduk || !warna || !stok || !hargaModal)
+      return alert('Lengkapi semua data')
 
-  // ✅ Cek apakah SKU sudah ada
-  const { data: existing } = await supabase
-    .from('stok_aksesoris')
-    .select('id')
-    .eq('sku', sku.toUpperCase());
+    // Cek SKU sudah ada
+    const { data: existing } = await supabase
+      .from('stok_aksesoris')
+      .select('id')
+      .eq('sku', sku.toUpperCase())
 
-  if (existing && existing.length > 0) {
-    alert('❗ SKU sudah ada, silakan klik "Update" untuk ubah stok.');
-    return;
+    if (existing && existing.length > 0) {
+      alert('❗ SKU sudah ada, silakan klik "Edit" atau "Update Stok".')
+      return
+    }
+
+    await supabase.from('stok_aksesoris').insert({
+      sku: sku.toUpperCase(),
+      nama_produk: namaProduk.toUpperCase(),
+      warna: warna.toUpperCase(),
+      stok: parseInt(stok, 10),
+      harga_modal: parseInt(hargaModal, 10)
+    })
+
+    setSku('')
+    setNamaProduk('')
+    setWarna('')
+    setStok('')
+    setHargaModal('')
+    fetchData()
   }
-
-  await supabase.from('stok_aksesoris').insert({
-    sku: sku.toUpperCase(),
-    nama_produk: namaProduk.toUpperCase(),
-    warna: warna.toUpperCase(),
-    stok: parseInt(stok),
-    harga_modal: parseInt(hargaModal)
-  });
-
-  setSku('');
-  setNamaProduk('');
-  setWarna('');
-  setStok('');
-  setHargaModal('');
-  fetchData();
-}
 
   async function handleDelete(id) {
     if (confirm('Yakin ingin hapus?')) {
@@ -62,6 +75,7 @@ async function handleSubmit(e) {
     }
   }
 
+  // ====== Update stok modal ======
   const handleOpenUpdateModal = (item) => {
     setSelectedData(item)
     setTambahStok(0)
@@ -71,10 +85,9 @@ async function handleSubmit(e) {
 
   const handleUpdateStok = async () => {
     if (!selectedData) return
-
-    const hasilTambah = parseInt(tambahStok) || 0
-    const hasilKurang = parseInt(kurangiStok) || 0
-    const stokAkhir = selectedData.stok + hasilTambah - hasilKurang
+    const t = parseInt(tambahStok, 10) || 0
+    const k = parseInt(kurangiStok, 10) || 0
+    const stokAkhir = (selectedData.stok || 0) + t - k
 
     if (stokAkhir < 0) {
       alert('Stok tidak boleh negatif!')
@@ -92,11 +105,57 @@ async function handleSubmit(e) {
       alert('Stok berhasil diupdate')
       fetchData()
     }
-
     setShowUpdateModal(false)
   }
 
-  const filteredData = data.filter(item => {
+  // ====== Edit data modal (sku/nama/warna/harga_modal) ======
+  const handleOpenEditModal = (item) => {
+    setSelectedData(item)
+    setEditSku(item.sku || '')
+    setEditNama(item.nama_produk || '')
+    setEditWarna(item.warna || '')
+    setEditHargaModal(item.harga_modal || '')
+    setShowEditModal(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!selectedData) return
+    if (!editSku || !editNama || !editWarna || editHargaModal === '')
+      return alert('Lengkapi semua field')
+
+    const newSku = String(editSku).toUpperCase()
+
+    // Cek SKU duplicate (kecuali record ini sendiri)
+    const { data: dup } = await supabase
+      .from('stok_aksesoris')
+      .select('id')
+      .eq('sku', newSku)
+
+    if (dup && dup.some((row) => row.id !== selectedData.id)) {
+      alert('❗ SKU sudah dipakai item lain.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('stok_aksesoris')
+      .update({
+        sku: newSku,
+        nama_produk: String(editNama).toUpperCase(),
+        warna: String(editWarna).toUpperCase(),
+        harga_modal: parseInt(editHargaModal, 10) || 0
+      })
+      .eq('id', selectedData.id)
+
+    if (error) {
+      alert('Gagal menyimpan perubahan')
+    } else {
+      alert('Perubahan tersimpan')
+      fetchData()
+    }
+    setShowEditModal(false)
+  }
+
+  const filteredData = data.filter((item) => {
     const s = search.toLowerCase()
     return (
       item.nama_produk?.toLowerCase().includes(s) ||
@@ -119,18 +178,28 @@ async function handleSubmit(e) {
           <button type="submit" className="bg-blue-600 text-white px-4 py-2">Tambah</button>
         </form>
 
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari SKU / Nama Produk / Warna" className="border p-2 w-full md:w-1/2 mb-4" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari SKU / Nama Produk / Warna"
+          className="border p-2 w-full md:w-1/2 mb-4"
+        />
 
         {filteredData.map((item) => (
           <div key={item.id} className="mb-2 border-b pb-2">
-            <p><b>{item.nama_produk}</b> | SKU: {item.sku} | Warna: {item.warna} | Stok: {item.stok} | Modal: Rp{parseInt(item.harga_modal).toLocaleString()}</p>
+            <p>
+              <b>{item.nama_produk}</b> | SKU: {item.sku} | Warna: {item.warna} |
+              {' '}Stok: {item.stok} | Modal: Rp{parseInt(item.harga_modal || 0, 10).toLocaleString('id-ID')}
+            </p>
             <div className="text-sm mt-1 flex gap-4">
               <button onClick={() => handleDelete(item.id)} className="text-red-600">Hapus</button>
-              <button onClick={() => handleOpenUpdateModal(item)} className="text-blue-600">Update</button>
+              <button onClick={() => handleOpenUpdateModal(item)} className="text-blue-600">Update Stok</button>
+              <button onClick={() => handleOpenEditModal(item)} className="text-amber-600">Edit</button>
             </div>
           </div>
         ))}
 
+        {/* Modal Update Stok */}
         {showUpdateModal && (
           <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 flex justify-center items-center z-50">
             <div className="bg-white p-6 rounded shadow-lg w-96">
@@ -156,6 +225,49 @@ async function handleSubmit(e) {
               <div className="flex justify-between">
                 <button onClick={handleUpdateStok} className="bg-blue-600 text-white px-4 py-2 rounded">Simpan</button>
                 <button onClick={() => setShowUpdateModal(false)} className="text-gray-600">Batal</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Edit Data */}
+        {showEditModal && (
+          <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded shadow-lg w-96">
+              <h2 className="text-lg font-bold mb-4">Edit Data Aksesoris</h2>
+
+              <label className="block mb-1">SKU</label>
+              <input
+                className="border px-2 py-1 w-full mb-3"
+                value={editSku}
+                onChange={(e) => setEditSku(e.target.value)}
+              />
+
+              <label className="block mb-1">Nama Produk</label>
+              <input
+                className="border px-2 py-1 w-full mb-3"
+                value={editNama}
+                onChange={(e) => setEditNama(e.target.value)}
+              />
+
+              <label className="block mb-1">Warna</label>
+              <input
+                className="border px-2 py-1 w-full mb-3"
+                value={editWarna}
+                onChange={(e) => setEditWarna(e.target.value)}
+              />
+
+              <label className="block mb-1">Harga Modal</label>
+              <input
+                type="number"
+                className="border px-2 py-1 w-full mb-5"
+                value={editHargaModal}
+                onChange={(e) => setEditHargaModal(e.target.value)}
+              />
+
+              <div className="flex justify-between">
+                <button onClick={handleSaveEdit} className="bg-amber-600 text-white px-4 py-2 rounded">Simpan Perubahan</button>
+                <button onClick={() => setShowEditModal(false)} className="text-gray-600">Batal</button>
               </div>
             </div>
           </div>
