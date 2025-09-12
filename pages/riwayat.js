@@ -1,5 +1,6 @@
 // pages/riwayat.js
 import { useEffect, useState } from "react";
+import Layout from "@/components/Layout";               // ✅ tambahkan ini
 import { supabase } from "@/lib/supabaseClient";
 
 const toNumber = (v) =>
@@ -81,55 +82,57 @@ export default function Riwayat() {
   const formatRp = (n) => "Rp " + toNumber(n).toLocaleString("id-ID");
 
   return (
-    <div style={styles.wrap}>
-      {/* Filter sederhana (biarkan jika Anda sudah punya komponen filter sendiri) */}
-      <div style={styles.tools}>
-        <input
-          type="date"
-          value={tglAwal}
-          onChange={(e) => setTglAwal(e.target.value)}
-          style={styles.input}
-        />
-        <input
-          type="date"
-          value={tglAkhir}
-          onChange={(e) => setTglAkhir(e.target.value)}
-          style={styles.input}
-        />
-        <input
-          placeholder="Cari nama, produk, SN/SKU..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...styles.input, minWidth: 260 }}
-        />
-      </div>
+    <Layout>                                            {/* ✅ bungkus dengan Layout */}
+      <div style={styles.wrap}>
+        {/* Filter sederhana (biarkan jika Anda sudah punya komponen filter sendiri) */}
+        <div style={styles.tools}>
+          <input
+            type="date"
+            value={tglAwal}
+            onChange={(e) => setTglAwal(e.target.value)}
+            style={styles.input}
+          />
+          <input
+            type="date"
+            value={tglAkhir}
+            onChange={(e) => setTglAkhir(e.target.value)}
+            style={styles.input}
+          />
+          <input
+            placeholder="Cari nama, produk, SN/SKU..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...styles.input, minWidth: 260 }}
+          />
+        </div>
 
-      <div style={styles.tableWrap}>
-        <table style={styles.table}>
-          <thead style={styles.thead}>
-            <tr>
-              <th style={styles.th}>Tanggal</th>
-              <th style={styles.th}>Nama</th>
-              <th style={styles.th}>Produk</th>
-              <th style={styles.th}>SN/SKU</th>
-              <th style={{ ...styles.th, textAlign: "right" }}>Harga Jual</th>
-              <th style={{ ...styles.th, textAlign: "right" }}>Laba</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.id}>
-                <td style={styles.tdNowrap}>{String(r.tanggal).slice(0, 10)}</td>
-                <td style={styles.td}>{(r.nama_pembeli || "").toUpperCase()}</td>
-                <td style={styles.td}>{[r.nama_produk, r.warna].filter(Boolean).join(" ")}</td>
-                <td style={styles.tdNowrap}>{r.sn_sku}</td>
-                <td style={styles.tdRight}>{formatRp(r.harga_jual)}</td>
-                <td style={styles.tdRight}>{formatRp(r.laba)}</td>
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead style={styles.thead}>
+              <tr>
+                <th style={styles.th}>Tanggal</th>
+                <th style={styles.th}>Nama</th>
+                <th style={styles.th}>Produk</th>
+                <th style={styles.th}>SN/SKU</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Harga Jual</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Laba</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.id}>
+                  <td style={styles.tdNowrap}>{String(r.tanggal).slice(0, 10)}</td>
+                  <td style={styles.td}>{(r.nama_pembeli || "").toUpperCase()}</td>
+                  <td style={styles.td}>{[r.nama_produk, r.warna].filter(Boolean).join(" ")}</td>
+                  <td style={styles.tdNowrap}>{r.sn_sku}</td>
+                  <td style={styles.tdRight}>{formatRp(r.harga_jual)}</td>
+                  <td style={styles.tdRight}>{formatRp(r.laba)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }
