@@ -1,93 +1,108 @@
 // pages/rekap.js
 import Layout from '@/components/Layout'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import * as XLSX from 'xlsx'
 import dayjs from 'dayjs'
 
 const toNumber = (v) =>
   typeof v === 'number' ? v : parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
+const formatRp = (n) => 'Rp ' + (toNumber(n)).toLocaleString('id-ID')
 
-const formatRp = (n) =>
-  'Rp ' + (toNumber(n)).toLocaleString('id-ID')
-
-// ===== Komponen LineChart SVG sederhana =====
-function LineChart({ categories, series, height = 220 }) {
-  const padding = { top: 10, right: 20, bottom: 24, left: 48 }
-  const width = 720
+// ================= SVG LineChart Interaktif =================
+function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v)=>formatRp(v) }) {
+  const padding = { top: 28, right: 24, bottom: 40, left: 64 }
+  const width = 760
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
-
-  const allVals = series.flatMap(s => s.data)
-  const maxVal = Math.max(1, ...allVals)
-  const yTicks = 4
-
+  const maxVal = Math.max(1, ...data)
+  const yTicks = 5
   const xStep = categories.length > 1 ? innerW / (categories.length - 1) : 0
   const yScale = (v) => innerH - (v / maxVal) * innerH
+  const colors = { line: '#2563EB', grid: '#E5E7EB', text: '#374151', sub: '#6B7280' }
+  const [hover, setHover] = useState(null)
+  const svgRef = useRef(null)
 
-  const colors = ['#2563EB', '#16A34A', '#F59E0B', '#EF4444']
+  const points = data.map((v, i) => {
+    const x = padding.left + xStep * i
+    const y = padding.top + yScale(v)
+    return { x, y, v, i }
+  })
+
+  function handleMove(e) {
+    const rect = svgRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    let nearest = null
+    let best = Infinity
+    points.forEach(p => {
+      const d = Math.abs(p.x - x)
+      if (d < best) { best = d; nearest = p }
+    })
+    setHover(nearest)
+  }
+
+  function handleLeave() { setHover(null) }
+
+  const dAttr = points.map((p, idx) => `${idx ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
 
   return (
-    <svg width={width} height={height} className="bg-white rounded border">
-      {/* axes */}
-      {/* y grid & ticks */}
+    <svg ref={svgRef} width={width} height={height} className="bg-white rounded border"
+         onMouseMove={handleMove} onMouseLeave={handleLeave} style={{touchAction:'none'}}>
+      {/* Title */}
+      <text x={padding.left} y={22} fontSize="14" fontWeight="600" fill={colors.text}>{title}</text>
+
+      {/* Y grid & ticks */}
       {[...Array(yTicks + 1)].map((_, i) => {
         const y = padding.top + (innerH / yTicks) * i
         const val = Math.round(maxVal * (1 - i / yTicks))
         return (
           <g key={i}>
-            <line
-              x1={padding.left} x2={padding.left + innerW}
-              y1={y} y2={y}
-              stroke="#E5E7EB"
-            />
-            <text x={padding.left - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#6B7280">
-              {val >= 1000 ? (val/1000).toFixed(0) + 'k' : val}
+            <line x1={padding.left} y1={y} x2={padding.left + innerW} y2={y} stroke={colors.grid}/>
+            <text x={padding.left - 10} y={y + 4} textAnchor="end" fontSize="12" fill={colors.sub}>
+              {fmt(val)}
             </text>
           </g>
         )
       })}
 
-      {/* x labels */}
+      {/* X labels */}
       {categories.map((c, i) => {
         const x = padding.left + xStep * i
+        const label = dayjs(c + '-01').format('MMM YY')
         return (
-          <text key={c} x={x} y={height - 6} fontSize="10" textAnchor="middle" fill="#6B7280">
-            {dayjs(c + '-01').format('MMM YY')}
+          <text key={c} x={x} y={height - 12} fontSize="12" textAnchor="middle" fill={colors.sub}>
+            {label}
           </text>
         )
       })}
 
-      {/* lines */}
-      {series.map((s, si) => {
-        const d = s.data.map((v, i) => {
-          const x = padding.left + xStep * i
-          const y = padding.top + yScale(v)
-          return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
-        }).join(' ')
-        return (
-          <g key={s.name}>
-            <path d={d} fill="none" stroke={colors[si % colors.length]} strokeWidth="2" />
-            {s.data.map((v, i) => {
-              const x = padding.left + xStep * i
-              const y = padding.top + yScale(v)
-              return <circle key={i} cx={x} cy={y} r="3" fill={colors[si % colors.length]} />
-            })}
-          </g>
-        )
-      })}
-
-      {/* legend */}
-      {series.map((s, i) => (
-        <g key={s.name} transform={`translate(${padding.left + i*160}, ${padding.top})`}>
-          <rect width="10" height="10" fill={colors[i % colors.length]} rx="2" />
-          <text x="14" y="9" fontSize="11" fill="#374151">{s.name}</text>
-        </g>
+      {/* Line & points */}
+      <path d={dAttr} fill="none" stroke={colors.line} strokeWidth="3" />
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={hover?.i === i ? 5 : 3} fill={colors.line} />
       ))}
+
+      {/* Hover guide & tooltip */}
+      {hover && (
+        <>
+          <line x1={hover.x} y1={padding.top} x2={hover.x} y2={height - padding.bottom}
+                stroke="#CBD5E1" strokeDasharray="4 4" />
+          <g transform={`translate(${Math.min(Math.max(hover.x - 70, padding.left), width - 160)}, ${padding.top + 8})`}>
+            <rect width="150" height="54" rx="8" fill="white" stroke="#E5E7EB"/>
+            <text x="10" y="20" fontSize="12" fill={colors.sub}>
+              {dayjs(categories[hover.i] + '-01').format('MMMM YYYY')}
+            </text>
+            <text x="10" y="38" fontSize="14" fontWeight="700" fill={colors.text}>
+              {fmt(hover.v)}
+            </text>
+          </g>
+        </>
+      )}
     </svg>
   )
 }
 
+// ===================== Halaman ======================
 export default function RekapBulanan() {
   const [akses, setAkses] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
@@ -98,7 +113,7 @@ export default function RekapBulanan() {
   const [tanggalAkhir, setTanggalAkhir] = useState('')
   const [rekap, setRekap] = useState([])
 
-  // dashboard asset
+  // dashboard aset saat ini
   const [assetReady, setAssetReady] = useState(0)
   const [assetAksesoris, setAssetAksesoris] = useState(0)
 
@@ -108,9 +123,14 @@ export default function RekapBulanan() {
   const [bulanMulai, setBulanMulai] = useState(defaultStart)
   const [bulanSelesai, setBulanSelesai] = useState(thisMonth)
 
+  // stok & tanggal jual (untuk aset akhir bulan)
+  const [stokUnits, setStokUnits] = useState([]) // {sn, harga_modal}
+  const [jualBySn, setJualBySn] = useState({})   // {sn: 'YYYY-MM-DD'}
+
   useEffect(() => {
     fetchPenjualan()
     fetchAssetNow()
+    fetchStokAndSalesMap()
   }, [])
 
   async function fetchPenjualan() {
@@ -118,20 +138,18 @@ export default function RekapBulanan() {
       .from('penjualan_baru')
       .select('*')
       .order('tanggal', { ascending: false })
-
     if (!error) setData(data || [])
-    else console.error(error)
   }
 
   async function fetchAssetNow() {
-    // stok READY (unit per baris)
+    // Unit READY sekarang
     const { data: stokData } = await supabase
       .from('stok')
       .select('status, harga_modal')
       .eq('status', 'READY')
     const totalReady = (stokData || []).reduce((sum, r) => sum + toNumber(r.harga_modal), 0)
 
-    // stok aksesoris (stok * harga_modal), exclude OFC-365-1
+    // Aksesoris sekarang (excl OFC-365-1)
     const { data: aks } = await supabase
       .from('stok_aksesoris')
       .select('sku, stok, harga_modal')
@@ -141,6 +159,28 @@ export default function RekapBulanan() {
 
     setAssetReady(totalReady)
     setAssetAksesoris(totalAks)
+  }
+
+  async function fetchStokAndSalesMap() {
+    const { data: stokAll } = await supabase
+      .from('stok')
+      .select('sn, harga_modal')
+    setStokUnits((stokAll || []).map(r => ({ sn: r.sn, harga_modal: toNumber(r.harga_modal) })))
+
+    const { data: sales } = await supabase
+      .from('penjualan_baru')
+      .select('sn_sku, tanggal, is_bonus')
+      .eq('is_bonus', false)
+    const map = {}
+    ;(sales || []).forEach(r => {
+      if (r.sn_sku) {
+        // Ambil tanggal jual paling awal bila ada duplikat
+        if (!map[r.sn_sku] || dayjs(r.tanggal).isBefore(map[r.sn_sku])) {
+          map[r.sn_sku] = r.tanggal
+        }
+      }
+    })
+    setJualBySn(map)
   }
 
   function lihatRekap() {
@@ -159,9 +199,8 @@ export default function RekapBulanan() {
   const totalOmset = rekap.reduce((sum, item) => sum + toNumber(item.harga_jual), 0)
   const totalLaba = rekap.reduce((sum, item) => sum + toNumber(item.laba), 0)
 
-  // ===== Hitung data chart berdasarkan range bulan =====
-  const chartData = useMemo(() => {
-    // bangun list bulan di range
+  // ====== Bangun list bulan dalam rentang ======
+  const monthCats = useMemo(() => {
     const start = dayjs(bulanMulai + '-01')
     const end = dayjs(bulanSelesai + '-01')
     const cats = []
@@ -170,30 +209,33 @@ export default function RekapBulanan() {
       cats.push(cur.format('YYYY-MM'))
       cur = cur.add(1, 'month')
     }
+    return cats
+  }, [bulanMulai, bulanSelesai])
 
-    const byMonth = {}
-    cats.forEach(m => {
-      byMonth[m] = { omset: 0, laba: 0, cogs: 0 }
-    })
-
+  // ====== Laba bulanan ======
+  const labaBulanan = useMemo(() => {
+    const byMonth = Object.fromEntries(monthCats.map(m => [m, 0]))
     data.forEach((row) => {
       const m = dayjs(row.tanggal).format('YYYY-MM')
-      if (byMonth[m]) {
-        if (row.is_bonus === false) {
-          byMonth[m].omset += toNumber(row.harga_jual)
-          byMonth[m].cogs  += toNumber(row.harga_modal)
-        }
-        // laba total (bonus ikut minus)
-        byMonth[m].laba += toNumber(row.laba)
-      }
+      if (byMonth[m] !== undefined) byMonth[m] += toNumber(row.laba)
     })
+    return monthCats.map(m => byMonth[m])
+  }, [data, monthCats])
 
-    const omset = cats.map(m => byMonth[m].omset)
-    const laba  = cats.map(m => byMonth[m].laba)
-    const cogs  = cats.map(m => byMonth[m].cogs)
-
-    return { categories: cats, omset, laba, cogs }
-  }, [data, bulanMulai, bulanSelesai])
+  // ====== Aset akhir bulan (Unit) ======
+  // Definisi: jumlah modal semua unit yang BELUM terjual sampai akhir bulan tsb.
+  const asetAkhirBulanUnit = useMemo(() => {
+    return monthCats.map((m) => {
+      const end = dayjs(m + '-01').endOf('month')
+      let total = 0
+      for (const u of stokUnits) {
+        const soldAt = jualBySn[u.sn] ? dayjs(jualBySn[u.sn]) : null
+        const belumTerjualSampaiAkhirBulan = !soldAt || soldAt.isAfter(end)
+        if (belumTerjualSampaiAkhirBulan) total += u.harga_modal
+      }
+      return total
+    })
+  }, [monthCats, stokUnits, jualBySn])
 
   if (!akses) {
     return (
@@ -209,10 +251,7 @@ export default function RekapBulanan() {
           />
           <button
             className="bg-blue-600 text-white px-4 py-2 rounded"
-            onClick={() => {
-              if (passwordInput === passwordBenar) setAkses(true)
-              else alert('Password salah!')
-            }}
+            onClick={() => setAkses(passwordInput === passwordBenar ? true : (alert('Password salah!'), false))}
           >
             Buka Halaman
           </button>
@@ -226,59 +265,49 @@ export default function RekapBulanan() {
       <div className="p-6 space-y-6">
         <h1 className="text-2xl font-bold">Rekap Penjualan & Dashboard</h1>
 
-        {/* ===== Dashboard Aset Saat Ini ===== */}
+        {/* ====== Kartu Aset Saat Ini ====== */}
         <div className="grid gap-4 md:grid-cols-3">
           <div className="bg-white rounded border p-4">
             <div className="text-sm text-gray-500">Aset Stok READY (Unit)</div>
-            <div className="text-2xl font-bold">{formatRp(assetReady)}</div>
+            <div className="text-3xl font-bold">{formatRp(assetReady)}</div>
           </div>
           <div className="bg-white rounded border p-4">
             <div className="text-sm text-gray-500">Aset Aksesoris (excl. OFC-365-1)</div>
-            <div className="text-2xl font-bold">{formatRp(assetAksesoris)}</div>
+            <div className="text-3xl font-bold">{formatRp(assetAksesoris)}</div>
           </div>
           <div className="bg-white rounded border p-4">
             <div className="text-sm text-gray-500">Total Aset Saat Ini</div>
-            <div className="text-2xl font-bold">{formatRp(assetReady + assetAksesoris)}</div>
+            <div className="text-3xl font-bold">{formatRp(assetReady + assetAksesoris)}</div>
           </div>
         </div>
 
-        {/* ===== Chart Growth Omset & Laba ===== */}
-        <div className="bg-white rounded border p-4">
-          <div className="flex flex-wrap items-end gap-3 mb-3">
-            <div>
-              <div className="text-sm">Mulai</div>
-              <input type="month" value={bulanMulai} onChange={e => setBulanMulai(e.target.value)} className="border px-2 py-1" />
-            </div>
-            <div>
-              <div className="text-sm">Selesai</div>
-              <input type="month" value={bulanSelesai} onChange={e => setBulanSelesai(e.target.value)} className="border px-2 py-1" />
-            </div>
-            <div className="ml-auto text-sm text-gray-600">
-              Omset: non-bonus • Laba: total (bonus minus masuk)
-            </div>
+        {/* ====== Range Bulan ====== */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <div className="text-sm mb-1">Mulai</div>
+            <input type="month" value={bulanMulai} onChange={e => setBulanMulai(e.target.value)} className="border px-2 py-1" />
           </div>
-
-          <LineChart
-            categories={chartData.categories}
-            series={[
-              { name: 'Omset', data: chartData.omset },
-              { name: 'Laba',  data: chartData.laba  },
-            ]}
-          />
+          <div>
+            <div className="text-sm mb-1">Selesai</div>
+            <input type="month" value={bulanSelesai} onChange={e => setBulanSelesai(e.target.value)} className="border px-2 py-1" />
+          </div>
         </div>
 
-        {/* ===== Chart Growth Asset (COGS) ===== */}
-        <div className="bg-white rounded border p-4">
-          <div className="mb-2 font-semibold">Growth Asset (COGS / Nilai Modal Terjual)</div>
-          <LineChart
-            categories={chartData.categories}
-            series={[
-              { name: 'COGS (Modal Terjual)', data: chartData.cogs },
-            ]}
-          />
-        </div>
+        {/* ====== Grafik 1: Laba Bulanan ====== */}
+        <InteractiveLineChart
+          title="Laba Bulanan"
+          categories={monthCats}
+          data={labaBulanan}
+        />
 
-        {/* ===== Rekap per Tanggal (as existing) ===== */}
+        {/* ====== Grafik 2: Aset Akhir Bulan (Unit) ====== */}
+        <InteractiveLineChart
+          title="Aset Akhir Bulan (Unit)"
+          categories={monthCats}
+          data={asetAkhirBulanUnit}
+        />
+
+        {/* ====== Rekap by Tanggal (tetap) ====== */}
         <div>
           <h2 className="text-xl font-semibold mb-3">Rekap Penjualan Berdasarkan Tanggal</h2>
           <div className="flex gap-2 mb-4 flex-wrap">
