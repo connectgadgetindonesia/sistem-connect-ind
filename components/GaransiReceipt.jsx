@@ -1,38 +1,49 @@
-// components/GaransiReceipt.jsx
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import html2pdf from "html2pdf.js";
-import html2canvas from "html2canvas";
 
-const A4 = { px: { w: 794, h: 1123 } }; // ukuran A4 approx px @96dpi
-
+// DO NOT import html2pdf/html2canvas at top-level (breaks SSR)
+// We'll lazy-load them on the client:
 export default function GaransiReceipt({ id }) {
   const [row, setRow] = useState(null);
+  const [html2pdfLib, setHtml2pdfLib] = useState(null);
+  const [html2canvasLib, setHtml2canvasLib] = useState(null);
   const contentRef = useRef(null);
 
+  // fetch data
   useEffect(() => {
-    if (id) fetchRow();
-    // kunci posisi paling atas supaya hasil capture tidak ke-geser
-    if (typeof window !== "undefined") window.scrollTo(0, 0);
+    if (!id) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("claim_garansi")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (!error) setRow(data);
+      else console.error("fetch error:", error);
+    })();
   }, [id]);
 
-  async function fetchRow() {
-    const { data, error } = await supabase
-      .from("claim_garansi")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (!error) setRow(data);
-    else console.error("fetch error:", error);
-  }
+  // lazy-load export libs (client only)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (async () => {
+      const p1 = import("html2pdf.js");
+      const p2 = import("html2canvas");
+      const [pdfMod, canvasMod] = await Promise.all([p1, p2]);
+      setHtml2pdfLib(pdfMod.default || pdfMod);     // html2pdf()
+      setHtml2canvasLib(canvasMod.default || canvasMod);
+    })();
+    window.scrollTo(0, 0);
+  }, []);
 
-  // ===== Export PDF
+  const A4 = { w: 794, h: 1123 }; // px @ ~96dpi
+
   const downloadPDF = async () => {
     if (!contentRef.current) return;
-    if (typeof window !== "undefined") window.scrollTo(0, 0);
-
+    if (!html2pdfLib) return alert("Sedang memuat modul export… coba lagi sebentar.");
+    window.scrollTo(0, 0);
     const opt = {
-      margin: [6, 6, 6, 6], // mm
+      margin: [6, 6, 6, 6],
       filename: `GARANSI-${row?.id || "DOC"}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
       html2canvas: {
@@ -40,30 +51,28 @@ export default function GaransiReceipt({ id }) {
         useCORS: true,
         backgroundColor: "#fff",
         scrollX: 0,
-        scrollY: -window.scrollY, // cegah hasil terpotong karena scroll
-        windowWidth: A4.px.w + 100,
-        windowHeight: A4.px.h + 100,
+        scrollY: -window.scrollY,
+        windowWidth: A4.w + 100,
+        windowHeight: A4.h + 100,
       },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       pagebreak: { mode: ["css"] },
     };
-
-    await html2pdf().set(opt).from(contentRef.current).save();
+    await html2pdfLib().set(opt).from(contentRef.current).save();
   };
 
-  // ===== Export JPG
   const downloadJPG = async () => {
     if (!contentRef.current) return;
-    if (typeof window !== "undefined") window.scrollTo(0, 0);
-
-    const canvas = await html2canvas(contentRef.current, {
+    if (!html2canvasLib) return alert("Sedang memuat modul export… coba lagi sebentar.");
+    window.scrollTo(0, 0);
+    const canvas = await html2canvasLib(contentRef.current, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#fff",
       scrollX: 0,
       scrollY: -window.scrollY,
-      windowWidth: A4.px.w + 100,
-      windowHeight: A4.px.h + 100,
+      windowWidth: A4.w + 100,
+      windowHeight: A4.h + 100,
     });
     const image = canvas.toDataURL("image/jpeg", 1.0);
     const link = document.createElement("a");
@@ -74,10 +83,10 @@ export default function GaransiReceipt({ id }) {
 
   if (!row) return <div style={{ padding: 24 }}>Loading…</div>;
 
-  // ===== Layout bergaya A4 terkunci
+  // ===== fixed A4 layout
   const wrap = {
-    width: `${A4.px.w}px`,
-    minHeight: `${A4.px.h}px`,
+    width: `${A4.w}px`,
+    minHeight: `${A4.h}px`,
     margin: "0 auto",
     background: "#fff",
     padding: "28px",
@@ -92,7 +101,6 @@ export default function GaransiReceipt({ id }) {
     overflow: "hidden",
     marginBottom: "10px",
   };
-  const headerImg = { width: "100%", height: "100%", objectFit: "cover", display: "block" };
   const cell = { padding: 8, fontSize: 11, verticalAlign: "top", textAlign: "left" };
 
   return (
@@ -105,10 +113,14 @@ export default function GaransiReceipt({ id }) {
       <div ref={contentRef} style={wrap}>
         {/* Header */}
         <div style={headerBox}>
-          <img src="/head-new.png" alt="Header" style={headerImg} />
+          <img
+            src="/head-new.png"
+            alt="Header"
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
         </div>
 
-        {/* 3 kolom informasi */}
+        {/* 3 columns */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20, marginTop: 10 }}>
           <div>
             <strong>Receiving Details</strong><br />
@@ -131,7 +143,7 @@ export default function GaransiReceipt({ id }) {
           </div>
         </div>
 
-        {/* Tabel item */}
+        {/* Table */}
         <table style={{ width: "100%", fontSize: 11, borderCollapse: "separate", borderSpacing: 0, marginBottom: 24 }}>
           <thead>
             <tr style={{ background: "#f3f6fd" }}>
