@@ -1,11 +1,12 @@
+// components/GaransiReceipt.jsx
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function GaransiReceipt({ id }) {
   const [data, setData] = useState(null);
-  const contentRef = useRef();
+  const contentRef = useRef(null);
 
-  // Ambil data
+  // === Ambil data klaim
   useEffect(() => {
     if (!id) return;
     (async () => {
@@ -14,81 +15,105 @@ export default function GaransiReceipt({ id }) {
         .select("*")
         .eq("id", id)
         .single();
-      if (!error) setData(data);
-      else console.error("Fetch error:", error);
+
+      if (error) {
+        console.error("Fetch error:", error);
+      } else {
+        setData(data);
+      }
     })();
   }, [id]);
 
-  // Helper tanggal (YYYY-MM-DD)
-  const asDate = (v) => {
-    if (!v) return "";
-    try {
-      return new Date(v).toISOString().slice(0, 10);
-    } catch {
-      return String(v).slice(0, 10);
-    }
-  };
-
-  // === Export PDF (lazy import)
+  // === Export PDF (lazy import + ukuran halaman mengikuti tinggi konten)
   const handleDownload = async () => {
     if (!contentRef.current || !data) return;
-    const html2pdf =
-      (await import("html2pdf.js")).default || (await import("html2pdf.js"));
-    const el = contentRef.current;
+
+    const mod = await import("html2pdf.js");
+    const html2pdf = mod.default || mod;
+
+    // pastikan di posisi atas agar tidak ada pemotongan
+    window.scrollTo(0, 0);
+
+    const w = contentRef.current.scrollWidth;
+    const h = contentRef.current.scrollHeight;
+
     const opt = {
       margin: 0,
-      filename: `GARANSI-${(data.doc_no || data.id || "DOC").toString()}.pdf`,
+      filename: `GARANSI-${data.doc_no || data.id}.pdf`,
       image: { type: "jpeg", quality: 1 },
       html2canvas: {
         scale: 2,
         useCORS: true,
         backgroundColor: "#fff",
         scrollX: 0,
-        scrollY: -window.scrollY,
-        windowWidth: el.scrollWidth,
-        windowHeight: el.scrollHeight,
+        scrollY: 0,
+        windowWidth: w + 40,
+        windowHeight: h + 40,
       },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["css", "avoid-all"] },
+      pagebreak: { mode: ["avoid-all"] },
     };
-    html2pdf().set(opt).from(el).save();
+
+    html2pdf().set(opt).from(contentRef.current).save();
   };
 
-  // === Export JPG (lazy import)
+  // === Export JPG
   const handleDownloadJPG = async () => {
     if (!contentRef.current || !data) return;
-    const html2canvas =
-      (await import("html2canvas")).default ||
-      (await import("html2canvas"));
-    const el = contentRef.current;
-    const canvas = await html2canvas(el, {
+
+    const mod = await import("html2canvas");
+    const html2canvas = mod.default || mod;
+
+    window.scrollTo(0, 0);
+
+    const w = contentRef.current.scrollWidth;
+    const h = contentRef.current.scrollHeight;
+
+    const canvas = await html2canvas(contentRef.current, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#fff",
       scrollX: 0,
-      scrollY: -window.scrollY,
-      windowWidth: el.scrollWidth,
-      windowHeight: el.scrollHeight,
+      scrollY: 0,
+      windowWidth: w + 40,
+      windowHeight: h + 40,
     });
+
     const image = canvas.toDataURL("image/jpeg", 1.0);
     const link = document.createElement("a");
     link.href = image;
-    link.download = `GARANSI-${(data.doc_no || data.id || "DOC").toString()}.jpg`;
+    link.download = `GARANSI-${data.doc_no || data.id}.jpg`;
     link.click();
   };
 
   if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
 
-  // Fallback agar No. Dokumen & Tanggal selalu muncul
-  const docNo =
-    data.doc_no ||
-    `GAR-${asDate(data.tanggal_terima || data.created_at || Date.now())}-${
-      String(data.id || "").replace(/-/g, "").slice(0, 6).toUpperCase() || "XXXXXX"
-    }`;
+  // ======= Layout (mengikuti InvoiceIndent: 595×842) =======
+  const page = {
+    width: "595px",
+    minHeight: "842px",
+    background: "#fff",
+    margin: "auto",
+    padding: "32px",
+    boxSizing: "border-box",
+    borderRadius: "20px",
+  };
+
+  const headerBox = {
+    position: "relative",
+    width: "100%",
+    height: "130px",
+    borderRadius: "20px",
+    overflow: "hidden",
+    marginBottom: "10px",
+  };
+
+  const td = { padding: 8, fontSize: 11, textAlign: "left", verticalAlign: "top" };
+
   const receiveDate =
-    asDate(data.tanggal_terima) ||
-    asDate(data.created_at) ||
-    asDate(Date.now());
+    data.tanggal_terima && typeof data.tanggal_terima === "string"
+      ? data.tanggal_terima.substring(0, 10)
+      : data.tanggal_terima || "-";
 
   return (
     <div
@@ -106,29 +131,9 @@ export default function GaransiReceipt({ id }) {
         <button onClick={handleDownloadJPG}>Download JPG</button>
       </div>
 
-      <div
-        ref={contentRef}
-        style={{
-          width: "595px",           // A4 @ 72dpi seperti InvoiceIndent
-          minHeight: "842px",
-          margin: "auto",
-          background: "#fff",
-          padding: "32px",
-          boxSizing: "border-box",
-          borderRadius: "20px",
-        }}
-      >
+      <div ref={contentRef} style={page}>
         {/* Header */}
-        <div
-          style={{
-            position: "relative",
-            width: "100%",
-            height: "130px",
-            borderRadius: "20px",
-            overflow: "hidden",
-            marginBottom: "10px",
-          }}
-        >
+        <div style={headerBox}>
           <img
             src="/head-new.png"
             alt="Header"
@@ -136,7 +141,7 @@ export default function GaransiReceipt({ id }) {
           />
         </div>
 
-        {/* 3 Kolom info */}
+        {/* Tiga kolom informasi */}
         <div
           style={{
             display: "flex",
@@ -150,12 +155,13 @@ export default function GaransiReceipt({ id }) {
             <strong>Receiving Details</strong>
             <br />
             Document No.:<br />
-            {docNo}
+            {data.doc_no || "—"}
             <br />
             Receive date:
             <br />
             {receiveDate}
           </div>
+
           <div style={{ textAlign: "left" }}>
             <strong>CONNECT.IND</strong>
             <br />
@@ -169,14 +175,15 @@ export default function GaransiReceipt({ id }) {
             <br />
             50145
           </div>
+
           <div style={{ textAlign: "right" }}>
             <strong>Customer</strong>
             <br />
-            {data.nama}
+            {data.nama || "—"}
             <br />
-            {data.alamat}
+            {data.alamat || "—"}
             <br />
-            {data.no_wa}
+            {data.no_wa || "—"}
           </div>
         </div>
 
@@ -188,54 +195,29 @@ export default function GaransiReceipt({ id }) {
             borderCollapse: "separate",
             borderSpacing: 0,
             marginBottom: 24,
-            tableLayout: "fixed",
             overflow: "hidden",
           }}
         >
-          <colgroup>
-            <col style={{ width: "42%" }} />
-            <col style={{ width: "20%" }} />
-            <col style={{ width: "28%" }} />
-            <col style={{ width: "10%" }} />
-          </colgroup>
           <thead>
             <tr style={{ background: "#f3f6fd" }}>
-              <th
-                style={{
-                  textAlign: "left",
-                  padding: 8,
-                  borderTopLeftRadius: 8,
-                }}
-              >
-                Item
-              </th>
-              <th style={{ textAlign: "left", padding: 8 }}>SN</th>
-              <th style={{ textAlign: "left", padding: 8 }}>Keterangan</th>
-              <th
-                style={{
-                  textAlign: "left",
-                  padding: 8,
-                  borderTopRightRadius: 8,
-                }}
-              >
-                Status
-              </th>
+              <th style={{ ...td, borderTopLeftRadius: 8 }}>Item</th>
+              <th style={td}>SN</th>
+              <th style={td}>Keterangan</th>
+              <th style={{ ...td, borderTopRightRadius: 8 }}>Status</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td style={{ padding: 8 }}>
+              <td style={td}>
                 <strong>{data.nama_produk}</strong>
               </td>
-              <td style={{ padding: 8 }}>{data.sn}</td>
-              <td style={{ padding: 8 }}>
-                Rusak: {data.keterangan_rusak || "—"}
-                <br />
-                Nomor SO: {data.no_so || "—"}
-                <br />
-                SN Pengganti: {data.sn_pengganti || "—"}
+              <td style={td}>{data.sn || "—"}</td>
+              <td style={{ ...td, whiteSpace: "pre-line" }}>
+                {`Rusak: ${data.keterangan_rusak || "—"}\nNomor SO: ${
+                  data.no_so || "—"
+                }\nSN Pengganti: ${data.sn_pengganti || "—"}`}
               </td>
-              <td style={{ padding: 8 }}>{data.status}</td>
+              <td style={td}>{data.status || "—"}</td>
             </tr>
           </tbody>
         </table>
@@ -251,9 +233,9 @@ export default function GaransiReceipt({ id }) {
         >
           <strong>Notes:</strong>
           <br />
-          Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi dari
-          pelanggan untuk proses pemeriksaan/servis. Simpan dokumen ini untuk
-          pengambilan unit.
+          Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi
+          dari pelanggan untuk proses pemeriksaan/servis. Simpan dokumen ini
+          untuk pengambilan unit.
         </div>
       </div>
     </div>
