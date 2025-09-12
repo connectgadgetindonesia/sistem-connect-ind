@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-// DO NOT import html2pdf/html2canvas at top-level (breaks SSR)
-// We'll lazy-load them on the client:
+// Komponen cetak tanda terima garansi
 export default function GaransiReceipt({ id }) {
   const [row, setRow] = useState(null);
+
+  // lazy-loaded libs untuk export
   const [html2pdfLib, setHtml2pdfLib] = useState(null);
   const [html2canvasLib, setHtml2canvasLib] = useState(null);
+
   const contentRef = useRef(null);
 
-  // fetch data
+  // Ambil data garansi
   useEffect(() => {
     if (!id) return;
     (async () => {
@@ -18,29 +20,32 @@ export default function GaransiReceipt({ id }) {
         .select("*")
         .eq("id", id)
         .single();
-      if (!error) setRow(data);
-      else console.error("fetch error:", error);
+      if (error) {
+        console.error("fetch error:", error);
+      } else {
+        setRow(data);
+      }
     })();
   }, [id]);
 
-  // lazy-load export libs (client only)
+  // Load lib export hanya di client
   useEffect(() => {
     if (typeof window === "undefined") return;
     (async () => {
-      const p1 = import("html2pdf.js");
-      const p2 = import("html2canvas");
-      const [pdfMod, canvasMod] = await Promise.all([p1, p2]);
-      setHtml2pdfLib(pdfMod.default || pdfMod);     // html2pdf()
+      const [pdfMod, canvasMod] = await Promise.all([
+        import("html2pdf.js"),
+        import("html2canvas"),
+      ]);
+      setHtml2pdfLib(pdfMod.default || pdfMod);
       setHtml2canvasLib(canvasMod.default || canvasMod);
     })();
     window.scrollTo(0, 0);
   }, []);
 
-  const A4 = { w: 794, h: 1123 }; // px @ ~96dpi
+  const A4 = { w: 794, h: 1123 }; // px @ 96dpi (portrait)
 
   const downloadPDF = async () => {
-    if (!contentRef.current) return;
-    if (!html2pdfLib) return alert("Sedang memuat modul export… coba lagi sebentar.");
+    if (!contentRef.current || !html2pdfLib) return;
     window.scrollTo(0, 0);
     const opt = {
       margin: [6, 6, 6, 6],
@@ -62,8 +67,7 @@ export default function GaransiReceipt({ id }) {
   };
 
   const downloadJPG = async () => {
-    if (!contentRef.current) return;
-    if (!html2canvasLib) return alert("Sedang memuat modul export… coba lagi sebentar.");
+    if (!contentRef.current || !html2canvasLib) return;
     window.scrollTo(0, 0);
     const canvas = await html2canvasLib(contentRef.current, {
       scale: 2,
@@ -83,12 +87,12 @@ export default function GaransiReceipt({ id }) {
 
   if (!row) return <div style={{ padding: 24 }}>Loading…</div>;
 
-  // ===== fixed A4 layout
-  const wrap = {
+  // ===== Layout A4 fix, biar tidak terpotong saat export
+  const pageWrap = {
     width: `${A4.w}px`,
     minHeight: `${A4.h}px`,
-    margin: "0 auto",
     background: "#fff",
+    margin: "0 auto",
     padding: "28px",
     boxSizing: "border-box",
     borderRadius: "20px",
@@ -104,47 +108,92 @@ export default function GaransiReceipt({ id }) {
   const cell = { padding: 8, fontSize: 11, verticalAlign: "top", textAlign: "left" };
 
   return (
-    <div style={{ padding: 20, fontFamily: "'Inter', sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
+    <div
+      style={{
+        padding: 20,
+        fontFamily: "'Inter', sans-serif",
+        background: "#f5f5f5",
+        minHeight: "100vh",
+      }}
+    >
       <div style={{ marginBottom: 20 }}>
-        <button onClick={downloadPDF} style={{ marginRight: 10 }}>Download PDF</button>
+        <button onClick={downloadPDF} style={{ marginRight: 10 }}>
+          Download PDF
+        </button>
         <button onClick={downloadJPG}>Download JPG</button>
       </div>
 
-      <div ref={contentRef} style={wrap}>
+      <div ref={contentRef} style={pageWrap}>
         {/* Header */}
         <div style={headerBox}>
           <img
             src="/head-new.png"
             alt="Header"
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
           />
         </div>
 
-        {/* 3 columns */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 20, marginTop: 10 }}>
+        {/* Tiga kolom info */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 10,
+            marginBottom: 20,
+            marginTop: 10,
+          }}
+        >
           <div>
-            <strong>Receiving Details</strong><br />
-            Document No.:<br />{row.doc_no}<br />
-            Receive date:<br />{row.tanggal_terima}
+            <strong>Receiving Details</strong>
+            <br />
+            Document No.:<br />
+            {row.doc_no}
+            <br />
+            Receive date:
+            <br />
+            {row.tanggal_terima}
           </div>
+
           <div style={{ textAlign: "left" }}>
-            <strong>CONNECT.IND</strong><br />
-            (+62) 896-31-4000-31<br />
-            Jl. Srikuncoro Raya Ruko B2<br />
-            Kalibanteng Kulon, Semarang Barat<br />
-            Kota Semarang, Jawa Tengah<br />
+            <strong>CONNECT.IND</strong>
+            <br />
+            (+62) 896-31-4000-31
+            <br />
+            Jl. Srikuncoro Raya Ruko B2
+            <br />
+            Kalibanteng Kulon, Semarang Barat
+            <br />
+            Kota Semarang, Jawa Tengah
+            <br />
             50145
           </div>
+
           <div style={{ textAlign: "right" }}>
-            <strong>Customer</strong><br />
-            {row.nama}<br />
-            {row.alamat}<br />
+            <strong>Customer</strong>
+            <br />
+            {row.nama}
+            <br />
+            {row.alamat}
+            <br />
             {row.no_wa}
           </div>
         </div>
 
-        {/* Table */}
-        <table style={{ width: "100%", fontSize: 11, borderCollapse: "separate", borderSpacing: 0, marginBottom: 24 }}>
+        {/* Tabel item */}
+        <table
+          style={{
+            width: "100%",
+            fontSize: 11,
+            borderCollapse: "separate",
+            borderSpacing: 0,
+            marginBottom: 24,
+          }}
+        >
           <thead>
             <tr style={{ background: "#f3f6fd" }}>
               <th style={{ ...cell, borderTopLeftRadius: 8 }}>Item</th>
@@ -155,11 +204,15 @@ export default function GaransiReceipt({ id }) {
           </thead>
           <tbody>
             <tr>
-              <td style={cell}><strong>{row.nama_produk}</strong></td>
+              <td style={cell}>
+                <strong>{row.nama_produk}</strong>
+              </td>
               <td style={cell}>{row.sn}</td>
               <td style={cell}>
-                Rusak: {row.keterangan_rusak}<br />
-                Nomor SO: {row.no_so || "—"}<br />
+                Rusak: {row.keterangan_rusak || "—"}
+                <br />
+                Nomor SO: {row.no_so || "—"}
+                <br />
                 SN Pengganti: {row.sn_pengganti || "—"}
               </td>
               <td style={cell}>{row.status}</td>
@@ -168,10 +221,19 @@ export default function GaransiReceipt({ id }) {
         </table>
 
         {/* Notes */}
-        <div style={{ fontSize: 10, background: "#f3f6fd", padding: "10px 16px", borderRadius: "10px" }}>
-          <strong>Notes:</strong><br />
-          Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi dari pelanggan untuk
-          proses pemeriksaan/servis. Simpan dokumen ini untuk pengambilan unit.
+        <div
+          style={{
+            fontSize: 10,
+            background: "#f3f6fd",
+            padding: "10px 16px",
+            borderRadius: "10px",
+          }}
+        >
+          <strong>Notes:</strong>
+          <br />
+          Dokumen ini adalah bukti bahwa CONNECT.IND telah menerima unit garansi dari
+          pelanggan untuk proses pemeriksaan/servis. Simpan dokumen ini untuk
+          pengambilan unit.
         </div>
       </div>
     </div>
