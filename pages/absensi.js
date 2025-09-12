@@ -1,285 +1,235 @@
-// pages/absensi.js
 import Layout from '@/components/Layout'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import * as XLSX from 'xlsx'
 
 export default function AbsenTugasKaryawan() {
   const [nama, setNama] = useState('')
   const [shift, setShift] = useState('Pagi')
   const [status, setStatus] = useState('Hadir')
-  const [absenList, setAbsenList] = useState([])
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
 
-  // === Daily Task state
-  const [tasks, setTasks] = useState([]) // [{id,tanggal,nama,shift,task,done,created_at}]
-  const [newTask, setNewTask] = useState({}) // keyed by nama: { [nama]: "isi task" }
+  const [absenList, setAbsenList] = useState([])
+  const [notionMap, setNotionMap] = useState({}) // { [nama]: url }
+
+  // editor link notion per baris
+  const [editNama, setEditNama] = useState(null)
+  const [editUrl, setEditUrl] = useState('')
+
   const today = new Date().toISOString().slice(0, 10)
 
   useEffect(() => {
     fetchAbsensiHariIni()
-    fetchTasksHariIni()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchNotionMap()
   }, [])
 
-  // === Pengingat tiap jam kalau ada task belum selesai
+  // Pengingat per jam: kalau ada yang "Hadir" dan punya link Notion → reminder
   useEffect(() => {
-    const notify = () => {
-      const pending = tasks.filter(t => !t.done).length
-      // simpan untuk dibaca Layout (badge sidebar)
-      localStorage.setItem('absensi_pending_count', String(pending))
-      // Beritahu Layout via event
-      window.dispatchEvent(new CustomEvent('absensi-pending', { detail: { count: pending }}))
-      // toast tiap 1 jam
+    const ping = () => {
+      const hasHadir = absenList.some(a => a.status === 'Hadir')
+      if (!hasHadir) {
+        localStorage.setItem('absensi_last_reminder', String(Date.now()))
+        window.dispatchEvent(new CustomEvent('absensi-pending', { detail: { count: 0 }}))
+        return
+      }
+      // tampilkan badge 1 di sidebar (sekadar pengingat cek Notion)
+      window.dispatchEvent(new CustomEvent('absensi-pending', { detail: { count: 1 }}))
+
       const last = Number(localStorage.getItem('absensi_last_reminder') || '0')
       const now = Date.now()
-      if (pending > 0 && (now - last) >= 60 * 60 * 1000) {
-        alert(`Masih ada ${pending} tugas yang belum selesai. Yuk diselesaikan!`)
+      if ((now - last) >= 60 * 60 * 1000) {
+        alert('Pengingat: Silakan cek/kerjakan tugas harian di Notion.')
         localStorage.setItem('absensi_last_reminder', String(now))
       }
     }
-    // cek saat mount & tiap kali tasks berubah
-    notify()
-    const id = setInterval(notify, 60 * 60 * 1000) // setiap 1 jam
+    // jalankan saat data ada & set interval
+    ping()
+    const id = setInterval(ping, 60 * 60 * 1000)
     return () => clearInterval(id)
-  }, [tasks])
+  }, [absenList])
 
-  const fetchAbsensiHariIni = async () => {
+  async function fetchAbsensiHariIni() {
     const { data, error } = await supabase
       .from('absensi_karyawan')
       .select('*')
       .eq('tanggal', today)
+      .order('nama', { ascending: true })
+
     if (!error) setAbsenList(data || [])
   }
 
-  const fetchTasksHariIni = async () => {
+  async function fetchNotionMap() {
     const { data, error } = await supabase
-      .from('tugas_karyawan')
-      .select('*')
-      .eq('tanggal', today)
-      .order('created_at', { ascending: true })
-    if (!error) setTasks(data || [])
+      .from('karyawan_notion')
+      .select('nama, notion_url')
+      .order('nama', { ascending: true })
+    if (!error) {
+      const map = {}
+      ;(data || []).forEach(row => (map[row.nama] = row.notion_url))
+      setNotionMap(map)
+    }
   }
 
   async function handleSubmitAbsen(e) {
     e.preventDefault()
     if (!nama || !shift || !status) return alert('Lengkapi semua data')
 
-    const { error } = await supabase
-      .from('absensi_karyawan')
-      .insert({ nama, shift, status, tanggal: today })
+    const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
-    if (error) return alert('Gagal simpan absen')
-    await fetchAbsensiHariIni()
+    // coba simpan dengan jam_absen (jika kolomnya ada); kalau gagal, simpan tanpa jam_absen
+    let res = await supabase.from('absensi_karyawan').insert({
+      nama, shift, status, tanggal: today, jam_absen: jamNow
+    })
+    if (res.error) {
+      // fallback tanpa jam_absen (jika kolom belum dibuat)
+      await supabase.from('absensi_karyawan').insert({
+        nama, shift, status, tanggal: today
+      })
+    }
+
     setNama('')
     setShift('Pagi')
     setStatus('Hadir')
+    fetchAbsensiHariIni()
   }
 
-  // Tambahkan task manual untuk karyawan (hari ini)
-  async function handleAddTask(namaKaryawan, shiftKaryawan) {
-    const text = (newTask[namaKaryawan] || '').trim()
-    if (!text) return
+  // Set / update link Notion per nama
+  async function saveNotionLink(namaKaryawan) {
+    if (!editUrl.trim()) return alert('https://www.notion.so/26cd262a23e480e7928fdfd6f656c42c?v=26cd262a23e480e09d7d000cd3e00c5a&source=copy_link')
     const { error } = await supabase
-      .from('tugas_karyawan')
-      .insert({ tanggal: today, nama: namaKaryawan, shift: shiftKaryawan, task: text, done: false })
-    if (error) return alert('Gagal menambahkan tugas')
-    setNewTask(prev => ({ ...prev, [namaKaryawan]: '' }))
-    await fetchTasksHariIni()
+      .from('karyawan_notion')
+      .upsert({ nama: namaKaryawan, notion_url: editUrl.trim() }) // nama sebagai PK
+    if (error) return alert('Gagal menyimpan link Notion')
+    setEditNama(null)
+    setEditUrl('')
+    fetchNotionMap()
   }
 
-  // Toggle selesai/belum
-  async function toggleDone(taskId, checked) {
-    const { error } = await supabase
-      .from('tugas_karyawan')
-      .update({ done: checked })
-      .eq('id', taskId)
-    if (error) return alert('Gagal update status tugas')
-    // Update lokal biar cepat
-    setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, done: checked } : t)))
-  }
-
-  // Hapus tugas (opsional)
-  async function deleteTask(taskId) {
-    if (!confirm('Hapus tugas ini?')) return
-    const { error } = await supabase.from('tugas_karyawan').delete().eq('id', taskId)
-    if (error) return alert('Gagal hapus tugas')
-    setTasks(prev => prev.filter(t => t.id !== taskId))
-  }
-
-  // Kelompokkan task per nama
-  const tasksByNama = useMemo(() => {
-    const m = {}
-    for (const t of tasks) {
-      if (!m[t.nama]) m[t.nama] = []
-      m[t.nama].push(t)
-    }
-    return m
-  }, [tasks])
-
-  const getTugasByShift = (shift) => {
-    return shift === 'Pagi'
-      ? ['Menyapu halaman depan', 'Merapikan stok', 'Membersihkan meja & komputer', 'Menyiram tanaman']
-      : ['Merapikan stok', 'Matikan semua elektronik', 'Membersihkan toko']
-  }
-
-  const handleDownload = async () => {
-    const { data, error } = await supabase
-      .from('absensi_karyawan')
-      .select('*')
-      .gte('tanggal', startDate)
-      .lte('tanggal', endDate)
-
-    if (error || !data) return alert('Gagal ambil data')
-
-    const sheetAbsen = data.map(item => ({
-      Tanggal: item.tanggal,
-      Nama: item.nama,
-      Shift: item.shift,
-      Status: item.status,
-    }))
-
-    // Ambil tugas dari rentang tanggal
-    const { data: tugasRange } = await supabase
-      .from('tugas_karyawan')
-      .select('*')
-      .gte('tanggal', startDate)
-      .lte('tanggal', endDate)
-      .order('tanggal', { ascending: true })
-
-    const sheetTugas = (tugasRange || []).map(t => ({
-      Tanggal: t.tanggal,
-      Nama: t.nama,
-      Shift: t.shift || '',
-      Tugas: t.task,
-      Selesai: t.done ? 'Ya' : 'Belum',
-    }))
-
-    const wb = XLSX.utils.book_new()
-    const ws1 = XLSX.utils.json_to_sheet(sheetAbsen)
-    const ws2 = XLSX.utils.json_to_sheet(sheetTugas)
-
-    XLSX.utils.book_append_sheet(wb, ws1, 'Absensi')
-    XLSX.utils.book_append_sheet(wb, ws2, 'Tugas Harian')
-    XLSX.writeFile(wb, `Rekap_Absensi_${startDate}_to_${endDate}.xlsx`)
-  }
+  const dataTampil = useMemo(() => {
+    // jika ada duplikat nama (absen dobel), ambil yang terbaru berdasar created_at kalau ada; jika tidak, biarkan urutan by nama
+    // untuk kesederhanaan, kita tampilkan semua baris absen hari ini (kalau mau dedup, bisa filter di sini)
+    return absenList
+  }, [absenList])
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto p-4">
-        <h1 className="text-xl font-bold mb-4">Absensi & Tugas Karyawan</h1>
+      <div className="max-w-5xl mx-auto p-4">
+        <h1 className="text-xl font-bold mb-4">Absensi & Tugas (Link Notion)</h1>
 
         {/* Form Absen */}
         <form onSubmit={handleSubmitAbsen} className="space-y-4 border p-4 rounded mb-6">
-          <input
-            type="text"
-            value={nama}
-            onChange={(e) => setNama(e.target.value)}
-            placeholder="Nama Karyawan"
-            className="w-full border p-2"
-          />
-          <select value={shift} onChange={(e) => setShift(e.target.value)} className="w-full border p-2">
-            <option value="Pagi">Shift Pagi (09.00–17.00)</option>
-            <option value="Siang">Shift Siang (13.00–20.00)</option>
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full border p-2">
-            <option value="Hadir">Hadir</option>
-            <option value="Izin">Izin</option>
-            <option value="Sakit">Sakit</option>
-            <option value="Libur">Libur</option>
-            <option value="Cuti">Cuti</option>
-          </select>
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Simpan Absen</button>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <input
+              type="text"
+              value={nama}
+              onChange={(e) => setNama(e.target.value)}
+              placeholder="Nama Karyawan"
+              className="border p-2 col-span-2"
+            />
+            <select
+              value={shift}
+              onChange={(e) => setShift(e.target.value)}
+              className="border p-2"
+            >
+              <option value="Pagi">Shift Pagi (09.00–17.00)</option>
+              <option value="Siang">Shift Siang (13.00–20.00)</option>
+            </select>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="border p-2"
+            >
+              <option value="Hadir">Hadir</option>
+              <option value="Izin">Izin</option>
+              <option value="Sakit">Sakit</option>
+              <option value="Libur">Libur</option>
+              <option value="Cuti">Cuti</option>
+            </select>
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
+              Simpan Absen
+            </button>
+          </div>
         </form>
 
-        {/* Download Rekap */}
-        <div className="flex items-center space-x-2 mb-6">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="border p-2"
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="border p-2"
-          />
-          <button
-            onClick={handleDownload}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Download Rekap Excel
-          </button>
-        </div>
-
-        {/* Daftar Absen + Daily Task */}
-        {absenList.length > 0 && (
-          <div className="space-y-6">
-            {absenList.map((item, index) => {
-              const list = tasksByNama[item.nama] || []
-              const belum = list.filter(t => !t.done).length
-              return (
-                <div key={index} className="border p-4 rounded">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-lg font-semibold">
-                      {item.nama} - Shift {item.shift} <span className="text-sm text-gray-500">({item.status})</span>
-                    </h2>
-                    <span className={`text-sm ${belum ? 'text-red-600' : 'text-green-600'}`}>
-                      {belum ? `${belum} belum selesai` : 'Semua tugas selesai'}
-                    </span>
-                  </div>
-
-                  {/* Input tambah tugas manual */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <input
-                      className="border p-2 flex-1"
-                      placeholder="Tambah tugas harian..."
-                      value={newTask[item.nama] || ''}
-                      onChange={(e) => setNewTask(prev => ({ ...prev, [item.nama]: e.target.value }))}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleAddTask(item.nama, item.shift)}
-                      className="bg-yellow-600 text-white px-3 py-2 rounded"
-                    >
-                      Tambah
-                    </button>
-                  </div>
-
-                  {/* Daftar tugas hari ini untuk karyawan ini */}
-                  {list.length === 0 ? (
-                    <p className="text-sm text-gray-500">Belum ada tugas.</p>
-                  ) : (
-                    <ul className="space-y-1">
-                      {list.map(t => (
-                        <li key={t.id} className="flex items-center justify-between">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={!!t.done}
-                              onChange={(e) => toggleDone(t.id, e.target.checked)}
-                            />
-                            <span className={t.done ? 'line-through text-gray-500' : ''}>{t.task}</span>
-                          </label>
+        {/* Tabel Hari Ini */}
+        <div className="overflow-x-auto border rounded">
+          <table className="w-full table-auto">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border px-3 py-2 text-left">Nama</th>
+                <th className="border px-3 py-2 text-left">Shift</th>
+                <th className="border px-3 py-2 text-left">Status</th>
+                <th className="border px-3 py-2 text-left">Jam Absen</th>
+                <th className="border px-3 py-2 text-left">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dataTampil.length === 0 && (
+                <tr>
+                  <td className="border px-3 py-3 text-center text-gray-500" colSpan={5}>
+                    Belum ada absen hari ini
+                  </td>
+                </tr>
+              )}
+              {dataTampil.map((row) => {
+                const url = notionMap[row.nama]
+                return (
+                  <tr key={`${row.nama}-${row.shift}-${row.status}-${row.tanggal}-${row.jam_absen || ''}`}>
+                    <td className="border px-3 py-2">{row.nama}</td>
+                    <td className="border px-3 py-2">{row.shift}</td>
+                    <td className="border px-3 py-2">{row.status}</td>
+                    <td className="border px-3 py-2">{row.jam_absen || '-'}</td>
+                    <td className="border px-3 py-2">
+                      {editNama === row.nama ? (
+                        <div className="flex gap-2 items-center">
+                          <input
+                            className="border p-2 flex-1 min-w-[240px]"
+                            placeholder="Tempel URL Notion (https://...)"
+                            value={editUrl}
+                            onChange={(e) => setEditUrl(e.target.value)}
+                          />
                           <button
-                            className="text-red-600 text-sm"
-                            onClick={() => deleteTask(t.id)}
-                            title="Hapus tugas"
+                            onClick={() => saveNotionLink(row.nama)}
+                            className="bg-green-600 text-white px-3 py-2 rounded"
                           >
-                            Hapus
+                            Simpan
                           </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+                          <button
+                            onClick={() => { setEditNama(null); setEditUrl('') }}
+                            className="px-3 py-2 rounded border"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 items-center">
+                          {url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 underline"
+                            >
+                              Lihat tugas hari ini
+                            </a>
+                          ) : (
+                            <span className="text-gray-400 italic">Belum disetel</span>
+                          )}
+                          <button
+                            onClick={() => { setEditNama(row.nama); setEditUrl(url || '') }}
+                            className="px-3 py-1.5 rounded border"
+                          >
+                            {url ? 'Ubah Link' : 'Set Link'}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Layout>
   )
