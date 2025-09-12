@@ -1,14 +1,16 @@
-// pages/garansi/receipt/[id].jsx
-import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 
-// render the receipt only on the client to avoid SSR touching browser globals
-const GaransiReceipt = dynamic(() => import("@/components/GaransiReceipt"), {
+const InvoicePDF = dynamic(() => import("../../components/GaransiReceipt"), {
   ssr: false,
 });
 
-export default function ReceiptPage() {
-  const router = useRouter();
-  const { id } = router.query;
-  return <GaransiReceipt id={id} />;
+export async function getServerSideProps(context) {
+  const { id } = context.query;
+  return {
+    props: { id },
+  };
+}
+
+export default function GaransiReceiptPage({ id }) {
+  return <GaransiReceiptPDF id={id} />;
 }
