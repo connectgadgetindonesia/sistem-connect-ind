@@ -29,18 +29,18 @@ function ReceiptPage() {
 
   // Export PDF (load lib saat dibutuhkan)
   const downloadPDF = async () => {
-    if (!contentRef.current) return;
-    const { default: html2pdf } = await import("html2pdf.js");
-    const opt = {
-      margin: 0,
-      filename: `GARANSI-${row?.id || "DOC"}.pdf`,
-      image: { type: "jpeg", quality: 1 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["avoid-all"] },
-    };
-    html2pdf().set(opt).from(contentRef.current).save();
+  if (!contentRef.current) return;
+  const { default: html2pdf } = await import("html2pdf.js");
+  const opt = {
+    margin: 10, // <-- beri margin biar aman
+    filename: `GARANSI-${row?.id || "DOC"}.pdf`,
+    image: { type: "jpeg", quality: 1 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak: { mode: ["avoid-all"] },
   };
+  html2pdf().set(opt).from(contentRef.current).save();
+};
 
   // Export JPG
   const downloadJPG = async () => {
