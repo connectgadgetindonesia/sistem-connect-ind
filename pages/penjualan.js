@@ -4,9 +4,13 @@ import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import Select from 'react-select'
 
+const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
+
 export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
+  const [diskonInvoice, setDiskonInvoice] = useState('') // 🔹 input diskon (Rp)
+
   const [formData, setFormData] = useState({
     tanggal: '',
     nama_pembeli: '',
@@ -15,6 +19,7 @@ export default function Penjualan() {
     referral: '',
     dilayani_oleh: ''
   })
+
   const [produkBaru, setProdukBaru] = useState({
     sn_sku: '',
     harga_jual: '',
@@ -134,10 +139,10 @@ export default function Penjualan() {
     })
   }
 
-  // ====== FIX: generateInvoiceId berbasis prefix invoice, bukan hitung by date ======
+  // ====== FIX: generateInvoiceId berbasis prefix invoice ======
   async function generateInvoiceId(tanggal) {
-    const bulan = dayjs(tanggal).format('MM')    // contoh: "09"
-    const tahun = dayjs(tanggal).format('YYYY')  // contoh: "2025"
+    const bulan = dayjs(tanggal).format('MM')
+    const tahun = dayjs(tanggal).format('YYYY')
     const prefix = `INV-CTI-${bulan}-${tahun}-`
 
     const { data, error } = await supabase
@@ -157,6 +162,21 @@ export default function Penjualan() {
     return `${prefix}${nextNum}`
   }
 
+  // Bagi diskon proporsional berdasarkan harga_jual tiap produk berbayar
+  function distribusiDiskon(produkBerbayar, diskon) {
+    const total = produkBerbayar.reduce((s, p) => s + toNumber(p.harga_jual), 0)
+    if (diskon <= 0 || total <= 0) return new Map()
+    const map = new Map()
+    let teralokasi = 0
+    produkBerbayar.forEach((p, idx) => {
+      let bagian = Math.floor((toNumber(p.harga_jual) / total) * diskon)
+      if (idx === produkBerbayar.length - 1) bagian = diskon - teralokasi // pastikan jumlah pas
+      teralokasi += bagian
+      map.set(p.sn_sku, bagian)
+    })
+    return map
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!formData.tanggal || produkList.length === 0)
@@ -164,29 +184,36 @@ export default function Penjualan() {
 
     const invoice = await generateInvoiceId(formData.tanggal)
 
-    const semuaProduk = [
-      ...produkList.map((p) => ({
-        ...p,
-        harga_jual: parseInt(p.harga_jual),
-        is_bonus: false
-      })),
-      ...bonusList.map((b) => ({
-        ...b,
-        harga_jual: 0,
-        is_bonus: true
-      }))
-    ]
+    // Normalisasi list
+    const produkBerbayar = produkList.map((p) => ({
+      ...p,
+      harga_jual: toNumber(p.harga_jual),
+      is_bonus: false
+    }))
+    const bonusItems = bonusList.map((b) => ({
+      ...b,
+      harga_jual: 0,
+      is_bonus: true
+    }))
+
+    const diskonNominal = toNumber(diskonInvoice)
+    const petaDiskon = distribusiDiskon(produkBerbayar, diskonNominal)
+
+    const semuaProduk = [...produkBerbayar, ...bonusItems]
 
     for (const produk of semuaProduk) {
-      const harga_modal = parseInt(produk.harga_modal)
-      const laba = produk.harga_jual - harga_modal // bonus (0 - modal) → minus, sesuai kebutuhan
+      const harga_modal = toNumber(produk.harga_modal)
+      const diskon_item = produk.is_bonus ? 0 : toNumber(petaDiskon.get(produk.sn_sku) || 0)
+      const laba = (toNumber(produk.harga_jual) - diskon_item) - harga_modal
 
       await supabase.from('penjualan_baru').insert({
         ...formData,
         ...produk,
         harga_modal,
         laba,
-        invoice_id: invoice
+        invoice_id: invoice,
+        diskon_invoice: diskonNominal, // sama untuk semua baris invoice ini
+        diskon_item
       })
 
       const { data: stokUnit } = await supabase
@@ -219,7 +246,12 @@ export default function Penjualan() {
     })
     setProdukList([])
     setBonusList([])
+    setDiskonInvoice('')
   }
+
+  // Ringkas angka
+  const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
+  const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
 
   return (
     <Layout>
@@ -301,6 +333,25 @@ export default function Penjualan() {
             </button>
           </div>
 
+          {/* Diskon Invoice */}
+          <div className="border p-4 rounded bg-white">
+            <h3 className="font-semibold mb-2">Diskon Invoice (opsional)</h3>
+            <div className="flex items-center gap-3">
+              <input
+                className="border p-2"
+                placeholder="Masukkan diskon (Rp)"
+                type="number"
+                min="0"
+                value={diskonInvoice}
+                onChange={(e) => setDiskonInvoice(e.target.value)}
+              />
+              <div className="text-sm text-gray-600">
+                Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b> • Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b> •
+                Total: <b>Rp {(sumHarga - sumDiskon).toLocaleString('id-ID')}</b>
+              </div>
+            </div>
+          </div>
+
           {/* Tampilkan daftar produk */}
           {produkList.length > 0 && (
             <div className="border rounded p-4 bg-white">
@@ -308,7 +359,7 @@ export default function Penjualan() {
               <ul className="text-sm list-disc ml-4">
                 {produkList.map((p, i) => (
                   <li key={i}>
-                    {p.nama_produk} ({p.sn_sku}) - Rp {parseInt(p.harga_jual).toLocaleString()}
+                    {p.nama_produk} ({p.sn_sku}) - Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}
                   </li>
                 ))}
               </ul>
