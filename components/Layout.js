@@ -45,6 +45,7 @@ export default function Layout({ children }) {
     { label: 'Riwayat Penjualan', path: '/riwayat' },
     { label: 'Kinerja Karyawan', path: '/kinerja' },
     { label: 'Rekap Bulanan', path: '/rekap' },
+    { label: 'Claim Garansi', path: '/garansi' },
     { label: 'Akun', path: '/akun' },
     { label: 'Data Customer', path: '/data-customer' },
   ]
