@@ -2,38 +2,32 @@ import Layout from '@/components/Layout'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-const STATUS = {
-  DITERIMA: 'DITERIMA',
-  PROSES: 'PROSES',
-  CLEAR: 'CLEAR',
-}
+const STATUS = { DITERIMA: 'DITERIMA', PROSES: 'PROSES', CLEAR: 'CLEAR' }
 const statusLabel = (s) =>
   s === STATUS.DITERIMA ? 'Unit Diterima' :
   s === STATUS.PROSES   ? 'On Proses'    :
   s === STATUS.CLEAR    ? 'Clear'        : s
 
 export default function Garansi() {
-  // form tambah klaim
   const [form, setForm] = useState({
-    nama_customer: '',
-    alamat: '',
-    no_wa: '',
-    nama_produk: '',
-    serial_number: '',
-    keterangan_rusak: '',
+    nama_customer: '', alamat: '', no_wa: '',
+    nama_produk: '', serial_number: '', keterangan_rusak: '',
   })
 
-  // data & ui state
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
 
-  // modal claim (isi SO)
+  // Modal: input SO (claim)
   const [showClaimModal, setShowClaimModal] = useState(false)
   const [soNumber, setSoNumber] = useState('')
   const [selected, setSelected] = useState(null)
 
-  // modal edit
+  // Modal: SN pengganti (clear)
+  const [showClearModal, setShowClearModal] = useState(false)
+  const [snPengganti, setSnPengganti] = useState('')
+
+  // Modal: edit
   const [showEditModal, setShowEditModal] = useState(false)
   const [editData, setEditData] = useState(null)
 
@@ -45,13 +39,7 @@ export default function Garansi() {
       .from('claim_garansi')
       .select('*')
       .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error(error)
-      setLoading(false)
-      return
-    }
-    setRows(data || [])
+    if (!error) setRows(data || [])
     setLoading(false)
   }
 
@@ -66,16 +54,25 @@ export default function Garansi() {
       status: STATUS.DITERIMA,
       tanggal_diterima: new Date().toISOString().slice(0,10),
     }
-    const { error } = await supabase.from('claim_garansi').insert(payload)
+    const { data, error } = await supabase
+      .from('claim_garansi')
+      .insert(payload)
+      .select('id')
+      .single()
+
     if (error) return alert('Gagal menyimpan klaim.')
-    setForm({
-      nama_customer: '', alamat: '', no_wa: '',
-      nama_produk: '', serial_number: '', keterangan_rusak: '',
-    })
+
+    // reset form
+    setForm({ nama_customer:'', alamat:'', no_wa:'', nama_produk:'', serial_number:'', keterangan_rusak:'' })
     fetchRows()
+
+    // Tawarkan cetak bukti terima
+    if (confirm('Klaim tersimpan. Cetak bukti penerimaan sekarang?')) {
+      window.open(`/garansi/receipt/${data.id}`, '_blank')
+    }
   }
 
-  // buka modal claim (isi nomor SO)
+  // === Claim → isi nomor SO
   function openClaimModal(row) {
     setSelected(row)
     setSoNumber(row.service_order_no || '')
@@ -93,36 +90,38 @@ export default function Garansi() {
       })
       .eq('id', selected.id)
     if (error) return alert('Gagal mengupdate status.')
-    setShowClaimModal(false)
-    setSelected(null)
-    setSoNumber('')
-    fetchRows()
+    setShowClaimModal(false); setSelected(null); setSoNumber(''); fetchRows()
   }
 
-  // sudah diambil → clear
-  async function setClear(row) {
-    if (!confirm('Tandai sebagai sudah diambil?')) return
+  // === Clear → isi SN pengganti
+  function openClearModal(row) {
+    setSelected(row)
+    setSnPengganti(row.serial_number_pengganti || '')
+    setShowClearModal(true)
+  }
+  async function submitClear() {
+    if (!selected?.id) return
+    if (!snPengganti) return alert('Serial number pengganti wajib diisi.')
     const { error } = await supabase
       .from('claim_garansi')
-      .update({ status: STATUS.CLEAR, tanggal_clear: new Date().toISOString().slice(0,10) })
-      .eq('id', row.id)
+      .update({
+        serial_number_pengganti: snPengganti,
+        status: STATUS.CLEAR,
+        tanggal_clear: new Date().toISOString().slice(0,10),
+      })
+      .eq('id', selected.id)
     if (error) return alert('Gagal update.')
-    fetchRows()
+    setShowClearModal(false); setSelected(null); setSnPengganti(''); fetchRows()
   }
 
-  // edit data
-  function openEdit(row) {
-    setEditData({ ...row })
-    setShowEditModal(true)
-  }
+  // === Edit
+  function openEdit(row) { setEditData({ ...row }); setShowEditModal(true) }
   async function submitEdit() {
     const { id, created_at, ...payload } = editData || {}
     if (!id) return
     const { error } = await supabase.from('claim_garansi').update(payload).eq('id', id)
     if (error) return alert('Gagal menyimpan perubahan.')
-    setShowEditModal(false)
-    setEditData(null)
-    fetchRows()
+    setShowEditModal(false); setEditData(null); fetchRows()
   }
 
   const filtered = useMemo(() => {
@@ -182,7 +181,7 @@ export default function Garansi() {
                 <th className="px-2 py-2 border">Tanggal</th>
                 <th className="px-2 py-2 border">Nama</th>
                 <th className="px-2 py-2 border">Produk</th>
-                <th className="px-2 py-2 border">SN</th>
+                <th className="px-2 py-2 border">SN Masuk</th>
                 <th className="px-2 py-2 border">Ket. Rusak</th>
                 <th className="px-2 py-2 border">Status</th>
                 <th className="px-2 py-2 border">No. SO</th>
@@ -208,6 +207,10 @@ export default function Garansi() {
                   <td className="px-2 py-2 border">{row.service_order_no || '-'}</td>
                   <td className="px-2 py-2 border">
                     <div className="flex flex-wrap gap-2">
+                      <a className="px-2 py-1 rounded bg-slate-600 text-white"
+                         href={`/garansi/receipt/${row.id}`} target="_blank" rel="noreferrer">
+                        Bukti Terima
+                      </a>
                       {row.status === STATUS.DITERIMA && (
                         <button onClick={()=>openClaimModal(row)}
                                 className="px-2 py-1 rounded bg-blue-600 text-white">
@@ -215,7 +218,7 @@ export default function Garansi() {
                         </button>
                       )}
                       {row.status === STATUS.PROSES && (
-                        <button onClick={()=>setClear(row)}
+                        <button onClick={()=>openClearModal(row)}
                                 className="px-2 py-1 rounded bg-green-600 text-white">
                           Sudah Diambil
                         </button>
@@ -253,6 +256,24 @@ export default function Garansi() {
           </div>
         )}
 
+        {/* MODAL: SN Pengganti (clear) */}
+        {showClearModal && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white w-full max-w-md rounded p-5">
+              <h3 className="text-lg font-semibold mb-3">Unit Sudah Diambil</h3>
+              <p className="text-sm text-gray-600 mb-2">
+                {selected?.nama_customer} — {selected?.nama_produk}
+              </p>
+              <input className="border p-2 w-full mb-4" placeholder="Serial Number Pengganti"
+                     value={snPengganti} onChange={e=>setSnPengganti(e.target.value)} />
+              <div className="flex justify-end gap-2">
+                <button className="px-3 py-2 rounded bg-gray-200" onClick={()=>setShowClearModal(false)}>Batal</button>
+                <button className="px-3 py-2 rounded bg-green-600 text-white" onClick={submitClear}>Simpan</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL: Edit */}
         {showEditModal && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -277,18 +298,19 @@ export default function Garansi() {
                 <input className="border p-2 md:col-span-2" placeholder="Keterangan Rusak"
                        value={editData?.keterangan_rusak||''}
                        onChange={e=>setEditData(d=>({...d, keterangan_rusak:e.target.value}))}/>
-                <div className="md:col-span-2 grid grid-cols-2 gap-2">
-                  <input className="border p-2" placeholder="Nomor Service Order"
-                         value={editData?.service_order_no||''}
-                         onChange={e=>setEditData(d=>({...d, service_order_no:e.target.value}))}/>
-                  <select className="border p-2"
-                          value={editData?.status||STATUS.DITERIMA}
-                          onChange={e=>setEditData(d=>({...d, status:e.target.value}))}>
-                    <option value={STATUS.DITERIMA}>Unit Diterima</option>
-                    <option value={STATUS.PROSES}>On Proses</option>
-                    <option value={STATUS.CLEAR}>Clear</option>
-                  </select>
-                </div>
+                <input className="border p-2" placeholder="Nomor Service Order"
+                       value={editData?.service_order_no||''}
+                       onChange={e=>setEditData(d=>({...d, service_order_no:e.target.value}))}/>
+                <input className="border p-2" placeholder="SN Pengganti"
+                       value={editData?.serial_number_pengganti||''}
+                       onChange={e=>setEditData(d=>({...d, serial_number_pengganti:e.target.value}))}/>
+                <select className="border p-2"
+                        value={editData?.status||STATUS.DITERIMA}
+                        onChange={e=>setEditData(d=>({...d, status:e.target.value}))}>
+                  <option value={STATUS.DITERIMA}>Unit Diterima</option>
+                  <option value={STATUS.PROSES}>On Proses</option>
+                  <option value={STATUS.CLEAR}>Clear</option>
+                </select>
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button className="px-3 py-2 rounded bg-gray-200"
