@@ -53,7 +53,6 @@ export default function AbsenTugasKaryawan() {
   }, [])
 
   // ----- REAKTIF terhadap perubahan absensi -----
-  // Begitu ada yang "Hadir", pastikan tugas ada (buat kalau belum).
   useEffect(() => {
     (async () => {
       await ensureTasksIfNeeded()
@@ -94,8 +93,60 @@ export default function AbsenTugasKaryawan() {
     setShift('Pagi')
     setStatus('Hadir')
 
-    await loadAbsensi()           // → akan memicu ensureTasksIfNeeded via useEffect
+    await loadAbsensi() // → memicu ensureTasksIfNeeded via useEffect
   }
+
+  // === Absen Pulang (dengan konfirmasi tugas) ===
+async function handleAbsenPulang(row) {
+  // Cek progres tugas hari ini
+  const { data: tdata, error: terr } = await supabase
+    .from('tugas_harian')
+    .select('status')
+    .eq('task_date', tanggal);
+
+  const total = (tdata || []).length;
+  const done  = (tdata || []).filter(t => t.status === 'done').length;
+  const remaining = Math.max(total - done, 0);
+
+  // Jika sudah pernah isi jam pulang, konfirmasi dulu
+  if (row.jam_pulang) {
+    const ok = confirm(
+      `Jam pulang ${row.nama} sudah ${row.jam_pulang}. Ingin mengubahnya?`
+    );
+    if (!ok) return;
+  }
+
+  // Pop-up konfirmasi tugas
+  let msg = 'Pastikan semua tugas hari ini sudah selesai.\n\nKlik OK jika sudah.';
+  if (!terr && total > 0 && remaining > 0) {
+    msg =
+      `Pastikan semua tugas hari ini sudah selesai.\n` +
+      `Saat ini masih tersisa ${remaining} tugas yang belum selesai.\n\n` +
+      `Klik OK jika tetap ingin absen pulang.`;
+  }
+  const proceed = confirm(msg);
+  if (!proceed) return;
+
+  // Simpan jam pulang
+  const jamNow = new Date().toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const { error } = await supabase
+    .from('absensi_karyawan')
+    .update({ jam_pulang: jamNow })
+    .eq('id', row.id)      // pastikan tabel ada kolom id
+    .eq('tanggal', tanggal);
+
+  if (error) {
+    alert('Gagal menyimpan absen pulang');
+    return;
+  }
+
+  await loadAbsensi();
+}
+
 
   // ---------- TUGAS ----------
   const hadirNames = useMemo(
@@ -123,14 +174,11 @@ export default function AbsenTugasKaryawan() {
   /** Jika ada minimal 1 "Hadir" dan belum ada tugas → generate otomatis. */
   async function ensureTasksIfNeeded() {
     const adaHadir = absenList.some(a => a.status === 'Hadir')
-
-    // Kalau belum ada yang hadir: kosongkan tampilan tugas saja (tidak insert)
     if (!adaHadir) {
       setTasks([])
       return
     }
 
-    // Cek apakah tugas hari ini sudah ada
     const { data: existing, error: exErr } = await supabase
       .from('tugas_harian')
       .select('id')
@@ -138,12 +186,10 @@ export default function AbsenTugasKaryawan() {
       .limit(1)
 
     if (!exErr && existing && existing.length > 0) {
-      // Sudah ada → tampilkan
       await loadTasks()
       return
     }
 
-    // Belum ada → buat berdasarkan template
     const titles = buildTasksFor(tanggal)
     const rows = titles.map(t => ({
       task_date: tanggal,
@@ -154,7 +200,7 @@ export default function AbsenTugasKaryawan() {
 
     const { error } = await supabase
       .from('tugas_harian')
-      .upsert(rows, { onConflict: 'task_date,title' }) // butuh unique index (task_date,title)
+      .upsert(rows, { onConflict: 'task_date,title' })
 
     if (error) {
       alert('Gagal membuat tugas: ' + error.message)
@@ -238,22 +284,35 @@ export default function AbsenTugasKaryawan() {
                 <th className="border px-3 py-2 text-left">Shift</th>
                 <th className="border px-3 py-2 text-left">Status</th>
                 <th className="border px-3 py-2 text-left">Jam Absen</th>
+                <th className="border px-3 py-2 text-left">Jam Pulang</th>
+                <th className="border px-3 py-2 text-left">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {absenList.length === 0 && (
                 <tr>
-                  <td className="border px-3 py-3 text-center text-gray-500" colSpan={4}>
+                  <td className="border px-3 py-3 text-center text-gray-500" colSpan={6}>
                     Belum ada absen hari ini
                   </td>
                 </tr>
               )}
-              {absenList.map((row, idx) => (
-                <tr key={`${row.nama}-${idx}`}>
+              {absenList.map((row) => (
+                <tr key={row.id || `${row.nama}-${row.shift}-${row.jam_absen || ''}`}>
                   <td className="border px-3 py-2">{row.nama}</td>
                   <td className="border px-3 py-2">{row.shift}</td>
                   <td className="border px-3 py-2">{row.status}</td>
                   <td className="border px-3 py-2">{row.jam_absen || '-'}</td>
+                  <td className="border px-3 py-2">{row.jam_pulang || '-'}</td>
+                  <td className="border px-3 py-2">
+                    <button
+                      className="px-3 py-1 rounded border disabled:opacity-50"
+                      onClick={() => handleAbsenPulang(row)}
+                      disabled={row.status !== 'Hadir'}
+                      title={row.status !== 'Hadir' ? 'Hanya untuk yang Hadir' : ''}
+                    >
+                      {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -293,7 +352,7 @@ export default function AbsenTugasKaryawan() {
           </div>
 
           {/* Semua selesai */}
-          {allDone && tasks.length > 0 && (
+          {tasks.length > 0 && tasks.every(t => t.status === 'done') && (
             <div className="mb-3 text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded">
               ✅ Tugas hari ini telah selesai semua.
             </div>
