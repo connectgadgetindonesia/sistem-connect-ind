@@ -185,76 +185,86 @@ async function generateInvoiceId(tanggal) {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    if (!formData.tanggal || produkList.length === 0)
-      return alert('Tanggal & minimal 1 produk wajib diisi')
+  e.preventDefault();
 
-    const invoice = await generateInvoiceId(formData.tanggal)
+  // ✅ KONFIRMASI WAJIB sebelum lanjut simpan
+  const ok = window.confirm(
+    'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
+    'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' +
+    'Klik OK untuk melanjutkan.'
+  );
+  if (!ok) return;
 
-    // Normalisasi list
-    const produkBerbayar = produkList.map((p) => ({
-      ...p,
-      harga_jual: toNumber(p.harga_jual),
-      is_bonus: false
-    }))
-    const bonusItems = bonusList.map((b) => ({
-      ...b,
-      harga_jual: 0,
-      is_bonus: true
-    }))
+  if (!formData.tanggal || produkList.length === 0)
+    return alert('Tanggal & minimal 1 produk wajib diisi');
 
-    const diskonNominal = toNumber(diskonInvoice)
-    const petaDiskon = distribusiDiskon(produkBerbayar, diskonNominal)
+  const invoice = await generateInvoiceId(formData.tanggal);
 
-    const semuaProduk = [...produkBerbayar, ...bonusItems]
+  // Normalisasi list
+  const produkBerbayar = produkList.map((p) => ({
+    ...p,
+    harga_jual: toNumber(p.harga_jual),
+    is_bonus: false
+  }));
+  const bonusItems = bonusList.map((b) => ({
+    ...b,
+    harga_jual: 0,
+    is_bonus: true
+  }));
 
-    for (const produk of semuaProduk) {
-      const harga_modal = toNumber(produk.harga_modal)
-      const diskon_item = produk.is_bonus ? 0 : toNumber(petaDiskon.get(produk.sn_sku) || 0)
-      const laba = (toNumber(produk.harga_jual) - diskon_item) - harga_modal
+  const diskonNominal = toNumber(diskonInvoice);
+  const petaDiskon = distribusiDiskon(produkBerbayar, diskonNominal);
 
-      await supabase.from('penjualan_baru').insert({
-        ...formData,
-        ...produk,
-        harga_modal,
-        laba,
-        invoice_id: invoice,
-        diskon_invoice: diskonNominal, // sama untuk semua baris invoice ini
-        diskon_item
-      })
+  const semuaProduk = [...produkBerbayar, ...bonusItems];
 
-      const { data: stokUnit } = await supabase
-        .from('stok')
-        .select('id')
-        .eq('sn', produk.sn_sku)
-        .maybeSingle()
+  for (const produk of semuaProduk) {
+    const harga_modal = toNumber(produk.harga_modal);
+    const diskon_item = produk.is_bonus ? 0 : toNumber(petaDiskon.get(produk.sn_sku) || 0);
+    const laba = (toNumber(produk.harga_jual) - diskon_item) - harga_modal;
 
-      if (stokUnit) {
-        await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', produk.sn_sku)
-      } else {
-        await supabase.rpc('kurangi_stok_aksesoris', { sku_input: produk.sn_sku })
-      }
+    await supabase.from('penjualan_baru').insert({
+      ...formData,
+      ...produk,
+      harga_modal,
+      laba,
+      invoice_id: invoice,
+      diskon_invoice: diskonNominal, // sama untuk semua baris invoice ini
+      diskon_item
+    });
+
+    const { data: stokUnit } = await supabase
+      .from('stok')
+      .select('id')
+      .eq('sn', produk.sn_sku)
+      .maybeSingle();
+
+    if (stokUnit) {
+      await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', produk.sn_sku);
+    } else {
+      await supabase.rpc('kurangi_stok_aksesoris', { sku_input: produk.sn_sku });
     }
-
-    // Update status di transaksi_indent jika nama pembeli cocok
-    await supabase
-      .from('transaksi_indent')
-      .update({ status: 'Sudah Diambil' })
-      .eq('nama', formData.nama_pembeli.toUpperCase())
-
-    alert('Berhasil simpan multi produk!')
-    setFormData({
-      tanggal: '',
-      nama_pembeli: '',
-      alamat: '',
-      no_wa: '',
-      referral: '',
-      dilayani_oleh: ''
-    })
-    setProdukList([])
-    setBonusList([])
-    setDiskonInvoice('')
   }
+
+  // Update status di transaksi_indent jika nama pembeli cocok
+  await supabase
+    .from('transaksi_indent')
+    .update({ status: 'Sudah Diambil' })
+    .eq('nama', formData.nama_pembeli.toUpperCase());
+
+  alert('Berhasil simpan multi produk!');
+  setFormData({
+    tanggal: '',
+    nama_pembeli: '',
+    alamat: '',
+    no_wa: '',
+    referral: '',
+    dilayani_oleh: ''
+  });
+  setProdukList([]);
+  setBonusList([]);
+  setDiskonInvoice('');
+}
+
 
   // Ringkas angka
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
