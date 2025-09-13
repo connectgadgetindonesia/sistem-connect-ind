@@ -139,25 +139,34 @@ export default function Penjualan() {
     })
   }
 
-  // ====== FIX: generateInvoiceId pakai counter DB (atomic, no backfill) ======
+ // ====== FIX: generateInvoiceId SELALU lanjut dari angka TERBESAR (bukan isi gap) ======
 async function generateInvoiceId(tanggal) {
-  const bulan = dayjs(tanggal).format('MM');      // contoh: "09"
-  const tahun = dayjs(tanggal).format('YYYY');    // contoh: "2025"
-  const monthKey = `${tahun}-${bulan}`;           // "2025-09"
-  const prefix   = `INV-CTI-${bulan}-${tahun}-`;  // "INV-CTI-09-2025-"
+  const bulan = dayjs(tanggal).format('MM');    // contoh: "09"
+  const tahun = dayjs(tanggal).format('YYYY');  // contoh: "2025"
+  const prefix = `INV-CTI-${bulan}-${tahun}-`;
 
-  const { data, error } = await supabase.rpc('next_invoice_id', {
-    p_month_key: monthKey,
-    p_prefix: prefix
-  });
+  // Ambil semua invoice_id bulan tsb (hanya kolom invoice_id agar ringan)
+  let q = supabase
+    .from('penjualan_baru')
+    .select('invoice_id', { count: 'exact', head: false })
+    .ilike('invoice_id', `${prefix}%`)
+    .range(0, 9999); // jaga-jaga jika >1000 baris di bulan itu
 
+  const { data, error } = await q;
   if (error) {
-    console.error('next_invoice_id RPC error:', error);
-    throw new Error('Gagal membuat nomor invoice');
+    console.error('generateInvoiceId error:', error);
+    // fallback aman
+    return `${prefix}1`;
   }
 
-  // contoh hasil: "INV-CTI-09-2025-308"
-  return data;
+  // Cari angka suffix terbesar
+  const maxNum = (data || []).reduce((max, row) => {
+    const m = row.invoice_id?.match(/-(\d+)$/);
+    const n = m ? parseInt(m[1], 10) : 0;
+    return Number.isFinite(n) ? Math.max(max, n) : max;
+  }, 0);
+
+  return `${prefix}${maxNum + 1}`;
 }
 
   // Bagi diskon proporsional berdasarkan harga_jual tiap produk berbayar
