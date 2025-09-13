@@ -139,28 +139,26 @@ export default function Penjualan() {
     })
   }
 
-  // ====== FIX: generateInvoiceId berbasis prefix invoice ======
-  async function generateInvoiceId(tanggal) {
-    const bulan = dayjs(tanggal).format('MM')
-    const tahun = dayjs(tanggal).format('YYYY')
-    const prefix = `INV-CTI-${bulan}-${tahun}-`
+  // ====== FIX: generateInvoiceId pakai counter DB (atomic, no backfill) ======
+async function generateInvoiceId(tanggal) {
+  const bulan = dayjs(tanggal).format('MM');      // contoh: "09"
+  const tahun = dayjs(tanggal).format('YYYY');    // contoh: "2025"
+  const monthKey = `${tahun}-${bulan}`;           // "2025-09"
+  const prefix   = `INV-CTI-${bulan}-${tahun}-`;  // "INV-CTI-09-2025-"
 
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('invoice_id')
-      .ilike('invoice_id', `${prefix}%`)
-      .order('invoice_id', { ascending: false })
-      .limit(1)
+  const { data, error } = await supabase.rpc('next_invoice_id', {
+    p_month_key: monthKey,
+    p_prefix: prefix
+  });
 
-    if (error) {
-      console.error('generateInvoiceId error:', error)
-    }
-
-    const last = data?.[0]?.invoice_id || null
-    const lastNum = last ? parseInt((last.match(/(\d+)$/) || [,'0'])[1], 10) : 0
-    const nextNum = (Number.isFinite(lastNum) ? lastNum : 0) + 1
-    return `${prefix}${nextNum}`
+  if (error) {
+    console.error('next_invoice_id RPC error:', error);
+    throw new Error('Gagal membuat nomor invoice');
   }
+
+  // contoh hasil: "INV-CTI-09-2025-308"
+  return data;
+}
 
   // Bagi diskon proporsional berdasarkan harga_jual tiap produk berbayar
   function distribusiDiskon(produkBerbayar, diskon) {
