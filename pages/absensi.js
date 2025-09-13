@@ -22,12 +22,11 @@ function buildTasksFor(dateISO) {
   ]
 
   // Mingguan:
-  if (day === 1) base.push('LAP PRODUK')                      // Senin
-  if ([2, 4, 6].includes(day)) base.push('SIRAM TANAMAN')     // Selasa, Kamis, Sabtu
-  if (day === 3) base.push('BERSIHKAN KAMAR MANDI')           // Rabu
-  if (day === 5) base.push('LAP KACA DEPAN')                  // Jumat
+  if (day === 1) base.push('LAP PRODUK')                    // Senin
+  if ([2, 4, 6].includes(day)) base.push('SIRAM TANAMAN')   // Selasa, Kamis, Sabtu
+  if (day === 3) base.push('BERSIHKAN KAMAR MANDI')         // Rabu
+  if (day === 5) base.push('LAP KACA DEPAN')                // Jumat
 
-  // pastikan uppercase & unik
   return Array.from(new Set(base.map(t => t.toUpperCase())))
 }
 
@@ -45,10 +44,22 @@ export default function AbsenTugasKaryawan() {
 
   const tanggal = todayStr()
 
+  // ----- MOUNT: ambil absensi + (kalau sudah ada tugas) tampilkan -----
   useEffect(() => {
-    loadAbsensi().then(() => ensureTasksIfNeeded())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    (async () => {
+      await loadAbsensi()
+      await loadTasks()
+    })()
   }, [])
+
+  // ----- REAKTIF terhadap perubahan absensi -----
+  // Begitu ada yang "Hadir", pastikan tugas ada (buat kalau belum).
+  useEffect(() => {
+    (async () => {
+      await ensureTasksIfNeeded()
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [absenList])
 
   // ---------- ABSENSI ----------
   async function loadAbsensi() {
@@ -70,13 +81,12 @@ export default function AbsenTugasKaryawan() {
       minute: '2-digit',
     })
 
-    // simpan (gunakan jam_absen bila kolom tersedia)
     let res = await supabase
       .from('absensi_karyawan')
       .insert({ nama, shift, status, tanggal, jam_absen: jamNow })
 
     if (res.error) {
-      // fallback tanpa jam_absen (kalau kolomnya memang belum ada)
+      // fallback bila kolom jam_absen belum ada
       await supabase.from('absensi_karyawan').insert({ nama, shift, status, tanggal })
     }
 
@@ -84,8 +94,7 @@ export default function AbsenTugasKaryawan() {
     setShift('Pagi')
     setStatus('Hadir')
 
-    await loadAbsensi()
-    await ensureTasksIfNeeded() // setelah ada yang hadir → buat tugas
+    await loadAbsensi()           // → akan memicu ensureTasksIfNeeded via useEffect
   }
 
   // ---------- TUGAS ----------
@@ -103,7 +112,6 @@ export default function AbsenTugasKaryawan() {
 
     if (!error) {
       setTasks(data || [])
-      // isi assignee dropdown state
       const m = {}
       ;(data || []).forEach(t => {
         if (t.assignee) m[t.id] = t.assignee
@@ -112,28 +120,30 @@ export default function AbsenTugasKaryawan() {
     }
   }
 
-  /** Jika ada minimal 1 "Hadir" dan belum ada tugas, generate otomatis */
+  /** Jika ada minimal 1 "Hadir" dan belum ada tugas → generate otomatis. */
   async function ensureTasksIfNeeded() {
     const adaHadir = absenList.some(a => a.status === 'Hadir')
+
+    // Kalau belum ada yang hadir: kosongkan tampilan tugas saja (tidak insert)
     if (!adaHadir) {
       setTasks([])
       return
     }
 
-    // cek apakah sudah ada tugas hari ini
-    const { data: existing } = await supabase
+    // Cek apakah tugas hari ini sudah ada
+    const { data: existing, error: exErr } = await supabase
       .from('tugas_harian')
       .select('id')
       .eq('task_date', tanggal)
       .limit(1)
 
-    if (existing && existing.length > 0) {
-      // sudah ada → hanya load
+    if (!exErr && existing && existing.length > 0) {
+      // Sudah ada → tampilkan
       await loadTasks()
       return
     }
 
-    // belum ada → buat
+    // Belum ada → buat berdasarkan template
     const titles = buildTasksFor(tanggal)
     const rows = titles.map(t => ({
       task_date: tanggal,
@@ -144,7 +154,7 @@ export default function AbsenTugasKaryawan() {
 
     const { error } = await supabase
       .from('tugas_harian')
-      .upsert(rows, { onConflict: 'task_date,title' })
+      .upsert(rows, { onConflict: 'task_date,title' }) // butuh unique index (task_date,title)
 
     if (error) {
       alert('Gagal membuat tugas: ' + error.message)
