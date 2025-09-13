@@ -71,22 +71,36 @@ export default function AbsenTugasKaryawan() {
     if (!error) setAbsenList(data || [])
   }
 
+  // 🔒 Cegah absen dobel (1x per hari per nama)
   async function handleSubmitAbsen(e) {
     e.preventDefault()
     if (!nama || !shift || !status) return alert('Lengkapi semua data')
 
-    const jamNow = new Date().toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    const namaVal = (nama || '').trim().toUpperCase() // seragamkan case
+    const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
+    // Cek apakah nama ini sudah absen hari ini
+    const { data: exist } = await supabase
+      .from('absensi_karyawan')
+      .select('id, shift, jam_absen')
+      .eq('tanggal', tanggal)
+      .eq('nama', namaVal)
+      .maybeSingle()
+
+    if (exist) {
+      alert(`${namaVal} sudah absen hari ini (Shift ${exist.shift}${exist.jam_absen ? `, jam ${exist.jam_absen}` : ''}).`)
+      return
+    }
+
+    // simpan (pakai jam_absen jika kolom ada; fallback jika tidak)
     let res = await supabase
       .from('absensi_karyawan')
-      .insert({ nama, shift, status, tanggal, jam_absen: jamNow })
+      .insert({ nama: namaVal, shift, status, tanggal, jam_absen: jamNow })
 
     if (res.error) {
-      // fallback bila kolom jam_absen belum ada
-      await supabase.from('absensi_karyawan').insert({ nama, shift, status, tanggal })
+      await supabase
+        .from('absensi_karyawan')
+        .insert({ nama: namaVal, shift, status, tanggal })
     }
 
     setNama('')
@@ -97,56 +111,55 @@ export default function AbsenTugasKaryawan() {
   }
 
   // === Absen Pulang (dengan konfirmasi tugas) ===
-async function handleAbsenPulang(row) {
-  // Cek progres tugas hari ini
-  const { data: tdata, error: terr } = await supabase
-    .from('tugas_harian')
-    .select('status')
-    .eq('task_date', tanggal);
+  async function handleAbsenPulang(row) {
+    // Cek progres tugas hari ini
+    const { data: tdata, error: terr } = await supabase
+      .from('tugas_harian')
+      .select('status')
+      .eq('task_date', tanggal);
 
-  const total = (tdata || []).length;
-  const done  = (tdata || []).filter(t => t.status === 'done').length;
-  const remaining = Math.max(total - done, 0);
+    const total = (tdata || []).length;
+    const done  = (tdata || []).filter(t => t.status === 'done').length;
+    const remaining = Math.max(total - done, 0);
 
-  // Jika sudah pernah isi jam pulang, konfirmasi dulu
-  if (row.jam_pulang) {
-    const ok = confirm(
-      `Jam pulang ${row.nama} sudah ${row.jam_pulang}. Ingin mengubahnya?`
-    );
-    if (!ok) return;
+    // Jika sudah pernah isi jam pulang, konfirmasi dulu
+    if (row.jam_pulang) {
+      const ok = confirm(
+        `Jam pulang ${row.nama} sudah ${row.jam_pulang}. Ingin mengubahnya?`
+      );
+      if (!ok) return;
+    }
+
+    // Pop-up konfirmasi tugas
+    let msg = 'Pastikan semua tugas hari ini sudah selesai.\n\nKlik OK jika sudah.';
+    if (!terr && total > 0 && remaining > 0) {
+      msg =
+        `Pastikan semua tugas hari ini sudah selesai.\n` +
+        `Saat ini masih tersisa ${remaining} tugas yang belum selesai.\n\n` +
+        `Klik OK jika tetap ingin absen pulang.`;
+    }
+    const proceed = confirm(msg);
+    if (!proceed) return;
+
+    // Simpan jam pulang
+    const jamNow = new Date().toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const { error } = await supabase
+      .from('absensi_karyawan')
+      .update({ jam_pulang: jamNow })
+      .eq('id', row.id)
+      .eq('tanggal', tanggal);
+
+    if (error) {
+      alert('Gagal menyimpan absen pulang');
+      return;
+    }
+
+    await loadAbsensi();
   }
-
-  // Pop-up konfirmasi tugas
-  let msg = 'Pastikan semua tugas hari ini sudah selesai.\n\nKlik OK jika sudah.';
-  if (!terr && total > 0 && remaining > 0) {
-    msg =
-      `Pastikan semua tugas hari ini sudah selesai.\n` +
-      `Saat ini masih tersisa ${remaining} tugas yang belum selesai.\n\n` +
-      `Klik OK jika tetap ingin absen pulang.`;
-  }
-  const proceed = confirm(msg);
-  if (!proceed) return;
-
-  // Simpan jam pulang
-  const jamNow = new Date().toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  const { error } = await supabase
-    .from('absensi_karyawan')
-    .update({ jam_pulang: jamNow })
-    .eq('id', row.id)      // pastikan tabel ada kolom id
-    .eq('tanggal', tanggal);
-
-  if (error) {
-    alert('Gagal menyimpan absen pulang');
-    return;
-  }
-
-  await loadAbsensi();
-}
-
 
   // ---------- TUGAS ----------
   const hadirNames = useMemo(
@@ -241,6 +254,14 @@ async function handleAbsenPulang(row) {
 
   const allDone = tasks.length > 0 && tasks.every(t => t.status === 'done')
 
+  // UX: nonaktifkan tombol jika nama ini sudah absen
+  const sudahAbsenHariIni = useMemo(
+    () => absenList.some(a =>
+      (a.nama || '').trim().toUpperCase() === (nama || '').trim().toUpperCase()
+    ),
+    [absenList, nama]
+  )
+
   return (
     <Layout>
       <div className="max-w-5xl mx-auto p-4">
@@ -268,10 +289,18 @@ async function handleAbsenPulang(row) {
               <option value="Cuti">Cuti</option>
             </select>
           </div>
-          <div className="flex justify-end">
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
+          <div className="flex items-center justify-between">
+            <button
+              type="submit"
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+              disabled={sudahAbsenHariIni}
+              title={sudahAbsenHariIni ? 'Nama ini sudah absen hari ini' : ''}
+            >
               Simpan Absen
             </button>
+            {sudahAbsenHariIni && (
+              <span className="text-xs text-red-600 ml-3">Nama ini sudah absen hari ini.</span>
+            )}
           </div>
         </form>
 
@@ -352,7 +381,7 @@ async function handleAbsenPulang(row) {
           </div>
 
           {/* Semua selesai */}
-          {tasks.length > 0 && tasks.every(t => t.status === 'done') && (
+          {allDone && tasks.length > 0 && (
             <div className="mb-3 text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded">
               ✅ Tugas hari ini telah selesai semua.
             </div>
