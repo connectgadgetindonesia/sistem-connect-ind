@@ -5,11 +5,12 @@ import dayjs from 'dayjs'
 import Select from 'react-select'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
+const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN'] // <- daftar opsi dropdown
 
 export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
-  const [diskonInvoice, setDiskonInvoice] = useState('') // 🔹 input diskon (Rp)
+  const [diskonInvoice, setDiskonInvoice] = useState('')
 
   const [formData, setFormData] = useState({
     tanggal: '',
@@ -139,13 +140,11 @@ export default function Penjualan() {
     })
   }
 
-  // ====== FIX: generateInvoiceId SELALU lanjut dari angka TERBESAR (bukan isi gap) ======
   async function generateInvoiceId(tanggal) {
-    const bulan = dayjs(tanggal).format('MM')    // contoh: "09"
-    const tahun = dayjs(tanggal).format('YYYY')  // contoh: "2025"
+    const bulan = dayjs(tanggal).format('MM')
+    const tahun = dayjs(tanggal).format('YYYY')
     const prefix = `INV-CTI-${bulan}-${tahun}-`
 
-    // Ambil semua invoice bulan tsb (hanya kolom invoice_id agar ringan)
     const { data, error } = await supabase
       .from('penjualan_baru')
       .select('invoice_id')
@@ -166,7 +165,6 @@ export default function Penjualan() {
     return `${prefix}${maxNum + 1}`
   }
 
-  // Bagi diskon proporsional berdasarkan harga_jual tiap produk berbayar
   function distribusiDiskon(produkBerbayar, diskon) {
     const total = produkBerbayar.reduce((s, p) => s + toNumber(p.harga_jual), 0)
     if (diskon <= 0 || total <= 0) return new Map()
@@ -174,14 +172,13 @@ export default function Penjualan() {
     let teralokasi = 0
     produkBerbayar.forEach((p, idx) => {
       let bagian = Math.floor((toNumber(p.harga_jual) / total) * diskon)
-      if (idx === produkBerbayar.length - 1) bagian = diskon - teralokasi // pastikan jumlah pas
+      if (idx === produkBerbayar.length - 1) bagian = diskon - teralokasi
       teralokasi += bagian
       map.set(p.sn_sku, bagian)
     })
     return map
   }
 
-  // ===== Konfirmasi sebelum submit (muncul meski form masih kosong) =====
   const confirmBeforeSubmit = (e) => {
     const ok = window.confirm(
       'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
@@ -199,7 +196,6 @@ export default function Penjualan() {
 
     const invoice = await generateInvoiceId(formData.tanggal)
 
-    // Normalisasi list
     const produkBerbayar = produkList.map((p) => ({
       ...p,
       harga_jual: toNumber(p.harga_jual),
@@ -227,7 +223,7 @@ export default function Penjualan() {
         harga_modal,
         laba,
         invoice_id: invoice,
-        diskon_invoice: diskonNominal, // sama untuk semua baris invoice ini
+        diskon_invoice: diskonNominal,
         diskon_item
       })
 
@@ -244,7 +240,6 @@ export default function Penjualan() {
       }
     }
 
-    // Update status di transaksi_indent jika nama pembeli cocok
     await supabase
       .from('transaksi_indent')
       .update({ status: 'Sudah Diambil' })
@@ -264,7 +259,6 @@ export default function Penjualan() {
     setDiskonInvoice('')
   }
 
-  // Ringkas angka
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
 
@@ -280,12 +274,12 @@ export default function Penjualan() {
             onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
             required
           />
+
+          {/* Input teks biasa */}
           {[
             ['Nama Pembeli', 'nama_pembeli'],
             ['Alamat', 'alamat'],
-            ['No. WA', 'no_wa'],
-            ['Referral', 'referral'],
-            ['Dilayani Oleh', 'dilayani_oleh']
+            ['No. WA', 'no_wa']
           ].map(([label, field]) => (
             <input
               key={field}
@@ -296,6 +290,36 @@ export default function Penjualan() {
               required
             />
           ))}
+
+          {/* Dropdown: Referral */}
+          <select
+            className="border p-2"
+            value={formData.referral}
+            onChange={(e) =>
+              setFormData({ ...formData, referral: (e.target.value || '').toUpperCase() })
+            }
+            required
+          >
+            <option value="">Pilih Referral</option>
+            {KARYAWAN.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+
+          {/* Dropdown: Dilayani Oleh */}
+          <select
+            className="border p-2"
+            value={formData.dilayani_oleh}
+            onChange={(e) =>
+              setFormData({ ...formData, dilayani_oleh: (e.target.value || '').toUpperCase() })
+            }
+            required
+          >
+            <option value="">Pilih Dilayani Oleh</option>
+            {KARYAWAN.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
 
           {/* Tambah Produk */}
           <div className="border p-4 rounded bg-gray-50">
@@ -367,7 +391,7 @@ export default function Penjualan() {
             </div>
           </div>
 
-          {/* Tampilkan daftar produk */}
+          {/* Daftar Produk */}
           {produkList.length > 0 && (
             <div className="border rounded p-4 bg-white">
               <h3 className="font-semibold mb-2">Daftar Produk</h3>
@@ -381,7 +405,7 @@ export default function Penjualan() {
             </div>
           )}
 
-          {/* Tampilkan daftar bonus */}
+          {/* Daftar Bonus */}
           {bonusList.length > 0 && (
             <div className="border rounded p-4 bg-white">
               <h3 className="font-semibold mb-2 text-yellow-700">Daftar Bonus</h3>
