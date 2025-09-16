@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import Select from 'react-select'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
+const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
 
 export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
@@ -227,18 +228,17 @@ export default function Penjualan() {
       is_bonus: true
     }))
 
-    // 🔹 Biaya lain-lain → jadi baris khusus (harga_jual=0, harga_modal=nominal)
-    //    Agar tidak memengaruhi total invoice, tapi mengurangi laba.
+    // 🔹 Biaya lain-lain → baris khusus (harga_jual=0, harga_modal=nominal)
     const feeItems = biayaList.map((f, i) => ({
-      sn_sku: `FEE-${i + 1}`,              // penanda lokal (tidak akan mengubah stok)
+      sn_sku: `FEE-${i + 1}`,
       nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
       warna: '',
       garansi: '',
       storage: '',
       harga_jual: 0,
       harga_modal: toNumber(f.nominal),
-      is_bonus: true,                       // perilaku mirip bonus (mengurangi laba)
-      __is_fee: true                        // flag lokal, JANGAN dikirim ke DB
+      is_bonus: true,
+      __is_fee: true
     }))
 
     const diskonNominal = toNumber(diskonInvoice)
@@ -251,7 +251,6 @@ export default function Penjualan() {
       const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskon.get(item.sn_sku) || 0)
       const laba = (toNumber(item.harga_jual) - diskon_item) - harga_modal
 
-      // ⬇️ Pastikan kita tidak mengirim __is_fee (kolom tak ada di DB)
       const rowToInsert = {
         ...formData,
         sn_sku: item.sn_sku,
@@ -271,11 +270,8 @@ export default function Penjualan() {
       await supabase.from('penjualan_baru').insert(rowToInsert)
 
       // 🔸 Skip perubahan stok untuk biaya (FEE-...)
-      if (item.__is_fee) {
-        continue
-      }
+      if (item.__is_fee) continue
 
-      // Update stok unit / aksesoris seperti biasa
       const { data: stokUnit } = await supabase
         .from('stok')
         .select('id')
@@ -314,12 +310,12 @@ export default function Penjualan() {
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
 
-  // —————————————————————— UI ——————————————————————
   return (
     <Layout>
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Input Penjualan Multi Produk</h1>
         <form onSubmit={handleSubmit} className="grid gap-4 mb-6">
+          {/* Tanggal */}
           <input
             type="date"
             className="border p-2"
@@ -327,12 +323,12 @@ export default function Penjualan() {
             onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
             required
           />
+
+          {/* Data pembeli */}
           {[
             ['Nama Pembeli', 'nama_pembeli'],
             ['Alamat', 'alamat'],
             ['No. WA', 'no_wa'],
-            // ['Referral', 'referral'],       // <- jika sudah dropdown di tempatmu, biarkan versimu
-            // ['Dilayani Oleh', 'dilayani_oleh']
           ].map(([label, field]) => (
             <input
               key={field}
@@ -343,6 +339,31 @@ export default function Penjualan() {
               required
             />
           ))}
+
+          {/* Dropdown Referral & Dilayani Oleh */}
+          <select
+            className="border p-2"
+            value={formData.referral}
+            onChange={(e) => setFormData({ ...formData, referral: e.target.value })}
+            required
+          >
+            <option value="">Pilih Referral</option>
+            {KARYAWAN.map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+
+          <select
+            className="border p-2"
+            value={formData.dilayani_oleh}
+            onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })}
+            required
+          >
+            <option value="">Pilih Dilayani Oleh</option>
+            {KARYAWAN.map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
 
           {/* Tambah Produk */}
           <div className="border p-4 rounded bg-gray-50">
@@ -395,7 +416,7 @@ export default function Penjualan() {
             </button>
           </div>
 
-          {/* 🔹 Biaya Lain-lain (tidak memengaruhi total invoice) */}
+          {/* Biaya Lain-lain */}
           <div className="border p-4 rounded bg-white">
             <h3 className="font-semibold mb-2">Biaya Lain-lain (opsional)</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center">
