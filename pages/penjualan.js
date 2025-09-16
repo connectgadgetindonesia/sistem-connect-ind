@@ -5,12 +5,16 @@ import dayjs from 'dayjs'
 import Select from 'react-select'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
-const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN'] // <- daftar opsi dropdown
 
 export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
-  const [diskonInvoice, setDiskonInvoice] = useState('')
+  const [diskonInvoice, setDiskonInvoice] = useState('') // 🔹 input diskon (Rp)
+
+  // 🔹 Biaya lain-lain (ongkir, dll) – tidak memengaruhi total invoice, hanya laba
+  const [biayaDesc, setBiayaDesc] = useState('')
+  const [biayaNominal, setBiayaNominal] = useState('')
+  const [biayaList, setBiayaList] = useState([]) // {desc, nominal}
 
   const [formData, setFormData] = useState({
     tanggal: '',
@@ -140,17 +144,32 @@ export default function Penjualan() {
     })
   }
 
+  // 🔹 Tambah biaya lain-lain ke list (tidak memengaruhi total invoice)
+  function tambahBiaya() {
+    const nominal = toNumber(biayaNominal)
+    const desc = (biayaDesc || '').trim()
+    if (!desc || nominal <= 0) {
+      alert('Isi deskripsi & nominal biaya.')
+      return
+    }
+    setBiayaList([...biayaList, { desc, nominal }])
+    setBiayaDesc('')
+    setBiayaNominal('')
+  }
+
+  // ====== generateInvoiceId SELALU lanjut dari angka TERBESAR (bukan isi gap) ======
   async function generateInvoiceId(tanggal) {
     const bulan = dayjs(tanggal).format('MM')
     const tahun = dayjs(tanggal).format('YYYY')
     const prefix = `INV-CTI-${bulan}-${tahun}-`
 
-    const { data, error } = await supabase
+    let q = supabase
       .from('penjualan_baru')
-      .select('invoice_id')
+      .select('invoice_id', { count: 'exact', head: false })
       .ilike('invoice_id', `${prefix}%`)
       .range(0, 9999)
 
+    const { data, error } = await q
     if (error) {
       console.error('generateInvoiceId error:', error)
       return `${prefix}1`
@@ -165,6 +184,7 @@ export default function Penjualan() {
     return `${prefix}${maxNum + 1}`
   }
 
+  // Bagi diskon proporsional berdasarkan harga_jual tiap produk berbayar
   function distribusiDiskon(produkBerbayar, diskon) {
     const total = produkBerbayar.reduce((s, p) => s + toNumber(p.harga_jual), 0)
     if (diskon <= 0 || total <= 0) return new Map()
@@ -179,23 +199,23 @@ export default function Penjualan() {
     return map
   }
 
-  const confirmBeforeSubmit = (e) => {
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    // ✅ KONFIRMASI WAJIB sebelum lanjut simpan
     const ok = window.confirm(
       'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
       'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' +
       'Klik OK untuk melanjutkan.'
     )
-    if (!ok) e.preventDefault()
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
+    if (!ok) return
 
     if (!formData.tanggal || produkList.length === 0)
       return alert('Tanggal & minimal 1 produk wajib diisi')
 
     const invoice = await generateInvoiceId(formData.tanggal)
 
+    // Normalisasi list
     const produkBerbayar = produkList.map((p) => ({
       ...p,
       harga_jual: toNumber(p.harga_jual),
@@ -207,39 +227,69 @@ export default function Penjualan() {
       is_bonus: true
     }))
 
+    // 🔹 Biaya lain-lain → jadi baris khusus (harga_jual=0, harga_modal=nominal)
+    //    Agar tidak memengaruhi total invoice, tapi mengurangi laba.
+    const feeItems = biayaList.map((f, i) => ({
+      sn_sku: `FEE-${i + 1}`,              // penanda lokal (tidak akan mengubah stok)
+      nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
+      warna: '',
+      garansi: '',
+      storage: '',
+      harga_jual: 0,
+      harga_modal: toNumber(f.nominal),
+      is_bonus: true,                       // perilaku mirip bonus (mengurangi laba)
+      __is_fee: true                        // flag lokal, JANGAN dikirim ke DB
+    }))
+
     const diskonNominal = toNumber(diskonInvoice)
     const petaDiskon = distribusiDiskon(produkBerbayar, diskonNominal)
 
-    const semuaProduk = [...produkBerbayar, ...bonusItems]
+    const semuaProduk = [...produkBerbayar, ...bonusItems, ...feeItems]
 
-    for (const produk of semuaProduk) {
-      const harga_modal = toNumber(produk.harga_modal)
-      const diskon_item = produk.is_bonus ? 0 : toNumber(petaDiskon.get(produk.sn_sku) || 0)
-      const laba = (toNumber(produk.harga_jual) - diskon_item) - harga_modal
+    for (const item of semuaProduk) {
+      const harga_modal = toNumber(item.harga_modal)
+      const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskon.get(item.sn_sku) || 0)
+      const laba = (toNumber(item.harga_jual) - diskon_item) - harga_modal
 
-      await supabase.from('penjualan_baru').insert({
+      // ⬇️ Pastikan kita tidak mengirim __is_fee (kolom tak ada di DB)
+      const rowToInsert = {
         ...formData,
-        ...produk,
+        sn_sku: item.sn_sku,
+        nama_produk: item.nama_produk,
+        warna: item.warna,
+        garansi: item.garansi,
+        storage: item.storage,
+        harga_jual: toNumber(item.harga_jual),
         harga_modal,
+        is_bonus: item.is_bonus,
         laba,
         invoice_id: invoice,
         diskon_invoice: diskonNominal,
         diskon_item
-      })
+      }
 
+      await supabase.from('penjualan_baru').insert(rowToInsert)
+
+      // 🔸 Skip perubahan stok untuk biaya (FEE-...)
+      if (item.__is_fee) {
+        continue
+      }
+
+      // Update stok unit / aksesoris seperti biasa
       const { data: stokUnit } = await supabase
         .from('stok')
         .select('id')
-        .eq('sn', produk.sn_sku)
+        .eq('sn', item.sn_sku)
         .maybeSingle()
 
       if (stokUnit) {
-        await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', produk.sn_sku)
+        await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', item.sn_sku)
       } else {
-        await supabase.rpc('kurangi_stok_aksesoris', { sku_input: produk.sn_sku })
+        await supabase.rpc('kurangi_stok_aksesoris', { sku_input: item.sn_sku })
       }
     }
 
+    // Update status di transaksi_indent jika nama pembeli cocok
     await supabase
       .from('transaksi_indent')
       .update({ status: 'Sudah Diambil' })
@@ -256,12 +306,15 @@ export default function Penjualan() {
     })
     setProdukList([])
     setBonusList([])
+    setBiayaList([])
     setDiskonInvoice('')
   }
 
+  // Ringkas angka (subtotal hanya dari produk berbayar)
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
 
+  // —————————————————————— UI ——————————————————————
   return (
     <Layout>
       <div className="p-4">
@@ -274,12 +327,12 @@ export default function Penjualan() {
             onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
             required
           />
-
-          {/* Input teks biasa */}
           {[
             ['Nama Pembeli', 'nama_pembeli'],
             ['Alamat', 'alamat'],
-            ['No. WA', 'no_wa']
+            ['No. WA', 'no_wa'],
+            // ['Referral', 'referral'],       // <- jika sudah dropdown di tempatmu, biarkan versimu
+            // ['Dilayani Oleh', 'dilayani_oleh']
           ].map(([label, field]) => (
             <input
               key={field}
@@ -290,36 +343,6 @@ export default function Penjualan() {
               required
             />
           ))}
-
-          {/* Dropdown: Referral */}
-          <select
-            className="border p-2"
-            value={formData.referral}
-            onChange={(e) =>
-              setFormData({ ...formData, referral: (e.target.value || '').toUpperCase() })
-            }
-            required
-          >
-            <option value="">Pilih Referral</option>
-            {KARYAWAN.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-
-          {/* Dropdown: Dilayani Oleh */}
-          <select
-            className="border p-2"
-            value={formData.dilayani_oleh}
-            onChange={(e) =>
-              setFormData({ ...formData, dilayani_oleh: (e.target.value || '').toUpperCase() })
-            }
-            required
-          >
-            <option value="">Pilih Dilayani Oleh</option>
-            {KARYAWAN.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
 
           {/* Tambah Produk */}
           <div className="border p-4 rounded bg-gray-50">
@@ -372,6 +395,40 @@ export default function Penjualan() {
             </button>
           </div>
 
+          {/* 🔹 Biaya Lain-lain (tidak memengaruhi total invoice) */}
+          <div className="border p-4 rounded bg-white">
+            <h3 className="font-semibold mb-2">Biaya Lain-lain (opsional)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center">
+              <input
+                className="border p-2"
+                placeholder="Deskripsi biaya (contoh: Ongkir)"
+                value={biayaDesc}
+                onChange={(e) => setBiayaDesc(e.target.value)}
+              />
+              <input
+                className="border p-2"
+                placeholder="Nominal biaya (Rp)"
+                type="number"
+                min="0"
+                value={biayaNominal}
+                onChange={(e) => setBiayaNominal(e.target.value)}
+              />
+              <button type="button" onClick={tambahBiaya} className="bg-slate-700 text-white px-3 py-2 rounded">
+                Tambah Biaya
+              </button>
+            </div>
+
+            {biayaList.length > 0 && (
+              <ul className="mt-3 text-sm list-disc ml-4">
+                {biayaList.map((b, i) => (
+                  <li key={i}>
+                    {b.desc} — Rp {toNumber(b.nominal).toLocaleString('id-ID')}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {/* Diskon Invoice */}
           <div className="border p-4 rounded bg-white">
             <h3 className="font-semibold mb-2">Diskon Invoice (opsional)</h3>
@@ -419,11 +476,7 @@ export default function Penjualan() {
             </div>
           )}
 
-          <button
-            className="bg-green-600 text-white py-2 rounded"
-            type="submit"
-            onClick={confirmBeforeSubmit}
-          >
+          <button className="bg-green-600 text-white py-2 rounded" type="submit">
             Simpan Penjualan
           </button>
         </form>
