@@ -6,13 +6,14 @@ import Select from 'react-select'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
+const SKU_OFFICE = 'OFC-365-1'
 
 export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
-  const [diskonInvoice, setDiskonInvoice] = useState('') // 🔹 input diskon (Rp)
+  const [diskonInvoice, setDiskonInvoice] = useState('')
 
-  // 🔹 Biaya lain-lain (ongkir, dll) – tidak memengaruhi total invoice, hanya laba
+  // Biaya lain-lain (tidak memengaruhi total invoice, hanya laba)
   const [biayaDesc, setBiayaDesc] = useState('')
   const [biayaNominal, setBiayaNominal] = useState('')
   const [biayaList, setBiayaList] = useState([]) // {desc, nominal}
@@ -33,7 +34,8 @@ export default function Penjualan() {
     warna: '',
     harga_modal: '',
     garansi: '',
-    storage: ''
+    storage: '',
+    office_username: '' // ⬅️ untuk SKU OFC-365-1
   })
   const [bonusBaru, setBonusBaru] = useState({
     sn_sku: '',
@@ -120,6 +122,12 @@ export default function Penjualan() {
   function tambahProdukKeList() {
     if (!produkBaru.sn_sku || !produkBaru.harga_jual)
       return alert('Lengkapi SN/SKU dan Harga Jual')
+
+    // Wajib isi username bila SKU OFC-365-1
+    if (produkBaru.sn_sku.trim().toUpperCase() === SKU_OFFICE && !produkBaru.office_username.trim()) {
+      return alert('Masukkan Username Office untuk produk OFC-365-1')
+    }
+
     setProdukList([...produkList, produkBaru])
     setProdukBaru({
       sn_sku: '',
@@ -128,7 +136,8 @@ export default function Penjualan() {
       warna: '',
       harga_modal: '',
       garansi: '',
-      storage: ''
+      storage: '',
+      office_username: ''
     })
   }
 
@@ -145,7 +154,6 @@ export default function Penjualan() {
     })
   }
 
-  // 🔹 Tambah biaya lain-lain ke list (tidak memengaruhi total invoice)
   function tambahBiaya() {
     const nominal = toNumber(biayaNominal)
     const desc = (biayaDesc || '').trim()
@@ -158,7 +166,6 @@ export default function Penjualan() {
     setBiayaNominal('')
   }
 
-  // ====== generateInvoiceId SELALU lanjut dari angka TERBESAR (bukan isi gap) ======
   async function generateInvoiceId(tanggal) {
     const bulan = dayjs(tanggal).format('MM')
     const tahun = dayjs(tanggal).format('YYYY')
@@ -185,7 +192,6 @@ export default function Penjualan() {
     return `${prefix}${maxNum + 1}`
   }
 
-  // Bagi diskon proporsional berdasarkan harga_jual tiap produk berbayar
   function distribusiDiskon(produkBerbayar, diskon) {
     const total = produkBerbayar.reduce((s, p) => s + toNumber(p.harga_jual), 0)
     if (diskon <= 0 || total <= 0) return new Map()
@@ -203,7 +209,6 @@ export default function Penjualan() {
   async function handleSubmit(e) {
     e.preventDefault();
 
-    // ✅ KONFIRMASI WAJIB sebelum lanjut simpan
     const ok = window.confirm(
       'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
       'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' +
@@ -216,7 +221,6 @@ export default function Penjualan() {
 
     const invoice = await generateInvoiceId(formData.tanggal)
 
-    // Normalisasi list
     const produkBerbayar = produkList.map((p) => ({
       ...p,
       harga_jual: toNumber(p.harga_jual),
@@ -228,7 +232,6 @@ export default function Penjualan() {
       is_bonus: true
     }))
 
-    // 🔹 Biaya lain-lain → baris khusus (harga_jual=0, harga_modal=nominal)
     const feeItems = biayaList.map((f, i) => ({
       sn_sku: `FEE-${i + 1}`,
       nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
@@ -267,10 +270,14 @@ export default function Penjualan() {
         diskon_item
       }
 
+      // Simpan username office jika ada (hanya pada OFC-365-1)
+      if (item.office_username) {
+        rowToInsert.office_username = item.office_username.trim()
+      }
+
       await supabase.from('penjualan_baru').insert(rowToInsert)
 
-      // 🔸 Skip perubahan stok untuk biaya (FEE-...)
-      if (item.__is_fee) continue
+      if (item.__is_fee) continue // biaya tidak mengubah stok
 
       const { data: stokUnit } = await supabase
         .from('stok')
@@ -285,7 +292,6 @@ export default function Penjualan() {
       }
     }
 
-    // Update status di transaksi_indent jika nama pembeli cocok
     await supabase
       .from('transaksi_indent')
       .update({ status: 'Sudah Diambil' })
@@ -306,9 +312,10 @@ export default function Penjualan() {
     setDiskonInvoice('')
   }
 
-  // Ringkas angka (subtotal hanya dari produk berbayar)
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
+
+  const isOfficeSKU = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
 
   return (
     <Layout>
@@ -385,6 +392,17 @@ export default function Penjualan() {
               value={produkBaru.harga_jual}
               onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
             />
+
+            {/* Username Office muncul hanya untuk SKU OFC-365-1 */}
+            {isOfficeSKU && (
+              <input
+                className="border p-2 mb-2"
+                placeholder="Username Office (email pelanggan)"
+                value={produkBaru.office_username}
+                onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
+              />
+            )}
+
             <button
               type="button"
               onClick={tambahProdukKeList}
@@ -477,6 +495,9 @@ export default function Penjualan() {
                 {produkList.map((p, i) => (
                   <li key={i}>
                     {p.nama_produk} ({p.sn_sku}) - Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}
+                    {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username
+                      ? <> • <i>Username Office:</i> {p.office_username}</>
+                      : null}
                   </li>
                 ))}
               </ul>
