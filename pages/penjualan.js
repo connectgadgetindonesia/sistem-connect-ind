@@ -35,7 +35,7 @@ export default function Penjualan() {
     harga_modal: '',
     garansi: '',
     storage: '',
-    office_username: '' // ⬅️ untuk SKU OFC-365-1
+    office_username: '' // ⬅️ untuk OFC-365-1 (produk)
   })
   const [bonusBaru, setBonusBaru] = useState({
     sn_sku: '',
@@ -43,7 +43,8 @@ export default function Penjualan() {
     warna: '',
     harga_modal: '',
     garansi: '',
-    storage: ''
+    storage: '',
+    office_username: '' // ⬅️ untuk OFC-365-1 (bonus)
   })
   const [options, setOptions] = useState([])
 
@@ -123,7 +124,6 @@ export default function Penjualan() {
     if (!produkBaru.sn_sku || !produkBaru.harga_jual)
       return alert('Lengkapi SN/SKU dan Harga Jual')
 
-    // Wajib isi username bila SKU OFC-365-1
     if (produkBaru.sn_sku.trim().toUpperCase() === SKU_OFFICE && !produkBaru.office_username.trim()) {
       return alert('Masukkan Username Office untuk produk OFC-365-1')
     }
@@ -143,6 +143,11 @@ export default function Penjualan() {
 
   function tambahBonusKeList() {
     if (!bonusBaru.sn_sku) return alert('Lengkapi SN/SKU Bonus')
+
+    if (bonusBaru.sn_sku.trim().toUpperCase() === SKU_OFFICE && !bonusBaru.office_username.trim()) {
+      return alert('Masukkan Username Office untuk bonus OFC-365-1')
+    }
+
     setBonusList([...bonusList, bonusBaru])
     setBonusBaru({
       sn_sku: '',
@@ -150,7 +155,8 @@ export default function Penjualan() {
       warna: '',
       harga_modal: '',
       garansi: '',
-      storage: ''
+      storage: '',
+      office_username: ''
     })
   }
 
@@ -232,6 +238,7 @@ export default function Penjualan() {
       is_bonus: true
     }))
 
+    // Biaya lain-lain sebagai baris “fee”
     const feeItems = biayaList.map((f, i) => ({
       sn_sku: `FEE-${i + 1}`,
       nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
@@ -270,14 +277,14 @@ export default function Penjualan() {
         diskon_item
       }
 
-      // Simpan username office jika ada (hanya pada OFC-365-1)
+      // simpan username office jika ada (produk maupun bonus)
       if (item.office_username) {
         rowToInsert.office_username = item.office_username.trim()
       }
 
       await supabase.from('penjualan_baru').insert(rowToInsert)
 
-      if (item.__is_fee) continue // biaya tidak mengubah stok
+      if (item.__is_fee) continue // biaya: tidak ubah stok
 
       const { data: stokUnit } = await supabase
         .from('stok')
@@ -312,10 +319,12 @@ export default function Penjualan() {
     setDiskonInvoice('')
   }
 
+  // Ringkas angka (subtotal dari produk berbayar)
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
 
-  const isOfficeSKU = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
+  const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
+  const isOfficeSKUBonus  = (bonusBaru.sn_sku  || '').trim().toUpperCase() === SKU_OFFICE
 
   return (
     <Layout>
@@ -392,9 +401,8 @@ export default function Penjualan() {
               value={produkBaru.harga_jual}
               onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
             />
-
-            {/* Username Office muncul hanya untuk SKU OFC-365-1 */}
-            {isOfficeSKU && (
+            {/* Username Office untuk SKU OFC-365-1 (produk) */}
+            {isOfficeSKUProduk && (
               <input
                 className="border p-2 mb-2"
                 placeholder="Username Office (email pelanggan)"
@@ -402,7 +410,6 @@ export default function Penjualan() {
                 onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
               />
             )}
-
             <button
               type="button"
               onClick={tambahProdukKeList}
@@ -425,6 +432,15 @@ export default function Penjualan() {
               }
               isClearable
             />
+            {/* Username Office untuk SKU OFC-365-1 (bonus) */}
+            {isOfficeSKUBonus && (
+              <input
+                className="border p-2 mb-2"
+                placeholder="Username Office (email pelanggan)"
+                value={bonusBaru.office_username}
+                onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })}
+              />
+            )}
             <button
               type="button"
               onClick={tambahBonusKeList}
@@ -512,6 +528,9 @@ export default function Penjualan() {
                 {bonusList.map((b, i) => (
                   <li key={i}>
                     {b.nama_produk} ({b.sn_sku}) - BONUS
+                    {b.sn_sku?.toUpperCase() === SKU_OFFICE && b.office_username
+                      ? <> • <i>Username Office:</i> {b.office_username}</>
+                      : null}
                   </li>
                 ))}
               </ul>
