@@ -20,98 +20,21 @@ export default function Akun() {
   const [search, setSearch] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
-  const [suggestions, setSuggestions] = useState([]) // saran office_user dari sales
 
   // ---------- LOAD ----------
   useEffect(() => {
-    loadAll()
+    loadAccounts()
   }, [])
 
-  async function loadAll() {
-    setLoading(true)
-    // penting: berurutan agar "items" sudah ada saat filter saran
-    await loadAccounts()
-    await loadSuggestions()
-    setLoading(false)
-  }
-
   async function loadAccounts() {
+    setLoading(true)
     const { data, error } = await supabase
       .from('customer_accounts')
       .select('*')
       .order('updated_at', { ascending: false })
 
     if (!error) setItems(data || [])
-  }
-
-  // Ambil saran dari VIEW; fallback ke tabel bila VIEW belum ada
-  async function loadSuggestions() {
-    try {
-      // --- coba dari VIEW yang sudah kita buat di DB ---
-      const { data, error } = await supabase
-        .from('penjualan_office_suggestions')
-        .select('office_username, nama_pembeli, occurrences')
-        .order('occurrences', { ascending: false })
-
-      if (error) throw error
-
-      const existing = new Set(
-        (items || [])
-          .map((it) => (it.office_user || '').toLowerCase())
-          .filter(Boolean)
-      )
-
-      const uniq = []
-      const seen = new Set()
-      for (const row of data || []) {
-        const u = (row.office_username || '').trim()
-        if (!u) continue
-        const key = u.toLowerCase()
-        if (existing.has(key) || seen.has(key)) continue
-        seen.add(key)
-        uniq.push({
-          office_user: u,
-          nama: (row.nama_pembeli || '').trim(),
-        })
-      }
-      setSuggestions(uniq)
-    } catch (e) {
-      // --- fallback: langsung dari penjualan_baru ---
-      console.warn('VIEW penjualan_office_suggestions tidak bisa diakses, fallback ke penjualan_baru:', e?.message)
-      const { data, error } = await supabase
-        .from('penjualan_baru')
-        .select('office_username, nama_pembeli')
-        .not('office_username', 'is', null)
-        .neq('office_username', '')
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Gagal load suggestions:', error.message)
-        setSuggestions([])
-        return
-      }
-
-      const existing = new Set(
-        (items || [])
-          .map((it) => (it.office_user || '').toLowerCase())
-          .filter(Boolean)
-      )
-
-      const seen = new Set()
-      const uniq = []
-      for (const row of data || []) {
-        const u = (row.office_username || '').trim()
-        if (!u) continue
-        const key = u.toLowerCase()
-        if (existing.has(key) || seen.has(key)) continue
-        seen.add(key)
-        uniq.push({
-          office_user: u,
-          nama: (row.nama_pembeli || '').trim(),
-        })
-      }
-      setSuggestions(uniq)
-    }
+    setLoading(false)
   }
 
   // ---------- CREATE ----------
@@ -142,7 +65,7 @@ export default function Akun() {
       office_user: '',
       office_pass: '',
     })
-    await loadAll()
+    await loadAccounts()
   }
 
   // ---------- EDIT / UPDATE ----------
@@ -179,7 +102,7 @@ export default function Akun() {
 
     if (error) return alert('Gagal memperbarui: ' + error.message)
     cancelEdit()
-    await loadAll()
+    await loadAccounts()
   }
 
   // ---------- DELETE ----------
@@ -189,34 +112,7 @@ export default function Akun() {
     const { error } = await supabase.from('customer_accounts').delete().eq('id', id)
     setLoading(false)
     if (error) return alert('Gagal menghapus: ' + error.message)
-    await loadAll()
-  }
-
-  // ---------- IMPORT SUGGESTION ----------
-  async function importSuggestion(s) {
-    const payload = {
-      nama: s.nama || '(Tanpa Nama)',
-      office_user: s.office_user,
-    }
-    setLoading(true)
-    const { error } = await supabase.from('customer_accounts').insert(payload)
-    setLoading(false)
-    if (error) return alert('Gagal mengimpor: ' + error.message)
-    await loadAll()
-  }
-
-  async function importAllSuggestions() {
-    if (suggestions.length === 0) return
-    if (!confirm(`Impor ${suggestions.length} akun dari penjualan?`)) return
-    const rows = suggestions.map((s) => ({
-      nama: s.nama || '(Tanpa Nama)',
-      office_user: s.office_user,
-    }))
-    setLoading(true)
-    const { error } = await supabase.from('customer_accounts').insert(rows)
-    setLoading(false)
-    if (error) return alert('Sebagian/semua gagal diimpor: ' + error.message)
-    await loadAll()
+    await loadAccounts()
   }
 
   // ---------- FILTER ----------
@@ -306,40 +202,6 @@ export default function Akun() {
           </div>
         </form>
 
-        {/* Saran dari Penjualan */}
-        <div className="border rounded p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold">Saran dari Penjualan (office_username)</h2>
-            <button
-              onClick={importAllSuggestions}
-              className="text-sm border px-3 py-1 rounded disabled:opacity-60"
-              disabled={loading || suggestions.length === 0}
-            >
-              Tambah Semua
-            </button>
-          </div>
-          {suggestions.length === 0 ? (
-            <p className="text-sm text-gray-500">Tidak ada saran baru.</p>
-          ) : (
-            <ul className="space-y-2">
-              {suggestions.map((s, i) => (
-                <li key={i} className="flex items-center justify-between border rounded px-3 py-2">
-                  <div className="text-sm">
-                    <b>{s.nama || '(Tanpa Nama)'}</b> • <span className="text-gray-700">{s.office_user}</span>
-                  </div>
-                  <button
-                    onClick={() => importSuggestion(s)}
-                    className="text-sm bg-slate-700 text-white px-3 py-1 rounded disabled:opacity-60"
-                    disabled={loading}
-                  >
-                    Tambahkan
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
         {/* Pencarian & Tabel */}
         <div className="mb-3 flex items-center gap-3">
           <input
@@ -348,7 +210,7 @@ export default function Akun() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button onClick={loadAll} className="border px-3 py-2 rounded">Muat Ulang</button>
+          <button onClick={loadAccounts} className="border px-3 py-2 rounded">Muat Ulang</button>
         </div>
 
         <div className="overflow-x-auto border rounded">
