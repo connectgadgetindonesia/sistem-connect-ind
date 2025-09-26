@@ -49,6 +49,8 @@ export default function Akun() {
       device_passcode: form.device_passcode || null,
       office_user: form.office_user.trim() || null,
       office_pass: form.office_pass || null,
+      // penting: tandai entri manual agar tidak ikut terhapus oleh trigger otomatis
+      is_manual: true,
     }
 
     setLoading(true)
@@ -94,6 +96,7 @@ export default function Akun() {
       device_passcode: editForm.device_passcode || null,
       office_user: editForm.office_user.trim() || null,
       office_pass: editForm.office_pass || null,
+      // JANGAN kirim is_manual di update, biar tidak berubah
     }
 
     setLoading(true)
