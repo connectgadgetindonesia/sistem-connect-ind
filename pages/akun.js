@@ -15,12 +15,12 @@ export default function Akun() {
   })
 
   // Data & UI state
-  const [items, setItems] = useState([])                // customer_accounts
+  const [items, setItems] = useState([])     // dari table customer_accounts
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
-  const [suggestions, setSuggestions] = useState([])    // distinct office_user dari penjualan_baru yg belum ada di table
+  const [suggestions, setSuggestions] = useState([]) // saran office_user dari sales
 
   // ---------- LOAD ----------
   useEffect(() => {
@@ -29,7 +29,9 @@ export default function Akun() {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadAccounts(), loadSuggestions()])
+    // penting: berurutan agar "items" sudah ada saat filter saran
+    await loadAccounts()
+    await loadSuggestions()
     setLoading(false)
   }
 
@@ -42,40 +44,74 @@ export default function Akun() {
     if (!error) setItems(data || [])
   }
 
+  // Ambil saran dari VIEW; fallback ke tabel bila VIEW belum ada
   async function loadSuggestions() {
-    // Ambil office_username dari penjualan_baru + nama_pembeli
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('office_username, nama_pembeli')
-      .not('office_username', 'is', null)
-      .neq('office_username', '')
-      .order('created_at', { ascending: false })
+    try {
+      // --- coba dari VIEW yang sudah kita buat di DB ---
+      const { data, error } = await supabase
+        .from('penjualan_office_suggestions')
+        .select('office_username, nama_pembeli, occurrences')
+        .order('occurrences', { ascending: false })
 
-    if (error) return setSuggestions([])
+      if (error) throw error
 
-    // sudah ada di table?
-    const existing = new Set(
-      (items || [])
-        .map((it) => (it.office_user || '').toLowerCase())
-        .filter(Boolean)
-    )
+      const existing = new Set(
+        (items || [])
+          .map((it) => (it.office_user || '').toLowerCase())
+          .filter(Boolean)
+      )
 
-    // de-dupe by office_username
-    const seen = new Set()
-    const uniq = []
-    for (const row of data) {
-      const u = (row.office_username || '').trim()
-      if (!u) continue
-      const key = u.toLowerCase()
-      if (existing.has(key)) continue
-      if (seen.has(key)) continue
-      seen.add(key)
-      uniq.push({
-        office_user: u,
-        nama: (row.nama_pembeli || '').trim(),
-      })
+      const uniq = []
+      const seen = new Set()
+      for (const row of data || []) {
+        const u = (row.office_username || '').trim()
+        if (!u) continue
+        const key = u.toLowerCase()
+        if (existing.has(key) || seen.has(key)) continue
+        seen.add(key)
+        uniq.push({
+          office_user: u,
+          nama: (row.nama_pembeli || '').trim(),
+        })
+      }
+      setSuggestions(uniq)
+    } catch (e) {
+      // --- fallback: langsung dari penjualan_baru ---
+      console.warn('VIEW penjualan_office_suggestions tidak bisa diakses, fallback ke penjualan_baru:', e?.message)
+      const { data, error } = await supabase
+        .from('penjualan_baru')
+        .select('office_username, nama_pembeli')
+        .not('office_username', 'is', null)
+        .neq('office_username', '')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Gagal load suggestions:', error.message)
+        setSuggestions([])
+        return
+      }
+
+      const existing = new Set(
+        (items || [])
+          .map((it) => (it.office_user || '').toLowerCase())
+          .filter(Boolean)
+      )
+
+      const seen = new Set()
+      const uniq = []
+      for (const row of data || []) {
+        const u = (row.office_username || '').trim()
+        if (!u) continue
+        const key = u.toLowerCase()
+        if (existing.has(key) || seen.has(key)) continue
+        seen.add(key)
+        uniq.push({
+          office_user: u,
+          nama: (row.nama_pembeli || '').trim(),
+        })
+      }
+      setSuggestions(uniq)
     }
-    setSuggestions(uniq)
   }
 
   // ---------- CREATE ----------
@@ -121,12 +157,10 @@ export default function Akun() {
       office_pass: row.office_pass || '',
     })
   }
-
   function cancelEdit() {
     setEditingId(null)
     setEditForm({})
   }
-
   async function saveEdit(id) {
     if (!editForm.nama.trim()) return alert('Nama wajib diisi')
 
@@ -140,10 +174,7 @@ export default function Akun() {
     }
 
     setLoading(true)
-    const { error } = await supabase
-      .from('customer_accounts')
-      .update(payload)
-      .eq('id', id)
+    const { error } = await supabase.from('customer_accounts').update(payload).eq('id', id)
     setLoading(false)
 
     if (error) return alert('Gagal memperbarui: ' + error.message)
@@ -163,7 +194,6 @@ export default function Akun() {
 
   // ---------- IMPORT SUGGESTION ----------
   async function importSuggestion(s) {
-    // Isi nama & office_user dari penjualan; kolom lain kosong dulu
     const payload = {
       nama: s.nama || '(Tanpa Nama)',
       office_user: s.office_user,
@@ -193,13 +223,11 @@ export default function Akun() {
   const filtered = useMemo(() => {
     const q = (search || '').trim().toLowerCase()
     if (!q) return items
-    return (items || []).filter((it) => {
-      return (
-        (it.nama || '').toLowerCase().includes(q) ||
-        (it.apple_id_user || '').toLowerCase().includes(q) ||
-        (it.office_user || '').toLowerCase().includes(q)
-      )
-    })
+    return (items || []).filter((it) =>
+      (it.nama || '').toLowerCase().includes(q) ||
+      (it.apple_id_user || '').toLowerCase().includes(q) ||
+      (it.office_user || '').toLowerCase().includes(q)
+    )
   }, [items, search])
 
   return (
@@ -272,11 +300,7 @@ export default function Akun() {
           </div>
 
           <div className="md:col-span-2 flex justify-end">
-            <button
-              type="submit"
-              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
-              disabled={loading}
-            >
+            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60" disabled={loading}>
               {loading ? 'Menyimpan...' : 'Simpan Akun'}
             </button>
           </div>
@@ -316,7 +340,7 @@ export default function Akun() {
           )}
         </div>
 
-        {/* Pencarian */}
+        {/* Pencarian & Tabel */}
         <div className="mb-3 flex items-center gap-3">
           <input
             className="border p-2 flex-1"
@@ -327,7 +351,6 @@ export default function Akun() {
           <button onClick={loadAll} className="border px-3 py-2 rounded">Muat Ulang</button>
         </div>
 
-        {/* Tabel Data */}
         <div className="overflow-x-auto border rounded">
           <table className="w-full table-auto text-sm">
             <thead className="bg-gray-100">
@@ -352,78 +375,44 @@ export default function Akun() {
                 <tr key={row.id}>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
-                      <input
-                        className="border p-1 w-full"
-                        value={editForm.nama}
-                        onChange={(e) => setEditForm({ ...editForm, nama: e.target.value })}
-                      />
+                      <input className="border p-1 w-full" value={editForm.nama} onChange={(e) => setEditForm({ ...editForm, nama: e.target.value })} />
                     ) : row.nama}
                   </td>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
-                      <input
-                        className="border p-1 w-full"
-                        value={editForm.apple_id_user}
-                        onChange={(e) => setEditForm({ ...editForm, apple_id_user: e.target.value })}
-                      />
+                      <input className="border p-1 w-full" value={editForm.apple_id_user} onChange={(e) => setEditForm({ ...editForm, apple_id_user: e.target.value })} />
                     ) : (row.apple_id_user || '—')}
                   </td>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
-                      <input
-                        className="border p-1 w-full"
-                        value={editForm.apple_id_pass}
-                        onChange={(e) => setEditForm({ ...editForm, apple_id_pass: e.target.value })}
-                      />
+                      <input className="border p-1 w-full" value={editForm.apple_id_pass} onChange={(e) => setEditForm({ ...editForm, apple_id_pass: e.target.value })} />
                     ) : (row.apple_id_pass || '—')}
                   </td>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
-                      <input
-                        className="border p-1 w-full"
-                        value={editForm.device_passcode}
-                        onChange={(e) => setEditForm({ ...editForm, device_passcode: e.target.value })}
-                      />
+                      <input className="border p-1 w-full" value={editForm.device_passcode} onChange={(e) => setEditForm({ ...editForm, device_passcode: e.target.value })} />
                     ) : (row.device_passcode || '—')}
                   </td>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
-                      <input
-                        className="border p-1 w-full"
-                        value={editForm.office_user}
-                        onChange={(e) => setEditForm({ ...editForm, office_user: e.target.value })}
-                      />
+                      <input className="border p-1 w-full" value={editForm.office_user} onChange={(e) => setEditForm({ ...editForm, office_user: e.target.value })} />
                     ) : (row.office_user || '—')}
                   </td>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
-                      <input
-                        className="border p-1 w-full"
-                        value={editForm.office_pass}
-                        onChange={(e) => setEditForm({ ...editForm, office_pass: e.target.value })}
-                      />
+                      <input className="border p-1 w-full" value={editForm.office_pass} onChange={(e) => setEditForm({ ...editForm, office_pass: e.target.value })} />
                     ) : (row.office_pass || '—')}
                   </td>
                   <td className="border px-2 py-1">
                     {editingId === row.id ? (
                       <div className="flex gap-2">
-                        <button
-                          className="bg-green-600 text-white px-2 py-1 rounded"
-                          onClick={() => saveEdit(row.id)}
-                          disabled={loading}
-                        >
-                          Simpan
-                        </button>
+                        <button className="bg-green-600 text-white px-2 py-1 rounded" onClick={() => saveEdit(row.id)} disabled={loading}>Simpan</button>
                         <button className="px-2 py-1 rounded border" onClick={cancelEdit}>Batal</button>
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button className="px-2 py-1 rounded border" onClick={() => startEdit(row)}>
-                          Edit
-                        </button>
-                        <button className="px-2 py-1 rounded border text-red-600" onClick={() => handleDelete(row.id)}>
-                          Hapus
-                        </button>
+                        <button className="px-2 py-1 rounded border" onClick={() => startEdit(row)}>Edit</button>
+                        <button className="px-2 py-1 rounded border text-red-600" onClick={() => handleDelete(row.id)}>Hapus</button>
                       </div>
                     )}
                   </td>
