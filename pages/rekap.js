@@ -7,10 +7,10 @@ import dayjs from 'dayjs'
 
 const toNumber = (v) =>
   typeof v === 'number' ? v : parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
-const formatRp = (n) => 'Rp ' + (toNumber(n)).toLocaleString('id-ID')
+const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 
 // ================= SVG LineChart Interaktif =================
-function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v)=>formatRp(v) }) {
+function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v) => formatRp(v) }) {
   const padding = { top: 28, right: 24, bottom: 40, left: 64 }
   const width = 760
   const innerW = width - padding.left - padding.right
@@ -34,22 +34,36 @@ function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v)
     const x = e.clientX - rect.left
     let nearest = null
     let best = Infinity
-    points.forEach(p => {
+    points.forEach((p) => {
       const d = Math.abs(p.x - x)
-      if (d < best) { best = d; nearest = p }
+      if (d < best) {
+        best = d
+        nearest = p
+      }
     })
     setHover(nearest)
   }
 
-  function handleLeave() { setHover(null) }
+  function handleLeave() {
+    setHover(null)
+  }
 
   const dAttr = points.map((p, idx) => `${idx ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
 
   return (
-    <svg ref={svgRef} width={width} height={height} className="bg-white rounded border"
-         onMouseMove={handleMove} onMouseLeave={handleLeave} style={{touchAction:'none'}}>
+    <svg
+      ref={svgRef}
+      width={width}
+      height={height}
+      className="bg-white rounded border"
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
+      style={{ touchAction: 'none' }}
+    >
       {/* Title */}
-      <text x={padding.left} y={22} fontSize="14" fontWeight="600" fill={colors.text}>{title}</text>
+      <text x={padding.left} y={22} fontSize="14" fontWeight="600" fill={colors.text}>
+        {title}
+      </text>
 
       {/* Y grid & ticks */}
       {[...Array(yTicks + 1)].map((_, i) => {
@@ -57,8 +71,20 @@ function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v)
         const val = Math.round(maxVal * (1 - i / yTicks))
         return (
           <g key={i}>
-            <line x1={padding.left} y1={y} x2={padding.left + innerW} y2={y} stroke={colors.grid}/>
-            <text x={padding.left - 10} y={y + 4} textAnchor="end" fontSize="12" fill={colors.sub}>
+            <line
+              x1={padding.left}
+              y1={y}
+              x2={padding.left + innerW}
+              y2={y}
+              stroke={colors.grid}
+            />
+            <text
+              x={padding.left - 10}
+              y={y + 4}
+              textAnchor="end"
+              fontSize="12"
+              fill={colors.sub}
+            >
               {fmt(val)}
             </text>
           </g>
@@ -85,10 +111,21 @@ function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v)
       {/* Hover guide & tooltip */}
       {hover && (
         <>
-          <line x1={hover.x} y1={padding.top} x2={hover.x} y2={height - padding.bottom}
-                stroke="#CBD5E1" strokeDasharray="4 4" />
-          <g transform={`translate(${Math.min(Math.max(hover.x - 70, padding.left), width - 160)}, ${padding.top + 8})`}>
-            <rect width="150" height="54" rx="8" fill="white" stroke="#E5E7EB"/>
+          <line
+            x1={hover.x}
+            y1={padding.top}
+            x2={hover.x}
+            y2={height - padding.bottom}
+            stroke="#CBD5E1"
+            strokeDasharray="4 4"
+          />
+          <g
+            transform={`translate(${Math.min(
+              Math.max(hover.x - 70, padding.left),
+              width - 160
+            )}, ${padding.top + 8})`}
+          >
+            <rect width="150" height="54" rx="8" fill="white" stroke="#E5E7EB" />
             <text x="10" y="20" fontSize="12" fill={colors.sub}>
               {dayjs(categories[hover.i] + '-01').format('MMMM YYYY')}
             </text>
@@ -109,9 +146,12 @@ export default function RekapBulanan() {
   const passwordBenar = 'rekap123'
 
   const [data, setData] = useState([])
+
+  // rekap by tanggal (table + excel)
   const [tanggalAwal, setTanggalAwal] = useState('')
   const [tanggalAkhir, setTanggalAkhir] = useState('')
   const [rekap, setRekap] = useState([])
+  const [quick, setQuick] = useState('') // ✅ quick filter aktif
 
   // dashboard aset saat ini
   const [assetReady, setAssetReady] = useState(0)
@@ -125,7 +165,7 @@ export default function RekapBulanan() {
 
   // stok & tanggal jual (untuk aset akhir bulan)
   const [stokUnits, setStokUnits] = useState([]) // {sn, harga_modal}
-  const [jualBySn, setJualBySn] = useState({})   // {sn: 'YYYY-MM-DD'}
+  const [jualBySn, setJualBySn] = useState({}) // {sn: 'YYYY-MM-DD'}
 
   useEffect(() => {
     fetchPenjualan()
@@ -150,29 +190,26 @@ export default function RekapBulanan() {
     const totalReady = (stokData || []).reduce((sum, r) => sum + toNumber(r.harga_modal), 0)
 
     // Aksesoris sekarang (excl OFC-365-1)
-    const { data: aks } = await supabase
-      .from('stok_aksesoris')
-      .select('sku, stok, harga_modal')
+    const { data: aks } = await supabase.from('stok_aksesoris').select('sku, stok, harga_modal')
     const totalAks = (aks || [])
-      .filter(a => (a.sku || '').toUpperCase() !== 'OFC-365-1')
-      .reduce((sum, a) => sum + (toNumber(a.stok) * toNumber(a.harga_modal)), 0)
+      .filter((a) => (a.sku || '').toUpperCase() !== 'OFC-365-1')
+      .reduce((sum, a) => sum + toNumber(a.stok) * toNumber(a.harga_modal), 0)
 
     setAssetReady(totalReady)
     setAssetAksesoris(totalAks)
   }
 
   async function fetchStokAndSalesMap() {
-    const { data: stokAll } = await supabase
-      .from('stok')
-      .select('sn, harga_modal')
-    setStokUnits((stokAll || []).map(r => ({ sn: r.sn, harga_modal: toNumber(r.harga_modal) })))
+    const { data: stokAll } = await supabase.from('stok').select('sn, harga_modal')
+    setStokUnits((stokAll || []).map((r) => ({ sn: r.sn, harga_modal: toNumber(r.harga_modal) })))
 
     const { data: sales } = await supabase
       .from('penjualan_baru')
       .select('sn_sku, tanggal, is_bonus')
       .eq('is_bonus', false)
+
     const map = {}
-    ;(sales || []).forEach(r => {
+    ;(sales || []).forEach((r) => {
       if (r.sn_sku) {
         // Ambil tanggal jual paling awal bila ada duplikat
         if (!map[r.sn_sku] || dayjs(r.tanggal).isBefore(map[r.sn_sku])) {
@@ -183,10 +220,50 @@ export default function RekapBulanan() {
     setJualBySn(map)
   }
 
+  // ✅ helper supaya quick filter bisa langsung tampilkan rekap
+  function fetchRekapTanggal(awal, akhir) {
+    if (!awal || !akhir) return
+    const hasil = data.filter((item) => item.tanggal >= awal && item.tanggal <= akhir)
+    setRekap(hasil)
+  }
+
   function lihatRekap() {
     if (!tanggalAwal || !tanggalAkhir) return alert('Lengkapi tanggal terlebih dahulu!')
-    const hasil = data.filter((item) => item.tanggal >= tanggalAwal && item.tanggal <= tanggalAkhir)
-    setRekap(hasil)
+    setQuick('')
+    fetchRekapTanggal(tanggalAwal, tanggalAkhir)
+  }
+
+  function applyQuickFilter(type) {
+    const now = dayjs()
+    let awal = ''
+    let akhir = ''
+
+    if (type === 'today') {
+      awal = now.format('YYYY-MM-DD')
+      akhir = now.format('YYYY-MM-DD')
+    }
+
+    if (type === 'week') {
+      // Senin - Minggu (fallback kalau locale berbeda)
+      const monday = now.day() === 0 ? now.subtract(6, 'day') : now.subtract(now.day() - 1, 'day')
+      awal = monday.startOf('day').format('YYYY-MM-DD')
+      akhir = monday.add(6, 'day').endOf('day').format('YYYY-MM-DD')
+    }
+
+    if (type === 'month') {
+      awal = now.startOf('month').format('YYYY-MM-DD')
+      akhir = now.endOf('month').format('YYYY-MM-DD')
+    }
+
+    if (type === 'year') {
+      awal = now.startOf('year').format('YYYY-MM-DD')
+      akhir = now.endOf('year').format('YYYY-MM-DD')
+    }
+
+    setQuick(type)
+    setTanggalAwal(awal)
+    setTanggalAkhir(akhir)
+    fetchRekapTanggal(awal, akhir)
   }
 
   function downloadExcel() {
@@ -214,12 +291,12 @@ export default function RekapBulanan() {
 
   // ====== Laba bulanan ======
   const labaBulanan = useMemo(() => {
-    const byMonth = Object.fromEntries(monthCats.map(m => [m, 0]))
+    const byMonth = Object.fromEntries(monthCats.map((m) => [m, 0]))
     data.forEach((row) => {
       const m = dayjs(row.tanggal).format('YYYY-MM')
       if (byMonth[m] !== undefined) byMonth[m] += toNumber(row.laba)
     })
-    return monthCats.map(m => byMonth[m])
+    return monthCats.map((m) => byMonth[m])
   }, [data, monthCats])
 
   // ====== Aset akhir bulan (Unit) ======
@@ -251,7 +328,9 @@ export default function RekapBulanan() {
           />
           <button
             className="bg-blue-600 text-white px-4 py-2 rounded"
-            onClick={() => setAkses(passwordInput === passwordBenar ? true : (alert('Password salah!'), false))}
+            onClick={() =>
+              setAkses(passwordInput === passwordBenar ? true : (alert('Password salah!'), false))
+            }
           >
             Buka Halaman
           </button>
@@ -285,20 +364,26 @@ export default function RekapBulanan() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <div className="text-sm mb-1">Mulai</div>
-            <input type="month" value={bulanMulai} onChange={e => setBulanMulai(e.target.value)} className="border px-2 py-1" />
+            <input
+              type="month"
+              value={bulanMulai}
+              onChange={(e) => setBulanMulai(e.target.value)}
+              className="border px-2 py-1"
+            />
           </div>
           <div>
             <div className="text-sm mb-1">Selesai</div>
-            <input type="month" value={bulanSelesai} onChange={e => setBulanSelesai(e.target.value)} className="border px-2 py-1" />
+            <input
+              type="month"
+              value={bulanSelesai}
+              onChange={(e) => setBulanSelesai(e.target.value)}
+              className="border px-2 py-1"
+            />
           </div>
         </div>
 
         {/* ====== Grafik 1: Laba Bulanan ====== */}
-        <InteractiveLineChart
-          title="Laba Bulanan"
-          categories={monthCats}
-          data={labaBulanan}
-        />
+        <InteractiveLineChart title="Laba Bulanan" categories={monthCats} data={labaBulanan} />
 
         {/* ====== Grafik 2: Aset Akhir Bulan (Unit) ====== */}
         <InteractiveLineChart
@@ -307,28 +392,68 @@ export default function RekapBulanan() {
           data={asetAkhirBulanUnit}
         />
 
-        {/* ====== Rekap by Tanggal (tetap) ====== */}
+        {/* ====== Rekap by Tanggal ====== */}
         <div>
           <h2 className="text-xl font-semibold mb-3">Rekap Penjualan Berdasarkan Tanggal</h2>
-          <div className="flex gap-2 mb-4 flex-wrap">
-            <input
-              type="date"
-              value={tanggalAwal}
-              onChange={(e) => setTanggalAwal(e.target.value)}
-              className="border px-3 py-1"
-            />
-            <input
-              type="date"
-              value={tanggalAkhir}
-              onChange={(e) => setTanggalAkhir(e.target.value)}
-              className="border px-3 py-1"
-            />
+
+          {/* ✅ QUICK FILTER + TANGGAL */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             <button
-              onClick={lihatRekap}
-              className="bg-blue-600 text-white px-4 py-1 rounded"
+              onClick={() => applyQuickFilter('today')}
+              className={`px-3 py-2 rounded border ${
+                quick === 'today' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
+              }`}
             >
-              Lihat Rekap
+              Hari Ini
             </button>
+            <button
+              onClick={() => applyQuickFilter('week')}
+              className={`px-3 py-2 rounded border ${
+                quick === 'week' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
+              }`}
+            >
+              Minggu Ini
+            </button>
+            <button
+              onClick={() => applyQuickFilter('month')}
+              className={`px-3 py-2 rounded border ${
+                quick === 'month' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
+              }`}
+            >
+              Bulan Ini
+            </button>
+            <button
+              onClick={() => applyQuickFilter('year')}
+              className={`px-3 py-2 rounded border ${
+                quick === 'year' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
+              }`}
+            >
+              Tahun Ini
+            </button>
+
+            <div className="w-full md:w-auto md:ml-3 flex gap-2 flex-wrap">
+              <input
+                type="date"
+                value={tanggalAwal}
+                onChange={(e) => {
+                  setQuick('')
+                  setTanggalAwal(e.target.value)
+                }}
+                className="border px-3 py-2"
+              />
+              <input
+                type="date"
+                value={tanggalAkhir}
+                onChange={(e) => {
+                  setQuick('')
+                  setTanggalAkhir(e.target.value)
+                }}
+                className="border px-3 py-2"
+              />
+              <button onClick={lihatRekap} className="bg-blue-600 text-white px-4 py-2 rounded">
+                Lihat Rekap
+              </button>
+            </div>
           </div>
 
           {rekap.length > 0 && (
