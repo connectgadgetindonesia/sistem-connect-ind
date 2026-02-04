@@ -40,12 +40,6 @@ export default function RiwayatPenjualan() {
     return Object.values(grouped)
   }
 
-  const totalHarga = (produk = []) =>
-    produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
-
-  const totalLaba = (produk = []) =>
-    produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
-
   // ✅ ambil nilai unik dalam 1 invoice (kalau berbeda-beda)
   const getUniqueText = (produk = [], key) => {
     const vals = (produk || [])
@@ -56,6 +50,12 @@ export default function RiwayatPenjualan() {
     if (uniq.length === 0) return '-'
     return uniq.join(', ')
   }
+
+  const totalHarga = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
+
+  const totalLaba = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
   // ✅ hitung kinerja berbasis INVOICE (bukan per baris produk)
   const computeKinerjaFromRows = (data = []) => {
@@ -98,28 +98,20 @@ export default function RiwayatPenjualan() {
     return arr
   }
 
-  /**
-   * ✅ FIX UTAMA:
-   * - TAB HARIAN: kinerja = 1 BULAN BERJALAN (berdasarkan "today", bukan tanggal filter)
-   * - TAB HISTORY: kinerja = sesuai tanggal_awal / tanggal_akhir
-   */
+  // ✅ fetch kinerja: Harian = BULAN berjalan, History = sesuai filter tanggal
   async function fetchKinerja() {
     let q = supabase
       .from('penjualan_baru')
       .select('invoice_id,tanggal,dilayani_oleh,referal')
 
     if (mode === 'harian') {
-      const startMonth = dayjs(today).startOf('month').format('YYYY-MM-DD')
-      const endNextMonth = dayjs(today).startOf('month').add(1, 'month').format('YYYY-MM-DD')
-
-      // pakai [startMonth, < nextMonth] supaya aman (ga pusing jam/format)
-      q = q.gte('tanggal', startMonth).lt('tanggal', endNextMonth)
-
+      const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
+      const end = dayjs(today).endOf('month').format('YYYY-MM-DD')
+      q = q.gte('tanggal', start).lte('tanggal', end)
       setKinerjaLabel(`Bulan: ${dayjs(today).format('MMMM YYYY')}`)
     } else {
       if (filter.tanggal_awal) q = q.gte('tanggal', filter.tanggal_awal)
       if (filter.tanggal_akhir) q = q.lte('tanggal', filter.tanggal_akhir)
-
       setKinerjaLabel(
         `Periode: ${filter.tanggal_awal || '-'} - ${filter.tanggal_akhir || '-'}`
       )
@@ -292,7 +284,7 @@ export default function RiwayatPenjualan() {
           </table>
         </div>
 
-        {/* TABEL RIWAYAT (BAWAH) — BALIK KE STYLE/FITUR BAPAK */}
+        {/* TABEL RIWAYAT (BAWAH) */}
         <table className="w-full table-auto border">
           <thead>
             <tr className="bg-gray-200">
@@ -307,27 +299,18 @@ export default function RiwayatPenjualan() {
               <th className="border px-2 py-1">Aksi</th>
             </tr>
           </thead>
-
           <tbody>
             {rows.map((item) => (
               <tr key={item.invoice_id}>
                 <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
                 <td className="border px-2 py-1">{item.nama_pembeli}</td>
-
                 <td className="border px-2 py-1">
                   {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
                 </td>
-
                 <td className="border px-2 py-1">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
                 <td className="border px-2 py-1">{getUniqueText(item.produk, 'referal')}</td>
-
-                <td className="border px-2 py-1">
-                  Rp {totalHarga(item.produk).toLocaleString()}
-                </td>
-                <td className="border px-2 py-1">
-                  Rp {totalLaba(item.produk).toLocaleString()}
-                </td>
-
+                <td className="border px-2 py-1">Rp {totalHarga(item.produk).toLocaleString('id-ID')}</td>
+                <td className="border px-2 py-1">Rp {totalLaba(item.produk).toLocaleString('id-ID')}</td>
                 <td className="border px-2 py-1">
                   <a
                     href={`/invoice/${item.invoice_id}`}
@@ -338,7 +321,6 @@ export default function RiwayatPenjualan() {
                     Unduh
                   </a>
                 </td>
-
                 <td className="border px-2 py-1">
                   <button
                     onClick={() => handleDelete(item.invoice_id)}
@@ -349,7 +331,6 @@ export default function RiwayatPenjualan() {
                 </td>
               </tr>
             ))}
-
             {rows.length === 0 && (
               <tr>
                 <td className="border px-2 py-4 text-center text-gray-500" colSpan={9}>
