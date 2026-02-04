@@ -52,7 +52,6 @@ export default function TransaksiIndent() {
   }
 
   const generateInvoiceId = async (tanggalISO) => {
-    // pakai tanggal transaksi (bukan jam sekarang) biar konsisten jika input tanggal manual
     const now = tanggalISO ? new Date(tanggalISO) : new Date()
     const bulan = String(now.getMonth() + 1).padStart(2, '0')
     const tahun = now.getFullYear()
@@ -63,14 +62,12 @@ export default function TransaksiIndent() {
       .like('invoice_id', `INV-DP-CTI-${bulan}-${tahun}-%`)
 
     if (error) {
-      // fallback aman
       const rand = String(Math.floor(Math.random() * 999)).padStart(3, '0')
       return `INV-DP-CTI-${bulan}-${tahun}-${rand}`
     }
 
     const urut = (data?.length || 0) + 1
     const nomorUrut = String(urut).padStart(3, '0')
-
     return `INV-DP-CTI-${bulan}-${tahun}-${nomorUrut}`
   }
 
@@ -110,7 +107,6 @@ export default function TransaksiIndent() {
     e.preventDefault()
 
     const tanggal = form.tanggal || todayStr()
-
     if (!form.nama.trim()) return alert('Nama wajib diisi')
 
     const cleanItems = normalizeItems()
@@ -123,7 +119,6 @@ export default function TransaksiIndent() {
 
     // ===== UPDATE =====
     if (isEditing) {
-      // update header
       const { error: upErr } = await supabase
         .from('transaksi_indent')
         .update({
@@ -139,7 +134,6 @@ export default function TransaksiIndent() {
 
       if (upErr) return alert('Gagal update transaksi')
 
-      // replace items (hapus lama, insert baru)
       const { error: delErr } = await supabase
         .from('transaksi_indent_items')
         .delete()
@@ -147,15 +141,8 @@ export default function TransaksiIndent() {
 
       if (delErr) return alert('Gagal update item (hapus lama)')
 
-      const rows = cleanItems.map((it) => ({
-        indent_id: editId,
-        ...it,
-      }))
-
-      const { error: insErr } = await supabase
-        .from('transaksi_indent_items')
-        .insert(rows)
-
+      const rows = cleanItems.map((it) => ({ indent_id: editId, ...it }))
+      const { error: insErr } = await supabase.from('transaksi_indent_items').insert(rows)
       if (insErr) return alert('Gagal update item (insert baru)')
 
       resetForm()
@@ -184,15 +171,8 @@ export default function TransaksiIndent() {
 
     if (insHeaderErr || !header?.id) return alert('Gagal simpan transaksi')
 
-    const rows = cleanItems.map((it) => ({
-      indent_id: header.id, // UUID
-      ...it,
-    }))
-
-    const { error: insItemsErr } = await supabase
-      .from('transaksi_indent_items')
-      .insert(rows)
-
+    const rows = cleanItems.map((it) => ({ indent_id: header.id, ...it }))
+    const { error: insItemsErr } = await supabase.from('transaksi_indent_items').insert(rows)
     if (insItemsErr) return alert('Transaksi tersimpan, tapi item gagal disimpan')
 
     resetForm()
@@ -214,7 +194,6 @@ export default function TransaksiIndent() {
       tanggal: item.tanggal || '',
     })
 
-    // Jika sudah ada items (multi produk)
     if (item.items && item.items.length > 0) {
       setItems(
         item.items.map((it) => ({
@@ -227,7 +206,6 @@ export default function TransaksiIndent() {
         }))
       )
     } else {
-      // Fallback untuk data lama yang masih 1 produk (kalau kolom lama masih ada)
       setItems([
         {
           nama_produk: item.nama_produk || '',
@@ -240,7 +218,7 @@ export default function TransaksiIndent() {
       ])
     }
 
-    setEditId(item.id) // UUID
+    setEditId(item.id)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -329,56 +307,55 @@ export default function TransaksiIndent() {
 
             <div className="space-y-3">
               {items.map((it, idx) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-6 gap-2 border p-2 rounded">
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 border p-2 rounded items-center">
                   <input
-                    className="border p-2 md:col-span-2"
+                    className="border p-2 md:col-span-4"
                     placeholder="NAMA PRODUK"
                     value={it.nama_produk}
                     onChange={(e) => updateItem(idx, 'nama_produk', e.target.value)}
                   />
                   <input
-                    className="border p-2"
+                    className="border p-2 md:col-span-2"
                     placeholder="WARNA"
                     value={it.warna}
                     onChange={(e) => updateItem(idx, 'warna', e.target.value)}
                   />
                   <input
-                    className="border p-2"
+                    className="border p-2 md:col-span-2"
                     placeholder="STORAGE"
                     value={it.storage}
                     onChange={(e) => updateItem(idx, 'storage', e.target.value)}
                   />
                   <input
-                    className="border p-2"
+                    className="border p-2 md:col-span-2"
                     placeholder="GARANSI"
                     value={it.garansi}
                     onChange={(e) => updateItem(idx, 'garansi', e.target.value)}
                   />
+                  <input
+                    className="border p-2 md:col-span-1"
+                    placeholder="QTY"
+                    type="number"
+                    min="1"
+                    value={it.qty}
+                    onChange={(e) => updateItem(idx, 'qty', e.target.value)}
+                  />
+                  <input
+                    className="border p-2 md:col-span-1"
+                    placeholder="HARGA/ITEM"
+                    type="number"
+                    value={it.harga_item}
+                    onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
+                  />
 
-                  <div className="flex gap-2">
-                    <input
-                      className="border p-2 w-20"
-                      placeholder="QTY"
-                      type="number"
-                      value={it.qty}
-                      onChange={(e) => updateItem(idx, 'qty', e.target.value)}
-                    />
-                    <input
-                      className="border p-2 flex-1"
-                      placeholder="HARGA/ITEM"
-                      type="number"
-                      value={it.harga_item}
-                      onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="border px-3 rounded"
-                      onClick={() => removeItemRow(idx)}
-                      title="Hapus produk"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="border px-3 py-2 rounded md:col-span-12 lg:col-span-1"
+                    onClick={() => removeItemRow(idx)}
+                    title="Hapus produk"
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
@@ -440,10 +417,13 @@ export default function TransaksiIndent() {
                 )}
 
                 <div className="text-sm">Alamat: {item.alamat} | WA: {item.no_wa}</div>
-                <div className="text-sm">DP: Rp {(item.dp || 0).toLocaleString('id-ID')} | Total: Rp {(item.harga_jual || 0).toLocaleString('id-ID')}</div>
+                <div className="text-sm">
+                  DP: Rp {(item.dp || 0).toLocaleString('id-ID')} | Total: Rp {(item.harga_jual || 0).toLocaleString('id-ID')}
+                </div>
 
                 <div className="text-sm font-medium text-green-600">
-                  Status: {item.status === 'Sudah Diambil'
+                  Status:{' '}
+                  {item.status === 'Sudah Diambil'
                     ? '✅ Sudah Diambil'
                     : '🕐 DP Masuk, sisa Rp ' + ((item.harga_jual || 0) - (item.dp || 0)).toLocaleString('id-ID')}
                 </div>
