@@ -43,7 +43,7 @@ export default function Layout({ children }) {
     { label: 'Transaksi Indent', path: '/indent' },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris' },
     { label: 'Riwayat Penjualan', path: '/riwayat' },
-    { label: 'Kinerja Karyawan', path: '/kinerja' },
+    { label: 'Claim Cashback', path: '/claim-cashback' },
     { label: 'Rekap Bulanan', path: '/rekap' },
     { label: 'Claim Garansi', path: '/garansi' },
     { label: 'Akun', path: '/akun' },
