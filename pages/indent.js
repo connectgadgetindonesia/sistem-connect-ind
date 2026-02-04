@@ -37,15 +37,17 @@ export default function TransaksiIndent() {
   }, [])
 
   const fetchList = async () => {
+    // ✅ jangan pakai created_at (bisa tidak ada kolomnya)
+    // ✅ sorting aman: tanggal desc lalu id desc (seperti style sebelumnya)
     const { data, error } = await supabase
       .from('transaksi_indent')
       .select('*, items:transaksi_indent_items(*)')
       .order('tanggal', { ascending: false })
-      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
 
     if (error) {
-      console.error(error)
-      setList([])
+      console.error('fetchList error:', error)
+      // ❗ jangan setList([]) supaya history tidak tiba-tiba hilang saat error sesaat
       return
     }
     setList(data || [])
@@ -298,11 +300,21 @@ export default function TransaksiIndent() {
 
           {/* Items */}
           <div className="border rounded p-3">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">Produk dalam Transaksi</div>
               <button type="button" className="border px-3 py-1 rounded text-sm" onClick={addItemRow}>
                 + Tambah Produk
               </button>
+            </div>
+
+            {/* ✅ Header label supaya judul kolom tidak terpotong */}
+            <div className="hidden md:grid grid-cols-12 gap-2 text-[11px] font-semibold text-gray-600 mb-1 px-1">
+              <div className="col-span-4">NAMA PRODUK</div>
+              <div className="col-span-2">WARNA</div>
+              <div className="col-span-2">STORAGE</div>
+              <div className="col-span-2">GARANSI</div>
+              <div className="col-span-1">QTY</div>
+              <div className="col-span-1">HARGA/ITEM</div>
             </div>
 
             <div className="space-y-3">
@@ -348,14 +360,17 @@ export default function TransaksiIndent() {
                     onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
                   />
 
-                  <button
-                    type="button"
-                    className="border px-3 py-2 rounded md:col-span-12 lg:col-span-1"
-                    onClick={() => removeItemRow(idx)}
-                    title="Hapus produk"
-                  >
-                    ✕
-                  </button>
+                  {/* tombol hapus tetap ada, tapi tidak bikin layout berantakan */}
+                  <div className="md:col-span-12 flex justify-end">
+                    <button
+                      type="button"
+                      className="border px-3 py-2 rounded"
+                      onClick={() => removeItemRow(idx)}
+                      title="Hapus produk"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -385,7 +400,7 @@ export default function TransaksiIndent() {
           onChange={(e) => setSearch(e.target.value)}
         />
 
-        {/* List */}
+        {/* ✅ History transaksi (dipertahankan, tidak dihilangkan) */}
         <div className="space-y-4">
           {filtered.map((item) => {
             const arr = item.items || []
