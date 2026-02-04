@@ -14,7 +14,6 @@ export default function RiwayatPenjualan() {
   })
 
   useEffect(() => {
-    // saat ganti mode, set default tanggal untuk harian
     if (mode === 'harian') {
       setFilter((f) => ({ ...f, tanggal_awal: today, tanggal_akhir: today }))
     }
@@ -40,16 +39,13 @@ export default function RiwayatPenjualan() {
   async function fetchData() {
     let query = supabase.from('penjualan_baru').select('*')
 
-    // Mode harian: paksa hanya hari ini agar ringan
     if (mode === 'harian') {
       query = query.eq('tanggal', today)
     } else {
-      // Mode history: gunakan filter tanggal bila ada
       if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal)
       if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
     }
 
-    // Pencarian (berlaku untuk dua mode)
     if (filter.search) {
       query = query.or(
         `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
@@ -72,13 +68,11 @@ export default function RiwayatPenjualan() {
     const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
     if (!konfirmasi) return
 
-    // ambil semua baris invoice ini
     const { data: penjualan } = await supabase
       .from('penjualan_baru')
       .select('*')
       .eq('invoice_id', invoice_id)
 
-    // kembalikan stok unit (jika dari tabel stok utama)
     for (const item of penjualan || []) {
       const { data: stokData } = await supabase
         .from('stok')
@@ -90,7 +84,6 @@ export default function RiwayatPenjualan() {
       }
     }
 
-    // hapus transaksi
     await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
 
     alert('Data berhasil dihapus!')
@@ -101,6 +94,16 @@ export default function RiwayatPenjualan() {
     produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
   const totalLaba = (produk = []) =>
     produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+
+  // ✅ ambil nilai unik dalam 1 invoice (kalau berbeda-beda)
+  const getUniqueText = (produk = [], key) => {
+    const vals = (produk || [])
+      .map((p) => (p?.[key] || '').toString().trim())
+      .filter(Boolean)
+    const uniq = Array.from(new Set(vals))
+    if (uniq.length === 0) return '-'
+    return uniq.join(', ')
+  }
 
   return (
     <Layout>
@@ -169,26 +172,45 @@ export default function RiwayatPenjualan() {
               <th className="border px-2 py-1">Tanggal</th>
               <th className="border px-2 py-1">Nama</th>
               <th className="border px-2 py-1">Produk</th>
+
+              {/* ✅ kolom tambahan sesuai permintaan */}
+              <th className="border px-2 py-1">Dilayani Oleh</th>
+              <th className="border px-2 py-1">Referral</th>
+
               <th className="border px-2 py-1">Harga Jual</th>
               <th className="border px-2 py-1">Laba</th>
               <th className="border px-2 py-1">Invoice</th>
               <th className="border px-2 py-1">Aksi</th>
             </tr>
           </thead>
+
           <tbody>
             {rows.map((item) => (
               <tr key={item.invoice_id}>
-                <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
+                <td className="border px-2 py-1">
+                  {dayjs(item.tanggal).format('YYYY-MM-DD')}
+                </td>
                 <td className="border px-2 py-1">{item.nama_pembeli}</td>
+
                 <td className="border px-2 py-1">
                   {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
                 </td>
+
+                {/* ✅ tampilkan dari item.produk (gabung unik jika ada beda) */}
+                <td className="border px-2 py-1">
+                  {getUniqueText(item.produk, 'dilayani_oleh')}
+                </td>
+                <td className="border px-2 py-1">
+                  {getUniqueText(item.produk, 'referal')}
+                </td>
+
                 <td className="border px-2 py-1">
                   Rp {totalHarga(item.produk).toLocaleString()}
                 </td>
                 <td className="border px-2 py-1">
                   Rp {totalLaba(item.produk).toLocaleString()}
                 </td>
+
                 <td className="border px-2 py-1">
                   <a
                     href={`/invoice/${item.invoice_id}`}
@@ -199,6 +221,7 @@ export default function RiwayatPenjualan() {
                     Unduh
                   </a>
                 </td>
+
                 <td className="border px-2 py-1">
                   <button
                     onClick={() => handleDelete(item.invoice_id)}
@@ -209,9 +232,10 @@ export default function RiwayatPenjualan() {
                 </td>
               </tr>
             ))}
+
             {rows.length === 0 && (
               <tr>
-                <td className="border px-2 py-4 text-center text-gray-500" colSpan={7}>
+                <td className="border px-2 py-4 text-center text-gray-500" colSpan={9}>
                   Tidak ada data.
                 </td>
               </tr>
