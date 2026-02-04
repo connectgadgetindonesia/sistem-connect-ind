@@ -30,6 +30,15 @@ function buildTasksFor(dateISO) {
   return Array.from(new Set(base.map(t => t.toUpperCase())))
 }
 
+function fmtTimeID(ts) {
+  if (!ts) return ''
+  try {
+    return new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
 export default function AbsenTugasKaryawan() {
   // === Absensi ===
   const [nama, setNama] = useState('')
@@ -42,48 +51,67 @@ export default function AbsenTugasKaryawan() {
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [assigneeMap, setAssigneeMap] = useState({}) // {taskId: assignee}
 
-  const tanggal = todayStr()
+  // === History / Date Picker ===
+  const [selectedDate, setSelectedDate] = useState(todayStr())
+  const isToday = selectedDate === todayStr()
 
-  // ----- MOUNT: ambil absensi + (kalau sudah ada tugas) tampilkan -----
+  // === User login untuk jejak DONE_BY (kalau tersedia) ===
+  const [loginName, setLoginName] = useState('')
+
+  // ----- MOUNT: ambil user + data untuk tanggal default -----
+  useEffect(() => {
+  (async () => {
+    await loadAbsensi(selectedDate)
+    await loadTasks(selectedDate)
+  })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
+
+  // ----- Jika selectedDate berubah -> load data tanggal itu -----
   useEffect(() => {
     (async () => {
-      await loadAbsensi()
-      await loadTasks()
+      await loadAbsensi(selectedDate)
+      await loadTasks(selectedDate)
+      // Jangan generate tugas kalau bukan hari ini
+      if (isToday) {
+        await ensureTasksIfNeeded(selectedDate)
+      }
     })()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate])
 
-  // ----- REAKTIF terhadap perubahan absensi -----
+  // ----- REAKTIF terhadap perubahan absensi (hari ini saja) -----
   useEffect(() => {
     (async () => {
-      await ensureTasksIfNeeded()
+      if (isToday) await ensureTasksIfNeeded(selectedDate)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [absenList])
 
   // ---------- ABSENSI ----------
-  async function loadAbsensi() {
+  async function loadAbsensi(tgl) {
     const { data, error } = await supabase
       .from('absensi_karyawan')
       .select('*')
-      .eq('tanggal', tanggal)
+      .eq('tanggal', tgl)
       .order('nama', { ascending: true })
 
     if (!error) setAbsenList(data || [])
   }
 
-  // 🔒 Cegah absen dobel (1x per hari per nama)
+  // 🔒 Cegah absen dobel (1x per hari per nama) - hanya untuk HARI INI
   async function handleSubmitAbsen(e) {
     e.preventDefault()
+    if (!isToday) return alert('Hanya bisa input absen untuk HARI INI.')
     if (!nama || !shift || !status) return alert('Lengkapi semua data')
 
-    const namaVal = (nama || '').trim().toUpperCase() // seragamkan case
+    const namaVal = (nama || '').trim().toUpperCase()
     const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
-    // Cek apakah nama ini sudah absen hari ini
     const { data: exist } = await supabase
       .from('absensi_karyawan')
       .select('id, shift, jam_absen')
-      .eq('tanggal', tanggal)
+      .eq('tanggal', selectedDate)
       .eq('nama', namaVal)
       .maybeSingle()
 
@@ -92,73 +120,65 @@ export default function AbsenTugasKaryawan() {
       return
     }
 
-    // simpan (pakai jam_absen jika kolom ada; fallback jika tidak)
     let res = await supabase
       .from('absensi_karyawan')
-      .insert({ nama: namaVal, shift, status, tanggal, jam_absen: jamNow })
+      .insert({ nama: namaVal, shift, status, tanggal: selectedDate, jam_absen: jamNow })
 
     if (res.error) {
       await supabase
         .from('absensi_karyawan')
-        .insert({ nama: namaVal, shift, status, tanggal })
+        .insert({ nama: namaVal, shift, status, tanggal: selectedDate })
     }
 
     setNama('')
     setShift('Pagi')
     setStatus('Hadir')
 
-    await loadAbsensi() // → memicu ensureTasksIfNeeded via useEffect
+    await loadAbsensi(selectedDate)
   }
 
   // === Absen Pulang (dengan konfirmasi tugas) ===
   async function handleAbsenPulang(row) {
-    // Cek progres tugas hari ini
+    if (!isToday) return alert('History bersifat laporan. Absen pulang hanya untuk HARI INI.')
+
     const { data: tdata, error: terr } = await supabase
       .from('tugas_harian')
       .select('status')
-      .eq('task_date', tanggal);
+      .eq('task_date', selectedDate)
 
-    const total = (tdata || []).length;
-    const done  = (tdata || []).filter(t => t.status === 'done').length;
-    const remaining = Math.max(total - done, 0);
+    const total = (tdata || []).length
+    const done  = (tdata || []).filter(t => t.status === 'done').length
+    const remaining = Math.max(total - done, 0)
 
-    // Jika sudah pernah isi jam pulang, konfirmasi dulu
     if (row.jam_pulang) {
-      const ok = confirm(
-        `Jam pulang ${row.nama} sudah ${row.jam_pulang}. Ingin mengubahnya?`
-      );
-      if (!ok) return;
+      const ok = confirm(`Jam pulang ${row.nama} sudah ${row.jam_pulang}. Ingin mengubahnya?`)
+      if (!ok) return
     }
 
-    // Pop-up konfirmasi tugas
-    let msg = 'Pastikan semua tugas hari ini sudah selesai.\n\nKlik OK jika sudah.';
+    let msg = 'Pastikan semua tugas hari ini sudah selesai.\n\nKlik OK jika sudah.'
     if (!terr && total > 0 && remaining > 0) {
       msg =
         `Pastikan semua tugas hari ini sudah selesai.\n` +
         `Saat ini masih tersisa ${remaining} tugas yang belum selesai.\n\n` +
-        `Klik OK jika tetap ingin absen pulang.`;
+        `Klik OK jika tetap ingin absen pulang.`
     }
-    const proceed = confirm(msg);
-    if (!proceed) return;
+    const proceed = confirm(msg)
+    if (!proceed) return
 
-    // Simpan jam pulang
-    const jamNow = new Date().toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
     const { error } = await supabase
       .from('absensi_karyawan')
       .update({ jam_pulang: jamNow })
       .eq('id', row.id)
-      .eq('tanggal', tanggal);
+      .eq('tanggal', selectedDate)
 
     if (error) {
-      alert('Gagal menyimpan absen pulang');
-      return;
+      alert('Gagal menyimpan absen pulang')
+      return
     }
 
-    await loadAbsensi();
+    await loadAbsensi(selectedDate)
   }
 
   // ---------- TUGAS ----------
@@ -167,11 +187,11 @@ export default function AbsenTugasKaryawan() {
     [absenList]
   )
 
-  async function loadTasks() {
+  async function loadTasks(tgl) {
     const { data, error } = await supabase
       .from('tugas_harian')
       .select('*')
-      .eq('task_date', tanggal)
+      .eq('task_date', tgl)
       .order('created_at', { ascending: true })
 
     if (!error) {
@@ -184,9 +204,11 @@ export default function AbsenTugasKaryawan() {
     }
   }
 
-  /** Jika ada minimal 1 "Hadir" dan belum ada tugas → generate otomatis. */
-  async function ensureTasksIfNeeded() {
-    const adaHadir = absenList.some(a => a.status === 'Hadir')
+  /** Jika ada minimal 1 "Hadir" dan belum ada tugas → generate otomatis (HARI INI SAJA). */
+  async function ensureTasksIfNeeded(tgl) {
+    if (tgl !== todayStr()) return // history: jangan generate
+
+    const adaHadir = (absenList || []).some(a => a.status === 'Hadir')
     if (!adaHadir) {
       setTasks([])
       return
@@ -195,17 +217,17 @@ export default function AbsenTugasKaryawan() {
     const { data: existing, error: exErr } = await supabase
       .from('tugas_harian')
       .select('id')
-      .eq('task_date', tanggal)
+      .eq('task_date', tgl)
       .limit(1)
 
     if (!exErr && existing && existing.length > 0) {
-      await loadTasks()
+      await loadTasks(tgl)
       return
     }
 
-    const titles = buildTasksFor(tanggal)
+    const titles = buildTasksFor(tgl)
     const rows = titles.map(t => ({
-      task_date: tanggal,
+      task_date: tgl,
       title: t,
       status: 'todo',
       added_manually: false,
@@ -219,53 +241,96 @@ export default function AbsenTugasKaryawan() {
       alert('Gagal membuat tugas: ' + error.message)
       return
     }
-    await loadTasks()
+    await loadTasks(tgl)
   }
 
   async function toggleTaskStatus(task) {
-    const next = task.status === 'done' ? 'todo' : 'done'
-    const { error } = await supabase
-      .from('tugas_harian')
-      .update({ status: next })
-      .eq('id', task.id)
-    if (!error) {
-      setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, status: next } : t)))
-    }
+  if (!isToday) return alert('History bersifat laporan (read-only).')
+
+  const next = task.status === 'done' ? 'todo' : 'done'
+
+  // Jika mau set DONE, wajib ada assignee dari dropdown
+  const chosenAssignee = (assigneeMap[task.id] || '').toString().trim().toUpperCase()
+  if (next === 'done' && !chosenAssignee) {
+    alert('Pilih dulu "Dikerjakan oleh" sebelum menandai tugas selesai.')
+    return
   }
 
-  async function changeAssignee(taskId, nama) {
-    setAssigneeMap(prev => ({ ...prev, [taskId]: nama }))
-    await supabase.from('tugas_harian').update({ assignee: nama || null }).eq('id', taskId)
+  const payload =
+    next === 'done'
+      ? { status: next, done_at: new Date().toISOString(), done_by: chosenAssignee }
+      : { status: next, done_at: null, done_by: null }
+
+  const { error } = await supabase
+    .from('tugas_harian')
+    .update(payload)
+    .eq('id', task.id)
+
+  if (!error) {
+    setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, ...payload } : t)))
+  }
+}
+
+
+  async function changeAssignee(taskId, namaVal) {
+    if (!isToday) return alert('History bersifat laporan (read-only).')
+    setAssigneeMap(prev => ({ ...prev, [taskId]: namaVal }))
+    await supabase.from('tugas_harian').update({ assignee: namaVal || null }).eq('id', taskId)
   }
 
   async function addManualTask() {
+    if (!isToday) return alert('Tambah tugas hanya untuk HARI INI.')
     if (!newTaskTitle.trim()) return
     const title = newTaskTitle.trim().toUpperCase()
+
     const { error } = await supabase
       .from('tugas_harian')
-      .upsert(
-        [{ task_date: tanggal, title, status: 'todo', added_manually: true }],
-        { onConflict: 'task_date,title' }
-      )
+      .upsert([{ task_date: selectedDate, title, status: 'todo', added_manually: true }], { onConflict: 'task_date,title' })
+
     if (error) return alert('Gagal menambah tugas: ' + error.message)
     setNewTaskTitle('')
-    await loadTasks()
+    await loadTasks(selectedDate)
   }
 
   const allDone = tasks.length > 0 && tasks.every(t => t.status === 'done')
 
-  // UX: nonaktifkan tombol jika nama ini sudah absen
-  const sudahAbsenHariIni = useMemo(
-    () => absenList.some(a =>
+  const sudahAbsenHariIni = useMemo(() => {
+    if (!isToday) return true
+    return absenList.some(a =>
       (a.nama || '').trim().toUpperCase() === (nama || '').trim().toUpperCase()
-    ),
-    [absenList, nama]
-  )
+    )
+  }, [absenList, nama, isToday])
 
   return (
     <Layout>
       <div className="max-w-5xl mx-auto p-4">
-        <h1 className="text-xl font-bold mb-4">Absensi & Tugas Harian</h1>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h1 className="text-xl font-bold">Absensi & Tugas Harian</h1>
+            <div className="text-sm text-gray-600">
+              Mode: {isToday ? <b>Hari Ini</b> : <b>Laporan (Read-only)</b>}
+            </div>
+          </div>
+
+          {/* ====== History Picker ====== */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="border p-2 rounded"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+            <button
+              className="border px-3 py-2 rounded"
+              onClick={async () => {
+                await loadAbsensi(selectedDate)
+                await loadTasks(selectedDate)
+              }}
+            >
+              Lihat Laporan
+            </button>
+          </div>
+        </div>
 
         {/* ===== Form Absen ===== */}
         <form onSubmit={handleSubmitAbsen} className="space-y-4 border p-4 rounded mb-6">
@@ -276,12 +341,13 @@ export default function AbsenTugasKaryawan() {
               onChange={(e) => setNama(e.target.value)}
               placeholder="Nama Karyawan"
               className="border p-2 col-span-2"
+              disabled={!isToday}
             />
-            <select value={shift} onChange={(e) => setShift(e.target.value)} className="border p-2">
+            <select value={shift} onChange={(e) => setShift(e.target.value)} className="border p-2" disabled={!isToday}>
               <option value="Pagi">Shift Pagi (09.00–17.00)</option>
               <option value="Siang">Shift Siang (13.00–20.00)</option>
             </select>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="border p-2">
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="border p-2" disabled={!isToday}>
               <option value="Hadir">Hadir</option>
               <option value="Izin">Izin</option>
               <option value="Sakit">Sakit</option>
@@ -289,22 +355,28 @@ export default function AbsenTugasKaryawan() {
               <option value="Cuti">Cuti</option>
             </select>
           </div>
+
           <div className="flex items-center justify-between">
             <button
               type="submit"
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-              disabled={sudahAbsenHariIni}
-              title={sudahAbsenHariIni ? 'Nama ini sudah absen hari ini' : ''}
+              disabled={!isToday || sudahAbsenHariIni}
+              title={!isToday ? 'History mode (read-only)' : (sudahAbsenHariIni ? 'Nama ini sudah absen hari ini' : '')}
             >
               Simpan Absen
             </button>
-            {sudahAbsenHariIni && (
+
+            {!isToday && (
+              <span className="text-xs text-gray-600">History mode: input absen dikunci.</span>
+            )}
+
+            {isToday && sudahAbsenHariIni && (
               <span className="text-xs text-red-600 ml-3">Nama ini sudah absen hari ini.</span>
             )}
           </div>
         </form>
 
-        {/* ===== Tabel Absensi Hari Ini ===== */}
+        {/* ===== Tabel Absensi ===== */}
         <div className="overflow-x-auto border rounded mb-6">
           <table className="w-full table-auto">
             <thead className="bg-gray-100">
@@ -321,7 +393,7 @@ export default function AbsenTugasKaryawan() {
               {absenList.length === 0 && (
                 <tr>
                   <td className="border px-3 py-3 text-center text-gray-500" colSpan={6}>
-                    Belum ada absen hari ini
+                    Belum ada data absen untuk tanggal ini
                   </td>
                 </tr>
               )}
@@ -336,8 +408,8 @@ export default function AbsenTugasKaryawan() {
                     <button
                       className="px-3 py-1 rounded border disabled:opacity-50"
                       onClick={() => handleAbsenPulang(row)}
-                      disabled={row.status !== 'Hadir'}
-                      title={row.status !== 'Hadir' ? 'Hanya untuk yang Hadir' : ''}
+                      disabled={!isToday || row.status !== 'Hadir'}
+                      title={!isToday ? 'History mode (read-only)' : (row.status !== 'Hadir' ? 'Hanya untuk yang Hadir' : '')}
                     >
                       {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
                     </button>
@@ -351,17 +423,18 @@ export default function AbsenTugasKaryawan() {
         {/* ===== Seksi Tugas Harian ===== */}
         <div className="border rounded p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Tugas Harian ({tanggal})</h2>
+            <h2 className="font-semibold">Tugas Harian ({selectedDate})</h2>
             <button
-              className="text-sm border px-3 py-1 rounded"
-              onClick={async () => { await ensureTasksIfNeeded(); await loadTasks(); }}
+              className="text-sm border px-3 py-1 rounded disabled:opacity-50"
+              disabled={!isToday}
+              onClick={async () => { await ensureTasksIfNeeded(selectedDate); await loadTasks(selectedDate); }}
+              title={!isToday ? 'History mode (read-only)' : ''}
             >
               Muat Ulang
             </button>
           </div>
 
-          {/* Info bila belum ada yang hadir */}
-          {absenList.every(a => a.status !== 'Hadir') && (
+          {isToday && absenList.every(a => a.status !== 'Hadir') && (
             <p className="text-sm text-gray-500 mb-3">
               Belum ada karyawan yang <b>Hadir</b> hari ini. Tugas akan muncul otomatis setelah ada yang hadir.
             </p>
@@ -374,16 +447,22 @@ export default function AbsenTugasKaryawan() {
               placeholder="Tambah tugas manual (untuk hari ini saja)"
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
+              disabled={!isToday}
             />
-            <button onClick={addManualTask} className="bg-blue-600 text-white px-3 py-2 rounded">
+            <button
+              onClick={addManualTask}
+              className="bg-blue-600 text-white px-3 py-2 rounded disabled:opacity-50"
+              disabled={!isToday}
+              title={!isToday ? 'History mode (read-only)' : ''}
+              type="button"
+            >
               Tambah Tugas
             </button>
           </div>
 
-          {/* Semua selesai */}
           {allDone && tasks.length > 0 && (
             <div className="mb-3 text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded">
-              ✅ Tugas hari ini telah selesai semua.
+              ✅ Tugas tanggal {selectedDate} telah selesai semua.
             </div>
           )}
 
@@ -396,12 +475,22 @@ export default function AbsenTugasKaryawan() {
                     type="checkbox"
                     checked={t.status === 'done'}
                     onChange={() => toggleTaskStatus(t)}
+                    disabled={!isToday}
+                    title={!isToday ? 'History mode (read-only)' : ''}
                   />
                   <div>
                     <div className={`font-medium ${t.status === 'done' ? 'line-through text-gray-500' : ''}`}>
                       {t.title}
                     </div>
-                    {t.added_manually && <div className="text-xs text-indigo-600">manual</div>}
+
+                    <div className="text-xs text-gray-600">
+                      {t.added_manually ? <span className="text-indigo-600">manual</span> : <span>otomatis</span>}
+                      {t.status === 'done' && (
+                        <>
+                          {' '}• selesai {fmtTimeID(t.done_at)} oleh <b>{t.done_by || '-'}</b>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -411,6 +500,8 @@ export default function AbsenTugasKaryawan() {
                     className="border p-1 text-sm"
                     value={assigneeMap[t.id] || ''}
                     onChange={(e) => changeAssignee(t.id, e.target.value)}
+                    disabled={!isToday}
+                    title={!isToday ? 'History mode (read-only)' : ''}
                   >
                     <option value="">— pilih —</option>
                     {hadirNames.map((n) => (
@@ -422,8 +513,12 @@ export default function AbsenTugasKaryawan() {
             ))}
           </ul>
 
-          {tasks.length === 0 && absenList.some(a => a.status === 'Hadir') && (
+          {tasks.length === 0 && isToday && absenList.some(a => a.status === 'Hadir') && (
             <p className="text-sm text-gray-500 mt-2">Tugas sedang dibuat… klik “Muat Ulang” bila belum tampil.</p>
+          )}
+
+          {tasks.length === 0 && !isToday && (
+            <p className="text-sm text-gray-500 mt-2">Tidak ada data tugas untuk tanggal ini.</p>
           )}
         </div>
       </div>
