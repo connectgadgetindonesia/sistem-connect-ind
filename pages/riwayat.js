@@ -1,5 +1,5 @@
 import Layout from '@/components/Layout'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 
@@ -7,11 +7,15 @@ export default function RiwayatPenjualan() {
   const [rows, setRows] = useState([])
   const [mode, setMode] = useState('harian') // 'harian' | 'history'
   const today = dayjs().format('YYYY-MM-DD')
+
   const [filter, setFilter] = useState({
     tanggal_awal: today,
     tanggal_akhir: today,
     search: ''
   })
+
+  // ✅ state baru: ringkasan kinerja karyawan
+  const [kinerja, setKinerja] = useState([]) // [{ nama, dilayaniCount, referralCount }]
 
   useEffect(() => {
     if (mode === 'harian') {
@@ -20,6 +24,9 @@ export default function RiwayatPenjualan() {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
+
+  // ✅ kalau filter tanggal berubah di mode history, hitungan kinerja ikut update saat klik "Cari"
+  // (kita tetap pakai tombol Cari seperti flow sekarang)
 
   function groupByInvoice(data) {
     const grouped = {}
@@ -36,9 +43,66 @@ export default function RiwayatPenjualan() {
     return Object.values(grouped)
   }
 
+  // ✅ ambil nilai unik dalam 1 invoice (kalau berbeda-beda)
+  const getUniqueText = (produk = [], key) => {
+    const vals = (produk || [])
+      .map((p) => (p?.[key] || '').toString().trim())
+      .filter(Boolean)
+    const uniq = Array.from(new Set(vals))
+    if (uniq.length === 0) return '-'
+    return uniq.join(', ')
+  }
+
+  // ✅ hitung kinerja dari data invoice yang sudah digroup (rows)
+  function buildKinerjaFromRows(groupedRows = []) {
+    // Map nama -> { dilayani:Set(invoice_id), referral:Set(invoice_id) }
+    const map = new Map()
+
+    for (const inv of groupedRows) {
+      const invoiceId = inv.invoice_id
+
+      // Untuk “dilayani_oleh” & “referal”, kita ambil semua unik dari produk invoice tsb
+      const dilayaniList = (inv.produk || [])
+        .map((p) => (p?.dilayani_oleh || '').toString().trim())
+        .filter(Boolean)
+
+      const referralList = (inv.produk || [])
+        .map((p) => (p?.referal || '').toString().trim())
+        .filter(Boolean)
+
+      const dilayaniUniq = Array.from(new Set(dilayaniList))
+      const referralUniq = Array.from(new Set(referralList))
+
+      // Dilayani oleh: 1 invoice dihitung 1x per karyawan yang tercatat di invoice tsb
+      for (const nama of dilayaniUniq) {
+        const key = nama || '-'
+        if (!map.has(key)) map.set(key, { dilayani: new Set(), referral: new Set() })
+        map.get(key).dilayani.add(invoiceId)
+      }
+
+      // Referral: 1 invoice dihitung 1x per referral yang tercatat di invoice tsb
+      for (const nama of referralUniq) {
+        const key = nama || '-'
+        if (!map.has(key)) map.set(key, { dilayani: new Set(), referral: new Set() })
+        map.get(key).referral.add(invoiceId)
+      }
+    }
+
+    const out = Array.from(map.entries()).map(([nama, v]) => ({
+      nama,
+      dilayaniCount: v.dilayani.size,
+      referralCount: v.referral.size,
+    }))
+
+    // urutkan: paling tinggi total aktivitas
+    out.sort((a, b) => (b.dilayaniCount + b.referralCount) - (a.dilayaniCount + a.referralCount))
+    return out
+  }
+
   async function fetchData() {
     let query = supabase.from('penjualan_baru').select('*')
 
+    // Mode harian: transaksi hari ini (tabel utama tetap harian sesuai sistem)
     if (mode === 'harian') {
       query = query.eq('tanggal', today)
     } else {
@@ -46,6 +110,7 @@ export default function RiwayatPenjualan() {
       if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
     }
 
+    // Pencarian (berlaku untuk dua mode)
     if (filter.search) {
       query = query.or(
         `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
@@ -59,9 +124,53 @@ export default function RiwayatPenjualan() {
     if (error) {
       console.error(error)
       setRows([])
+      setKinerja([])
       return
     }
-    setRows(groupByInvoice(data || []))
+
+    const grouped = groupByInvoice(data || [])
+    setRows(grouped)
+
+    // ✅ hitung kinerja untuk tampilan ringkasan:
+    // - Harian: defaultnya BULAN INI
+    // - History: sesuai filter tanggal
+    await fetchKinerjaSummary()
+  }
+
+  // ✅ query terpisah untuk ringkasan kinerja (supaya:
+  // - Harian = bulan ini, bukan hanya hari ini
+  // - History = mengikuti rentang tanggal filter
+  async function fetchKinerjaSummary() {
+    let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referal')
+
+    if (mode === 'harian') {
+      // BULAN INI (berdasarkan today)
+      const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
+      const end = dayjs(today).endOf('month').format('YYYY-MM-DD')
+      q = q.gte('tanggal', start).lte('tanggal', end)
+    } else {
+      // ikut range history
+      if (filter.tanggal_awal) q = q.gte('tanggal', filter.tanggal_awal)
+      if (filter.tanggal_akhir) q = q.lte('tanggal', filter.tanggal_akhir)
+    }
+
+    // NOTE: kinerja tidak dipengaruhi search produk/nama pembeli (lebih natural untuk laporan karyawan)
+    // kalau Pak mau ikut search juga, bilang ya nanti saya tambahkan.
+
+    const { data, error } = await q
+      .order('tanggal', { ascending: false })
+      .order('invoice_id', { ascending: false })
+
+    if (error) {
+      console.error(error)
+      setKinerja([])
+      return
+    }
+
+    // group berdasarkan invoice untuk hindari dobel multi-produk
+    const grouped = groupByInvoice(data || [])
+    const summary = buildKinerjaFromRows(grouped)
+    setKinerja(summary)
   }
 
   async function handleDelete(invoice_id) {
@@ -92,18 +201,21 @@ export default function RiwayatPenjualan() {
 
   const totalHarga = (produk = []) =>
     produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
+
   const totalLaba = (produk = []) =>
     produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
-  // ✅ ambil nilai unik dalam 1 invoice (kalau berbeda-beda)
-  const getUniqueText = (produk = [], key) => {
-    const vals = (produk || [])
-      .map((p) => (p?.[key] || '').toString().trim())
-      .filter(Boolean)
-    const uniq = Array.from(new Set(vals))
-    if (uniq.length === 0) return '-'
-    return uniq.join(', ')
-  }
+  const periodeKinerjaLabel = useMemo(() => {
+    if (mode === 'harian') {
+      return `Bulan: ${dayjs(today).format('MMMM YYYY')}`
+    }
+    if (filter.tanggal_awal || filter.tanggal_akhir) {
+      const a = filter.tanggal_awal ? dayjs(filter.tanggal_awal).format('DD/MM/YYYY') : '-'
+      const b = filter.tanggal_akhir ? dayjs(filter.tanggal_akhir).format('DD/MM/YYYY') : '-'
+      return `Periode: ${a} - ${b}`
+    }
+    return 'Periode: Semua'
+  }, [mode, today, filter.tanggal_awal, filter.tanggal_akhir])
 
   return (
     <Layout>
@@ -149,16 +261,23 @@ export default function RiwayatPenjualan() {
             onChange={(e) => setFilter({ ...filter, search: e.target.value })}
             className="border p-2 flex-1 min-w-[220px]"
           />
-          <button onClick={fetchData} className="bg-blue-600 text-white px-4 rounded">
+          <button
+            onClick={async () => {
+              await fetchData()
+            }}
+            className="bg-blue-600 text-white px-4 rounded"
+          >
             Cari
           </button>
+
           {mode === 'history' && (
             <button
-              onClick={() =>
-                setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}>
+              onClick={() => setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}
+            >
               Reset Tanggal
             </button>
           )}
+
           {mode === 'harian' && (
             <span className="text-sm text-gray-600 ml-2">
               Menampilkan transaksi tanggal <b>{dayjs(today).format('DD MMM YYYY')}</b>
@@ -166,17 +285,53 @@ export default function RiwayatPenjualan() {
           )}
         </div>
 
+        {/* ✅ TABEL KINERJA KARYAWAN (BARU) */}
+        <div className="border rounded mb-4 overflow-x-auto">
+          <div className="px-3 py-2 bg-gray-100 border-b flex items-center justify-between">
+            <div className="font-semibold">Kinerja Karyawan</div>
+            <div className="text-xs text-gray-600">{periodeKinerjaLabel}</div>
+          </div>
+
+          <table className="w-full table-auto">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="border px-2 py-1 text-left">Nama</th>
+                <th className="border px-2 py-1">Dilayani Oleh (Invoice)</th>
+                <th className="border px-2 py-1">Referral (Invoice)</th>
+                <th className="border px-2 py-1">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kinerja.map((k) => (
+                <tr key={k.nama}>
+                  <td className="border px-2 py-1">{k.nama}</td>
+                  <td className="border px-2 py-1 text-center">{k.dilayaniCount}</td>
+                  <td className="border px-2 py-1 text-center">{k.referralCount}</td>
+                  <td className="border px-2 py-1 text-center">
+                    {k.dilayaniCount + k.referralCount}
+                  </td>
+                </tr>
+              ))}
+              {kinerja.length === 0 && (
+                <tr>
+                  <td className="border px-2 py-3 text-center text-gray-500" colSpan={4}>
+                    Belum ada data kinerja pada periode ini.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* TABEL RIWAYAT (TETAP ADA, TIDAK DIHILANGKAN) */}
         <table className="w-full table-auto border">
           <thead>
             <tr className="bg-gray-200">
               <th className="border px-2 py-1">Tanggal</th>
               <th className="border px-2 py-1">Nama</th>
               <th className="border px-2 py-1">Produk</th>
-
-              {/* ✅ kolom tambahan sesuai permintaan */}
               <th className="border px-2 py-1">Dilayani Oleh</th>
               <th className="border px-2 py-1">Referral</th>
-
               <th className="border px-2 py-1">Harga Jual</th>
               <th className="border px-2 py-1">Laba</th>
               <th className="border px-2 py-1">Invoice</th>
@@ -187,29 +342,18 @@ export default function RiwayatPenjualan() {
           <tbody>
             {rows.map((item) => (
               <tr key={item.invoice_id}>
-                <td className="border px-2 py-1">
-                  {dayjs(item.tanggal).format('YYYY-MM-DD')}
-                </td>
+                <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
                 <td className="border px-2 py-1">{item.nama_pembeli}</td>
 
                 <td className="border px-2 py-1">
                   {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
                 </td>
 
-                {/* ✅ tampilkan dari item.produk (gabung unik jika ada beda) */}
-                <td className="border px-2 py-1">
-                  {getUniqueText(item.produk, 'dilayani_oleh')}
-                </td>
-                <td className="border px-2 py-1">
-                  {getUniqueText(item.produk, 'referal')}
-                </td>
+                <td className="border px-2 py-1">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
+                <td className="border px-2 py-1">{getUniqueText(item.produk, 'referal')}</td>
 
-                <td className="border px-2 py-1">
-                  Rp {totalHarga(item.produk).toLocaleString()}
-                </td>
-                <td className="border px-2 py-1">
-                  Rp {totalLaba(item.produk).toLocaleString()}
-                </td>
+                <td className="border px-2 py-1">Rp {totalHarga(item.produk).toLocaleString()}</td>
+                <td className="border px-2 py-1">Rp {totalLaba(item.produk).toLocaleString()}</td>
 
                 <td className="border px-2 py-1">
                   <a
