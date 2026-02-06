@@ -1,9 +1,8 @@
 import Layout from '@/components/Layout'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import Select from 'react-select'
-import CreatableSelect from 'react-select/creatable'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
@@ -28,95 +27,13 @@ export default function Penjualan() {
     dilayani_oleh: ''
   })
 
-  // ===================== ✅ Customer Autocomplete =====================
-  const [customerOptions, setCustomerOptions] = useState([]) // {value,label,alamat,no_wa}
+  // ====== TAB PEMBELI (Customer vs Indent) ======
+  const [buyerTab, setBuyerTab] = useState('customer') // 'customer' | 'indent'
+  const [customerOptions, setCustomerOptions] = useState([])
+  const [indentOptions, setIndentOptions] = useState([])
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [selectedIndent, setSelectedIndent] = useState(null)
 
-  // buat key unik biar ga dobel: nama|wa (kalau wa kosong pakai nama saja)
-  const makeCustomerKey = (nama, wa) => {
-    const n = (nama || '').toString().trim().toUpperCase()
-    const w = (wa || '').toString().trim()
-    return `${n}||${w}`
-  }
-
-  async function fetchCustomers() {
-    // ambil kolom minimal biar ringan
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('nama_pembeli, alamat, no_wa')
-      .order('tanggal', { ascending: false })
-      .limit(5000)
-
-    if (error) {
-      console.error('fetchCustomers error:', error)
-      setCustomerOptions([])
-      return
-    }
-
-    const map = new Map()
-    ;(data || []).forEach((r) => {
-      const nama = (r.nama_pembeli || '').toString().trim()
-      if (!nama) return
-      const alamat = (r.alamat || '').toString().trim()
-      const no_wa = (r.no_wa || '').toString().trim()
-
-      const key = makeCustomerKey(nama, no_wa)
-
-      // simpan yang paling lengkap
-      if (!map.has(key)) {
-        map.set(key, { nama, alamat, no_wa })
-      } else {
-        const cur = map.get(key)
-        map.set(key, {
-          nama,
-          alamat: cur.alamat || alamat,
-          no_wa: cur.no_wa || no_wa
-        })
-      }
-    })
-
-    const opts = Array.from(map.values())
-      .map((c) => {
-        const namaUpper = (c.nama || '').toString().trim().toUpperCase()
-        const wa = (c.no_wa || '').toString().trim()
-        const alamat = (c.alamat || '').toString().trim()
-        return {
-          value: makeCustomerKey(namaUpper, wa),
-          label: wa ? `${namaUpper} • ${wa}` : `${namaUpper}`,
-          nama: namaUpper,
-          alamat,
-          no_wa: wa
-        }
-      })
-      .sort((a, b) => a.nama.localeCompare(b.nama))
-
-    setCustomerOptions(opts)
-  }
-
-  useEffect(() => {
-    fetchCustomers()
-  }, [])
-
-  // helper: cari customer by nama (tanpa WA) kalau user ketik manual
-  const customerByNama = useMemo(() => {
-    const map = new Map()
-    customerOptions.forEach((c) => {
-      if (!map.has(c.nama)) map.set(c.nama, c)
-      // kalau sudah ada, biarkan yang pertama (sudah rapi)
-    })
-    return map
-  }, [customerOptions])
-
-  function applyCustomerToForm(customer) {
-    if (!customer) return
-    setFormData((prev) => ({
-      ...prev,
-      nama_pembeli: customer.nama || prev.nama_pembeli,
-      alamat: customer.alamat || prev.alamat,
-      no_wa: customer.no_wa || prev.no_wa
-    }))
-  }
-
-  // ===================== Produk / Bonus =====================
   const [produkBaru, setProdukBaru] = useState({
     sn_sku: '',
     harga_jual: '',
@@ -138,6 +55,7 @@ export default function Penjualan() {
   })
   const [options, setOptions] = useState([])
 
+  // ====== OPTIONS SN/SKU ======
   useEffect(() => {
     async function fetchOptions() {
       const { data: stokReady } = await supabase
@@ -164,12 +82,144 @@ export default function Penjualan() {
     fetchOptions()
   }, [])
 
+  // ====== OPTIONS CUSTOMER LAMA ======
+  useEffect(() => {
+    async function fetchCustomers() {
+      // ambil riwayat penjualan (ringan: ambil kolom penting saja)
+      const { data, error } = await supabase
+        .from('penjualan_baru')
+        .select('nama_pembeli, alamat, no_wa, tanggal')
+        .order('tanggal', { ascending: false })
+        .limit(5000)
+
+      if (error) {
+        console.error('fetchCustomers error:', error)
+        setCustomerOptions([])
+        return
+      }
+
+      // unik berdasarkan nama+wa, pakai record terbaru untuk alamat
+      const map = new Map()
+      ;(data || []).forEach((r) => {
+        const nama = (r.nama_pembeli || '').toString().trim().toUpperCase()
+        const wa = (r.no_wa || '').toString().trim()
+        if (!nama) return
+        const key = `${nama}__${wa}`
+        if (!map.has(key)) {
+          map.set(key, {
+            nama,
+            alamat: (r.alamat || '').toString(),
+            no_wa: wa
+          })
+        }
+      })
+
+      const opts = Array.from(map.values())
+        .sort((a, b) => a.nama.localeCompare(b.nama))
+        .map((c) => ({
+          value: `${c.nama}__${c.no_wa}`,
+          label: `${c.nama}${c.no_wa ? ` • ${c.no_wa}` : ''}`,
+          meta: c
+        }))
+
+      setCustomerOptions(opts)
+    }
+
+    fetchCustomers()
+  }, [])
+
+  // ====== OPTIONS INDENT (YANG MASIH BERJALAN) ======
+  useEffect(() => {
+    async function fetchIndent() {
+      const { data, error } = await supabase
+        .from('transaksi_indent')
+        .select('*')
+        .neq('status', 'Sudah Diambil')
+        .order('tanggal', { ascending: false })
+
+      if (error) {
+        console.error('fetchIndent error:', error)
+        setIndentOptions([])
+        return
+      }
+
+      const opts = (data || []).map((r) => {
+        const nama = (r.nama || r.nama_pembeli || '').toString().trim().toUpperCase()
+        const wa = (r.no_wa || '').toString().trim()
+        const alamat = (r.alamat || '').toString().trim()
+
+        const namaProduk = (r.nama_produk || '').toString().trim()
+        const warna = (r.warna || '').toString().trim()
+        const storage = (r.storage || '').toString().trim()
+        const status = (r.status || '').toString().trim()
+
+        const dp = toNumber(r.dp || r.nominal_dp || 0)
+        const hargaJual = toNumber(r.harga_jual || 0)
+        const sisa = toNumber(r.sisa_pembayaran || (hargaJual - dp) || 0)
+
+        const infoProduk = [namaProduk, warna, storage].filter(Boolean).join(' ')
+        const infoBayar =
+          hargaJual > 0 || dp > 0
+            ? `DP ${dp ? `Rp ${dp.toLocaleString('id-ID')}` : 'Rp 0'} • Sisa Rp ${sisa.toLocaleString('id-ID')}`
+            : ''
+
+        return {
+          value: r.id,
+          label: `${nama}${wa ? ` • ${wa}` : ''}${status ? ` • ${status}` : ''}${
+            infoProduk ? ` • ${infoProduk}` : ''
+          }${infoBayar ? ` • ${infoBayar}` : ''}`,
+          meta: {
+            id: r.id,
+            nama,
+            no_wa: wa,
+            alamat,
+            raw: r
+          }
+        }
+      })
+
+      setIndentOptions(opts)
+    }
+
+    fetchIndent()
+  }, [])
+
+  // ====== AUTO-FILL JIKA PILIH CUSTOMER / INDENT ======
+  useEffect(() => {
+    if (buyerTab === 'customer') {
+      if (!selectedCustomer?.meta) return
+      const c = selectedCustomer.meta
+      setFormData((prev) => ({
+        ...prev,
+        nama_pembeli: c.nama || '',
+        alamat: c.alamat || '',
+        no_wa: c.no_wa || ''
+      }))
+      // reset indent selection biar tidak salah update
+      setSelectedIndent(null)
+    } else {
+      if (!selectedIndent?.meta) return
+      const i = selectedIndent.meta
+      setFormData((prev) => ({
+        ...prev,
+        nama_pembeli: i.nama || '',
+        alamat: i.alamat || '',
+        no_wa: i.no_wa || ''
+      }))
+      // reset customer selection biar rapi
+      setSelectedCustomer(null)
+    }
+  }, [buyerTab, selectedCustomer, selectedIndent])
+
+  // ====== CARI STOK (auto isi detail) ======
   useEffect(() => {
     if (produkBaru.sn_sku.length > 0) cariStok(produkBaru.sn_sku, setProdukBaru)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [produkBaru.sn_sku])
 
   useEffect(() => {
     if (bonusBaru.sn_sku.length > 0) cariStok(bonusBaru.sn_sku, setBonusBaru)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bonusBaru.sn_sku])
 
   async function cariStok(snsku, setter) {
@@ -331,7 +381,7 @@ export default function Penjualan() {
     // Biaya lain-lain sebagai baris “fee”
     const feeItems = biayaList.map((f, i) => ({
       sn_sku: `FEE-${i + 1}`,
-      nama_produk: `BIAYA ${(f.desc || '').toUpperCase()}`,
+      nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
       warna: '',
       garansi: '',
       storage: '',
@@ -349,10 +399,18 @@ export default function Penjualan() {
     for (const item of semuaProduk) {
       const harga_modal = toNumber(item.harga_modal)
       const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskon.get(item.sn_sku) || 0)
+      // laba = (harga_jual - diskon_item) - harga_modal
       const laba = (toNumber(item.harga_jual) - diskon_item) - harga_modal
 
       const rowToInsert = {
         ...formData,
+        // simpan sebagai uppercase biar konsisten
+        nama_pembeli: (formData.nama_pembeli || '').toString().trim().toUpperCase(),
+        alamat: (formData.alamat || '').toString().trim(),
+        no_wa: (formData.no_wa || '').toString().trim(),
+        referral: (formData.referral || '').toString().trim().toUpperCase(),
+        dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
+
         sn_sku: item.sn_sku,
         nama_produk: item.nama_produk,
         warna: item.warna,
@@ -367,7 +425,7 @@ export default function Penjualan() {
         diskon_item
       }
 
-      // simpan username office jika ada (produk maupun bonus)
+      // simpan username office jika ada
       if (item.office_username) {
         rowToInsert.office_username = item.office_username.trim()
       }
@@ -389,10 +447,23 @@ export default function Penjualan() {
       }
     }
 
-    await supabase
-      .from('transaksi_indent')
-      .update({ status: 'Sudah Diambil' })
-      .eq('nama', (formData.nama_pembeli || '').toUpperCase())
+    // ====== UPDATE INDENT: PAKAI ID JIKA PILIH DARI TAB INDENT ======
+    // kalau tidak pilih indent, tetap coba match nama+wa sebagai fallback (biar tidak merusak sistem lama)
+    const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
+    const waTrim = (formData.no_wa || '').toString().trim()
+
+    if (selectedIndent?.meta?.id) {
+      await supabase
+        .from('transaksi_indent')
+        .update({ status: 'Sudah Diambil' })
+        .eq('id', selectedIndent.meta.id)
+    } else {
+      await supabase
+        .from('transaksi_indent')
+        .update({ status: 'Sudah Diambil' })
+        .eq('nama', namaUpper)
+        .eq('no_wa', waTrim)
+    }
 
     alert('Berhasil simpan multi produk!')
     setFormData({
@@ -403,35 +474,22 @@ export default function Penjualan() {
       referral: '',
       dilayani_oleh: ''
     })
+    setSelectedCustomer(null)
+    setSelectedIndent(null)
     setProdukList([])
     setBonusList([])
     setBiayaList([])
     setDiskonInvoice('')
-
-    // refresh list customer (biar customer baru langsung kebaca)
-    fetchCustomers()
   }
 
-  // Ringkas angka (subtotal dari produk berbayar)
   const sumHarga = produkList.reduce((s, p) => s + toNumber(p.harga_jual), 0)
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
 
   const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
   const isOfficeSKUBonus  = (bonusBaru.sn_sku  || '').trim().toUpperCase() === SKU_OFFICE
 
-  // opsi react-select customer: (dibuat ringan)
-  const selectedCustomerOption = useMemo(() => {
-    const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
-    const wa = (formData.no_wa || '').toString().trim()
-    if (!namaUpper) return null
-    // coba cari yang sama persis nama+wa
-    const key = makeCustomerKey(namaUpper, wa)
-    const exact = customerOptions.find((c) => c.value === key)
-    if (exact) return exact
-    // kalau wa kosong, coba match nama saja
-    const byNama = customerOptions.find((c) => c.nama === namaUpper)
-    return byNama || { value: makeCustomerKey(namaUpper, wa), label: wa ? `${namaUpper} • ${wa}` : namaUpper }
-  }, [formData.nama_pembeli, formData.no_wa, customerOptions])
+  const buyerSelectOptions = buyerTab === 'customer' ? customerOptions : indentOptions
+  const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
 
   return (
     <Layout>
@@ -448,62 +506,60 @@ export default function Penjualan() {
             required
           />
 
-          {/* ✅ Nama Pembeli (Autocomplete) */}
-          <div>
-            <CreatableSelect
-              options={customerOptions}
-              value={selectedCustomerOption}
-              placeholder="Nama Pembeli (ketik / pilih customer lama)"
-              onChange={(opt) => {
-                // clear
-                if (!opt) {
-                  setFormData((prev) => ({ ...prev, nama_pembeli: '', alamat: '', no_wa: '' }))
-                  return
-                }
-                // jika pilih dari list: ada field nama/alamat/no_wa
-                if (opt.nama) {
-                  applyCustomerToForm(opt)
-                } else {
-                  // creatable: ambil label sebagai nama
-                  const namaUpper = (opt.label || '').toString().trim().toUpperCase()
-                  setFormData((prev) => ({ ...prev, nama_pembeli: namaUpper }))
-                }
-              }}
-              onInputChange={(val, meta) => {
-                if (meta.action !== 'input-change') return
-                // user mengetik: simpan ke form (uppercase) tapi jangan override alamat/no_wa
-                const namaUpper = (val || '').toString().trim().toUpperCase()
-                setFormData((prev) => ({ ...prev, nama_pembeli: namaUpper }))
-              }}
-              onBlur={() => {
-                // kalau user ketik manual dan ada match nama, auto isi alamat/wa
-                const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
-                if (!namaUpper) return
-                const match = customerByNama.get(namaUpper)
-                if (match) applyCustomerToForm(match)
-              }}
-              isClearable
-              formatCreateLabel={(input) => `Gunakan customer baru: "${input.toUpperCase()}"`}
-            />
+          {/* ===== TAB PEMBELI ===== */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setBuyerTab('customer')}
+              className={`px-3 py-1 rounded border ${
+                buyerTab === 'customer' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
+              }`}
+            >
+              Customer Lama
+            </button>
+            <button
+              type="button"
+              onClick={() => setBuyerTab('indent')}
+              className={`px-3 py-1 rounded border ${
+                buyerTab === 'indent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
+              }`}
+            >
+              Transaksi Indent
+            </button>
           </div>
 
-          {/* Alamat */}
-          <input
-            className="border p-2"
-            placeholder="Alamat"
-            value={formData.alamat}
-            onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
-            required
+          {/* Selector pembeli (customer / indent) */}
+          <Select
+            className="text-sm"
+            options={buyerSelectOptions}
+            placeholder={
+              buyerTab === 'customer'
+                ? 'Nama Pembeli (ketik / pilih customer lama)'
+                : 'Pilih transaksi indent yang masih berjalan'
+            }
+            value={buyerSelectValue}
+            onChange={(selected) => {
+              if (buyerTab === 'customer') setSelectedCustomer(selected || null)
+              else setSelectedIndent(selected || null)
+            }}
+            isClearable
           />
 
-          {/* No. WA */}
-          <input
-            className="border p-2"
-            placeholder="No. WA"
-            value={formData.no_wa}
-            onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })}
-            required
-          />
+          {/* Manual input (tetap ada, bisa koreksi kalau perlu) */}
+          {[
+            ['Nama Pembeli', 'nama_pembeli'],
+            ['Alamat', 'alamat'],
+            ['No. WA', 'no_wa'],
+          ].map(([label, field]) => (
+            <input
+              key={field}
+              className="border p-2"
+              placeholder={label}
+              value={formData[field]}
+              onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
+              required
+            />
+          ))}
 
           {/* Dropdown Referral & Dilayani Oleh */}
           <select
@@ -550,6 +606,7 @@ export default function Penjualan() {
               value={produkBaru.harga_jual}
               onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
             />
+
             {isOfficeSKUProduk && (
               <input
                 className="border p-2 mb-2"
@@ -558,6 +615,7 @@ export default function Penjualan() {
                 onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
               />
             )}
+
             <button
               type="button"
               onClick={tambahProdukKeList}
@@ -580,6 +638,7 @@ export default function Penjualan() {
               }
               isClearable
             />
+
             {isOfficeSKUBonus && (
               <input
                 className="border p-2 mb-2"
@@ -588,6 +647,7 @@ export default function Penjualan() {
                 onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })}
               />
             )}
+
             <button
               type="button"
               onClick={tambahBonusKeList}
