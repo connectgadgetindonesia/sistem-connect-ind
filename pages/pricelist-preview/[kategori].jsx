@@ -263,14 +263,37 @@ export default function PricelistPreview() {
       color: '#0f172a',
       textTransform: 'uppercase',
     },
-    tdRight: {
+tdRight: {
   padding: '14px 16px',
   display: 'flex',
-  justifyContent: 'center',   // ⬅️ ini kuncinya
+  justifyContent: 'center',
   alignItems: 'center',
 },
 
+badge: {
+  background: '#187bcd',
+  color: '#ffffff',
 
+  // ✅ bikin center 100% (horizontal & vertical)
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+
+  height: 34,
+  lineHeight: '34px',
+  padding: '0 18px',
+  borderRadius: 999,
+
+  fontWeight: 900,
+  fontSize: 13,
+  letterSpacing: 0.2,
+  whiteSpace: 'nowrap',
+
+  // optional biar konsisten lebar badge
+  minWidth: 140,
+
+  boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
+},
     // ✅ Harga biru #187bcd + font putih
     badge: {
       background: '#187bcd',
