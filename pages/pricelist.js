@@ -82,41 +82,43 @@ export default function PricelistPage() {
   }, [])
 
   async function boot() {
-    try {
-      setLoading(true)
+  try {
+    setLoading(true)
 
-      // 1) ambil kategori master
-      const { data: kData, error: kErr } = await supabase
-        .from('pricelist_kategori')
-        .select('nama')
-        .order('nama', { ascending: true })
+    // 1) ambil kategori master
+    const { data: kData, error: kErr } = await supabase
+      .from('pricelist_kategori')
+      .select('nama')
+      .order('nama', { ascending: true })
 
-      if (kErr) console.error('load kategori error:', kErr)
+    if (kErr) console.error('load kategori error:', kErr)
 
-      const list = (kData || []).map((x) => normalizeKategoriLabel(x.nama)).filter(Boolean)
+    const master = (kData || [])
+      .map((x) => normalizeKategoriLabel(x.nama))
+      .filter(Boolean)
 
-      // fallback: kalau tabel kategori masih kosong, ambil distinct dari pricelist
-      let finalList = list
-      if (!finalList.length) {
-        const { data: d2, error: e2 } = await supabase
-          .from('pricelist')
-          .select('kategori')
+    // 2) ambil kategori yang sudah ada di data pricelist (legacy)
+    const { data: d2, error: e2 } = await supabase.from('pricelist').select('kategori')
+    if (e2) console.error('load kategori legacy error:', e2)
 
-        if (!e2) {
-          const uniq = new Set((d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean))
-          finalList = Array.from(uniq).sort((a, b) => a.localeCompare(b))
-        }
-      }
+    const legacy = Array.from(
+      new Set((d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean))
+    )
 
-      setKategoriList(finalList)
-      const first = finalList[0] || ''
-      setActiveKategori(first)
-      setForm((p) => ({ ...p, kategori: first }))
-      setSettingKategori(first)
-    } finally {
-      setLoading(false)
-    }
+    // 3) merge master + legacy
+    const finalList = Array.from(new Set([...master, ...legacy])).sort((a, b) => a.localeCompare(b))
+
+    setKategoriList(finalList)
+
+    const first = finalList[0] || ''
+    setActiveKategori((prev) => prev || first)
+    setForm((p) => ({ ...p, kategori: p.kategori || first }))
+    setSettingKategori((prev) => prev || first)
+  } finally {
+    setLoading(false)
   }
+}
+
 
   // ========= load data per kategori =========
   useEffect(() => {
@@ -129,24 +131,30 @@ export default function PricelistPage() {
   }, [activeKategori])
 
   async function fetchRows(kategori) {
-    try {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('pricelist')
-        .select('id, nama_produk, kategori, harga_tokopedia, harga_shopee, harga_offline')
-        .eq('kategori', kategori)
-        .order('nama_produk', { ascending: true })
+  try {
+    setLoading(true)
 
-      if (error) {
-        console.error('fetchRows error:', error)
-        setRows([])
-        return
-      }
-      setRows(data || [])
-    } finally {
-      setLoading(false)
+    // Ambil semua rows (kolom tetap sama) lalu filter lokal dengan normalize
+    const { data, error } = await supabase
+      .from('pricelist')
+      .select('id, nama_produk, kategori, harga_tokopedia, harga_shopee, harga_offline')
+      .order('nama_produk', { ascending: true })
+
+    if (error) {
+      console.error('fetchRows error:', error)
+      setRows([])
+      return
     }
+
+    const k = normalizeKategoriLabel(kategori)
+    const filtered = (data || []).filter((r) => normalizeKategoriLabel(r.kategori) === k)
+
+    setRows(filtered)
+  } finally {
+    setLoading(false)
   }
+}
+
 
   const filteredRows = useMemo(() => {
     const q = String(search || '').trim().toLowerCase()
