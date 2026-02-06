@@ -244,35 +244,32 @@ export default function PricelistPreview() {
 
     // ✅ Badge cuma 1 (tidak dobel) + center beneran
     badge: {
-      background: '#187bcd',
-      color: '#ffffff',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+  background: '#187bcd',
+  color: '#ffffff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 
-      height: 34,
-      lineHeight: '34px',
-      padding: '0 18px',
-      borderRadius: 999,
+  // jangan pakai lineHeight fixed (html2canvas sering bikin turun)
+  height: 36,
+  padding: '0 18px',
+  borderRadius: 999,
 
-      fontWeight: 900,
-      fontSize: 13,
-      letterSpacing: 0.2,
-      whiteSpace: 'nowrap',
-      minWidth: 140,
+  fontWeight: 900,
+  fontSize: 13,
+  letterSpacing: 0.2,
+  whiteSpace: 'nowrap',
+  minWidth: 160,
 
-      boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
-    },
+  boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
+},
+badgeText: {
+  display: 'block',
+  lineHeight: 1,
+  // micro-adjust biar JPG benar-benar pas tengah
+  transform: 'translateY(-0.5px)',
+},
 
-    footer: {
-      marginTop: 14,
-      display: 'flex',
-      justifyContent: 'space-between',
-      fontSize: 11,
-      color: '#64748b',
-      fontWeight: 600,
-    },
-    brand: { fontWeight: 900, color: '#334155' },
   }
 
   return (
@@ -324,7 +321,9 @@ export default function PricelistPreview() {
                   <div key={idx} style={S.row(idx % 2 === 0)}>
                     <div style={S.tdLeft}>{(r.nama_produk || '').toUpperCase()}</div>
                     <div style={S.tdRight}>
-                      <span style={S.badge}>{formatRp(r.harga_offline)}</span>
+                     <span style={S.badge}>
+  <span style={S.badgeText}>{formatRp(r.harga_offline)}</span>
+</span>
                     </div>
                   </div>
                 ))
