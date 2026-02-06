@@ -72,7 +72,7 @@ export default function PricelistPreview() {
       const html2canvas = mod.default
 
       // beri waktu render DOM
-      await new Promise((r) => setTimeout(r, 120))
+      await new Promise((r) => setTimeout(r, 150))
 
       const el = captureRef.current
 
@@ -234,42 +234,47 @@ export default function PricelistPreview() {
       textTransform: 'uppercase',
     },
 
-    // ✅ Pusatkan badge di kolom harga (ini yang ngaruh ke JPG)
+    // ✅ pake GRID biar html2canvas lebih stabil (badge benar2 di tengah kolom)
     tdRight: {
       padding: '14px 16px',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
+      display: 'grid',
+      placeItems: 'center',
     },
 
-    // ✅ Badge cuma 1 (tidak dobel) + center beneran
+    // ✅ Badge: GRID center + teks pakai "top" (lebih dipatuhi html2canvas daripada transform)
     badge: {
-  background: '#187bcd',
-  color: '#ffffff',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+      background: '#187bcd',
+      color: '#ffffff',
+      display: 'grid',
+      placeItems: 'center',
+      height: 36,
+      padding: '0 18px',
+      borderRadius: 999,
+      fontWeight: 900,
+      fontSize: 13,
+      letterSpacing: 0.2,
+      whiteSpace: 'nowrap',
+      minWidth: 160,
+      boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
+    },
+    badgeText: {
+      position: 'relative',
+      top: -1, // ✅ ini yang bikin JPG bener2 “center”
+      lineHeight: 1,
+    },
 
-  // jangan pakai lineHeight fixed (html2canvas sering bikin turun)
-  height: 36,
-  padding: '0 18px',
-  borderRadius: 999,
-
-  fontWeight: 900,
-  fontSize: 13,
-  letterSpacing: 0.2,
-  whiteSpace: 'nowrap',
-  minWidth: 160,
-
-  boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
-},
-badgeText: {
-  display: 'block',
-  lineHeight: 1,
-  // micro-adjust biar JPG benar-benar pas tengah
-  transform: 'translateY(-1px)',
-},
-
+    footer: {
+      marginTop: 14,
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: 11,
+      color: '#64748b',
+      fontWeight: 600,
+    },
+    brand: {
+      fontWeight: 900,
+      color: '#334155',
+    },
   }
 
   return (
@@ -278,11 +283,7 @@ badgeText: {
         <div style={S.hint}>
           Preview download JPG (hanya <b>Nama Produk</b> & <b>Harga Offline</b>)
         </div>
-        <button
-          onClick={downloadJPG}
-          disabled={downloading || loading}
-          style={S.btn(downloading || loading)}
-        >
+        <button onClick={downloadJPG} disabled={downloading || loading} style={S.btn(downloading || loading)}>
           {downloading ? 'Menyiapkan...' : 'Download JPG'}
         </button>
       </div>
@@ -313,17 +314,15 @@ badgeText: {
               {loading ? (
                 <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>Memuat data...</div>
               ) : rows.length === 0 ? (
-                <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>
-                  Belum ada data pada kategori ini.
-                </div>
+                <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>Belum ada data pada kategori ini.</div>
               ) : (
                 rows.map((r, idx) => (
                   <div key={idx} style={S.row(idx % 2 === 0)}>
                     <div style={S.tdLeft}>{(r.nama_produk || '').toUpperCase()}</div>
                     <div style={S.tdRight}>
-                     <span style={S.badge}>
-  <span style={S.badgeText}>{formatRp(r.harga_offline)}</span>
-</span>
+                      <div style={S.badge}>
+                        <span style={S.badgeText}>{formatRp(r.harga_offline)}</span>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -338,7 +337,7 @@ badgeText: {
         </div>
 
         <div style={{ maxWidth: 1100, margin: '12px auto 0', fontSize: 11, color: '#94a3b8' }}>
-          Kalau masih terasa beda, coba hard refresh (Ctrl+Shift+R) setelah deploy.
+          Kalau masih terasa beda, itu bukan cache—itu memang html2canvas baseline. Dengan versi ini harus sudah rapi.
         </div>
       </div>
     </div>
