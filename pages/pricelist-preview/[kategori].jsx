@@ -24,54 +24,6 @@ function niceCategory(raw) {
     .replace(/\bAirpods\b/g, 'AirPods')
 }
 
-function hasOklch(str) {
-  return typeof str === 'string' && str.toLowerCase().includes('oklch(')
-}
-
-/**
- * html2canvas error utama kamu:
- * "Attempting to parse an unsupported color function `oklch`"
- * Jadi kita sanitize semua style yang mengandung oklch() pada clone.
- */
-function sanitizeOklchColors(rootEl) {
-  if (!rootEl) return
-
-  // fallback aman
-  const FALLBACK_BG = '#ffffff'
-  const FALLBACK_TEXT = '#0f172a'
-  const FALLBACK_BORDER = '#e5e7eb'
-
-  const all = rootEl.querySelectorAll('*')
-  all.forEach((el) => {
-    // inline style
-    const s = el.style
-    if (!s) return
-
-    // cek properti yang sering kena
-    const props = [
-      'color',
-      'background',
-      'backgroundColor',
-      'borderColor',
-      'outlineColor',
-      'textDecorationColor',
-      'boxShadow',
-    ]
-
-    props.forEach((p) => {
-      try {
-        const v = s[p]
-        if (hasOklch(v)) {
-          if (p.includes('background')) s[p] = FALLBACK_BG
-          else if (p.includes('border') || p.includes('outline')) s[p] = FALLBACK_BORDER
-          else if (p === 'boxShadow') s[p] = 'none'
-          else s[p] = FALLBACK_TEXT
-        }
-      } catch {}
-    })
-  })
-}
-
 export default function PricelistPreview() {
   const router = useRouter()
   const { kategori } = router.query
@@ -82,7 +34,8 @@ export default function PricelistPreview() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
 
-  const cardRef = useRef(null)
+  // ✅ ini yang akan di-capture (inline-only, tanpa tailwind dependency)
+  const captureRef = useRef(null)
 
   useEffect(() => {
     if (!router.isReady) return
@@ -113,18 +66,16 @@ export default function PricelistPreview() {
 
   async function downloadJPG() {
     try {
-      if (!cardRef.current) return
+      if (!captureRef.current) return
       setDownloading(true)
 
       const mod = await import('html2canvas')
       const html2canvas = mod.default
 
-      await new Promise((r) => setTimeout(r, 150))
+      // beri waktu render DOM
+      await new Promise((r) => setTimeout(r, 100))
 
-      const el = cardRef.current
-      const prevScrollY = window.scrollY
-      window.scrollTo(0, 0)
-      await new Promise((r) => setTimeout(r, 60))
+      const el = captureRef.current
 
       const canvas = await html2canvas(el, {
         backgroundColor: '#ffffff',
@@ -134,18 +85,20 @@ export default function PricelistPreview() {
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: el.scrollWidth || 980,
-        windowHeight: el.scrollHeight || 800,
 
-        // ✅ kunci fix: sanitize clone dari oklch()
+        // ✅ FIX utama: buang semua stylesheet di CLONE agar oklch tidak ikut kebaca
         onclone: (doc) => {
-          const cloned = doc.getElementById('capture-root')
-          sanitizeOklchColors(cloned)
+          // hapus semua <style> (tailwind/shadcn inject) dan <link rel="stylesheet">
+          doc.querySelectorAll('style').forEach((n) => n.remove())
+          doc
+            .querySelectorAll('link[rel="stylesheet"], link[as="style"]')
+            .forEach((n) => n.remove())
 
-          // tambahan safety: matikan filter/backdrop (kadang bikin canvas error)
+          // pastikan capture root tetap ada dan tidak berubah
+          const cloned = doc.getElementById('capture-root')
           if (cloned) {
-            const all = cloned.querySelectorAll('*')
-            all.forEach((node) => {
+            // safety: matikan filter/backdrop yang kadang bikin error
+            cloned.querySelectorAll('*').forEach((node) => {
               try {
                 node.style.filter = 'none'
                 node.style.backdropFilter = 'none'
@@ -154,8 +107,6 @@ export default function PricelistPreview() {
           }
         },
       })
-
-      window.scrollTo(0, prevScrollY)
 
       const blob = await new Promise((resolve) =>
         canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92)
@@ -172,7 +123,7 @@ export default function PricelistPreview() {
       URL.revokeObjectURL(url)
     } catch (e) {
       console.error('downloadJPG error:', e)
-      alert('Gagal download JPG. (Error: oklch/warna). Sudah saya fix, tapi kalau masih gagal kirim 1 screenshot error paling atas ya.')
+      alert('Gagal download JPG. Error masih terkait CSS (oklch). Setelah replace ini harusnya aman ya.')
     } finally {
       setDownloading(false)
     }
@@ -180,111 +131,237 @@ export default function PricelistPreview() {
 
   const updateDate = dayjs().format('DD MMM YYYY')
 
+  /**
+   * ✅ Inline style pack (biar hasil JPG konsisten & tidak tergantung CSS global)
+   */
+  const S = {
+    page: {
+      minHeight: '100vh',
+      background: '#f8fafc',
+      padding: '40px 24px 80px',
+      fontFamily:
+        'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"',
+      color: '#0f172a',
+    },
+    topRow: {
+      maxWidth: 1100,
+      margin: '0 auto',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 16,
+    },
+    hint: {
+      fontSize: 13,
+      color: '#64748b',
+    },
+    btn: (disabled) => ({
+      padding: '10px 16px',
+      borderRadius: 10,
+      border: '0',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      background: disabled ? '#34d399' : '#059669',
+      color: '#fff',
+      fontWeight: 800,
+      letterSpacing: 0.2,
+    }),
+
+    // CAPTURE CARD
+    captureWrap: {
+      marginTop: 18,
+      maxWidth: 1100,
+      marginLeft: 'auto',
+      marginRight: 'auto',
+    },
+    card: {
+      width: 980,
+      margin: '0 auto',
+      background: '#ffffff',
+      borderRadius: 18,
+      overflow: 'hidden',
+      border: '1px solid #e5e7eb',
+      boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+    },
+    header: {
+      padding: '26px 30px',
+      background:
+        'linear-gradient(135deg, rgba(15,23,42,1) 0%, rgba(30,41,59,1) 55%, rgba(2,6,23,1) 100%)',
+    },
+    headerRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 16,
+    },
+    smallCaps: {
+      fontSize: 11,
+      letterSpacing: 0.8,
+      color: '#cbd5e1',
+      fontWeight: 800,
+      textTransform: 'uppercase',
+    },
+    title: {
+      fontSize: 34,
+      fontWeight: 900,
+      color: '#ffffff',
+      lineHeight: 1.1,
+      marginTop: 4,
+    },
+    sub: {
+      fontSize: 12,
+      color: '#cbd5e1',
+      marginTop: 6,
+      fontWeight: 600,
+    },
+    rightBox: {
+      textAlign: 'right',
+      color: '#ffffff',
+    },
+    rightSmall: {
+      fontSize: 12,
+      color: '#cbd5e1',
+      fontWeight: 700,
+    },
+    rightBold: {
+      fontSize: 14,
+      fontWeight: 900,
+      marginTop: 2,
+    },
+
+    body: {
+      padding: '26px 30px 28px',
+    },
+    table: {
+      border: '1px solid #e5e7eb',
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    thead: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 230px',
+      background: '#f1f5f9',
+      fontWeight: 900,
+      fontSize: 13,
+      color: '#0f172a',
+    },
+    th: (right) => ({
+      padding: '12px 16px',
+      borderRight: right ? '0' : '1px solid #e5e7eb',
+      textAlign: right ? 'right' : 'left',
+    }),
+    row: (odd) => ({
+      display: 'grid',
+      gridTemplateColumns: '1fr 230px',
+      background: odd ? '#ffffff' : '#f8fafc',
+      borderTop: '1px solid #e5e7eb',
+      fontSize: 13,
+      alignItems: 'center',
+    }),
+    tdLeft: {
+      padding: '14px 16px',
+      fontWeight: 800,
+      color: '#0f172a',
+      textTransform: 'uppercase',
+    },
+    tdRight: {
+      padding: '14px 16px',
+      display: 'flex',
+      justifyContent: 'flex-end',
+    },
+
+    // ✅ Harga biru #187bcd + font putih
+    badge: {
+      background: '#187bcd',
+      color: '#ffffff',
+      padding: '7px 14px',
+      borderRadius: 999,
+      fontWeight: 900,
+      fontSize: 13,
+      letterSpacing: 0.2,
+      boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
+      whiteSpace: 'nowrap',
+    },
+
+    footer: {
+      marginTop: 14,
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: 11,
+      color: '#64748b',
+      fontWeight: 600,
+    },
+    brand: {
+      fontWeight: 900,
+      color: '#334155',
+    },
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-5xl mx-auto px-6 pt-10">
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-sm text-slate-600">
-            Preview download JPG (hanya <b>Nama Produk</b> & <b>Harga Offline</b>)
+    <div style={S.page}>
+      <div style={S.topRow}>
+        <div style={S.hint}>
+          Preview download JPG (hanya <b>Nama Produk</b> & <b>Harga Offline</b>)
+        </div>
+        <button
+          onClick={downloadJPG}
+          disabled={downloading || loading}
+          style={S.btn(downloading || loading)}
+        >
+          {downloading ? 'Menyiapkan...' : 'Download JPG'}
+        </button>
+      </div>
+
+      <div style={S.captureWrap}>
+        {/* ✅ Ini yang dicapture, jangan pakai className tailwind */}
+        <div id="capture-root" ref={captureRef} style={S.card}>
+          <div style={S.header}>
+            <div style={S.headerRow}>
+              <div>
+                <div style={S.smallCaps}>CONNECT.IND • PRICELIST</div>
+                <div style={S.title}>{kategoriNice || '-'}</div>
+                <div style={S.sub}>Update: {updateDate}</div>
+              </div>
+              <div style={S.rightBox}>
+                <div style={S.rightSmall}>Harga Offline</div>
+                <div style={S.rightBold}>Semarang</div>
+              </div>
+            </div>
           </div>
 
-          <button
-            onClick={downloadJPG}
-            disabled={downloading || loading}
-            className={`px-4 py-2 rounded text-white font-semibold ${
-              downloading || loading ? 'bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'
-            }`}
-          >
-            {downloading ? 'Menyiapkan...' : 'Download JPG'}
-          </button>
+          <div style={S.body}>
+            <div style={S.table}>
+              <div style={S.thead}>
+                <div style={S.th(false)}>Nama Produk</div>
+                <div style={S.th(true)}>Harga</div>
+              </div>
+
+              {loading ? (
+                <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>Memuat data...</div>
+              ) : rows.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>
+                  Belum ada data pada kategori ini.
+                </div>
+              ) : (
+                rows.map((r, idx) => (
+                  <div key={idx} style={S.row(idx % 2 === 0)}>
+                    <div style={S.tdLeft}>{(r.nama_produk || '').toUpperCase()}</div>
+                    <div style={S.tdRight}>
+                      <span style={S.badge}>{formatRp(r.harga_offline)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={S.footer}>
+              <div>Harga dapat berubah sewaktu-waktu.</div>
+              <div style={S.brand}>CONNECT.IND</div>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-6 pb-16">
-          {/* ✅ id ini dipakai onclone */}
-          <div
-            id="capture-root"
-            ref={cardRef}
-            style={{ width: 980 }}
-            className="mx-auto bg-white rounded-2xl border shadow-sm overflow-hidden"
-          >
-            <div
-              className="px-8 py-7"
-              style={{
-                background:
-                  'linear-gradient(135deg, rgba(15,23,42,1) 0%, rgba(30,41,59,1) 55%, rgba(2,6,23,1) 100%)',
-              }}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="text-xs tracking-wide text-slate-300 font-semibold">
-                    CONNECT.IND • PRICELIST
-                  </div>
-                  <div className="text-3xl font-extrabold text-white leading-tight">
-                    {kategoriNice || '-'}
-                  </div>
-                  <div className="text-xs text-slate-300 mt-1">Update: {updateDate}</div>
-                </div>
-
-                <div className="text-right">
-                  <div className="text-xs text-slate-300 font-semibold">Harga Offline</div>
-                  <div className="text-sm text-white font-bold">Semarang</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-8">
-              <div className="rounded-xl border overflow-hidden">
-                <div className="grid grid-cols-12 bg-slate-100 text-slate-800 font-bold text-sm">
-                  <div className="col-span-9 px-5 py-3 border-r">Nama Produk</div>
-                  <div className="col-span-3 px-5 py-3 text-right">Harga</div>
-                </div>
-
-                {loading ? (
-                  <div className="p-6 text-sm text-slate-600">Memuat data...</div>
-                ) : rows.length === 0 ? (
-                  <div className="p-6 text-sm text-slate-600">Belum ada data pada kategori ini.</div>
-                ) : (
-                  <div>
-                    {rows.map((r, idx) => (
-                      <div
-                        key={idx}
-                        className={`grid grid-cols-12 text-sm ${
-                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
-                        }`}
-                      >
-                        <div className="col-span-9 px-5 py-4 border-t">
-                          <div className="font-semibold text-slate-900">
-                            {(r.nama_produk || '').toUpperCase()}
-                          </div>
-                        </div>
-
-                        <div className="col-span-3 px-5 py-4 border-t flex justify-end items-center">
-                          <span
-                            className="px-4 py-1.5 rounded-full font-extrabold"
-                            style={{
-                              backgroundColor: '#187bcd',
-                              color: '#ffffff',
-                            }}
-                          >
-                            {formatRp(r.harga_offline)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-5 flex items-center justify-between text-xs text-slate-500">
-                <div>Harga dapat berubah sewaktu-waktu.</div>
-                <div className="font-bold text-slate-700">CONNECT.IND</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-5xl mx-auto px-6 mt-4 text-xs text-slate-400">
-            Jika masih gagal, kirim 1 screenshot error paling atas di Console (F12).
-          </div>
+        <div style={{ maxWidth: 1100, margin: '12px auto 0', fontSize: 11, color: '#94a3b8' }}>
+          Jika masih gagal, berarti file yang terdeploy belum ke-replace / cache. Coba hard refresh (Ctrl+Shift+R).
         </div>
       </div>
     </div>
