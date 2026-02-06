@@ -22,9 +22,54 @@ function niceCategory(raw) {
     .replace(/\bIphone\b/g, 'iPhone')
     .replace(/\bIpad\b/g, 'iPad')
     .replace(/\bAirpods\b/g, 'AirPods')
-    .replace(/\bMac\b/g, 'Mac')
-    .replace(/\bAksesoris\b/g, 'Aksesoris')
-    .replace(/\bApple Watch\b/g, 'Apple Watch')
+}
+
+function hasOklch(str) {
+  return typeof str === 'string' && str.toLowerCase().includes('oklch(')
+}
+
+/**
+ * html2canvas error utama kamu:
+ * "Attempting to parse an unsupported color function `oklch`"
+ * Jadi kita sanitize semua style yang mengandung oklch() pada clone.
+ */
+function sanitizeOklchColors(rootEl) {
+  if (!rootEl) return
+
+  // fallback aman
+  const FALLBACK_BG = '#ffffff'
+  const FALLBACK_TEXT = '#0f172a'
+  const FALLBACK_BORDER = '#e5e7eb'
+
+  const all = rootEl.querySelectorAll('*')
+  all.forEach((el) => {
+    // inline style
+    const s = el.style
+    if (!s) return
+
+    // cek properti yang sering kena
+    const props = [
+      'color',
+      'background',
+      'backgroundColor',
+      'borderColor',
+      'outlineColor',
+      'textDecorationColor',
+      'boxShadow',
+    ]
+
+    props.forEach((p) => {
+      try {
+        const v = s[p]
+        if (hasOklch(v)) {
+          if (p.includes('background')) s[p] = FALLBACK_BG
+          else if (p.includes('border') || p.includes('outline')) s[p] = FALLBACK_BORDER
+          else if (p === 'boxShadow') s[p] = 'none'
+          else s[p] = FALLBACK_TEXT
+        }
+      } catch {}
+    })
+  })
 }
 
 export default function PricelistPreview() {
@@ -71,19 +116,15 @@ export default function PricelistPreview() {
       if (!cardRef.current) return
       setDownloading(true)
 
-      // ✅ dynamic import biar aman di Next (SSR)
       const mod = await import('html2canvas')
       const html2canvas = mod.default
 
-      // pastikan layout stabil
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise((r) => setTimeout(r, 150))
 
       const el = cardRef.current
       const prevScrollY = window.scrollY
-
-      // scroll ke atas supaya clone konsisten
       window.scrollTo(0, 0)
-      await new Promise((r) => setTimeout(r, 80))
+      await new Promise((r) => setTimeout(r, 60))
 
       const canvas = await html2canvas(el, {
         backgroundColor: '#ffffff',
@@ -93,19 +134,32 @@ export default function PricelistPreview() {
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        // penting untuk beberapa browser
         windowWidth: el.scrollWidth || 980,
         windowHeight: el.scrollHeight || 800,
+
+        // ✅ kunci fix: sanitize clone dari oklch()
+        onclone: (doc) => {
+          const cloned = doc.getElementById('capture-root')
+          sanitizeOklchColors(cloned)
+
+          // tambahan safety: matikan filter/backdrop (kadang bikin canvas error)
+          if (cloned) {
+            const all = cloned.querySelectorAll('*')
+            all.forEach((node) => {
+              try {
+                node.style.filter = 'none'
+                node.style.backdropFilter = 'none'
+              } catch {}
+            })
+          }
+        },
       })
 
-      // balikkan scroll
       window.scrollTo(0, prevScrollY)
 
-      // ✅ pakai toBlob (lebih stabil daripada toDataURL)
       const blob = await new Promise((resolve) =>
         canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92)
       )
-
       if (!blob) throw new Error('toBlob() gagal (blob null)')
 
       const url = URL.createObjectURL(blob)
@@ -118,7 +172,7 @@ export default function PricelistPreview() {
       URL.revokeObjectURL(url)
     } catch (e) {
       console.error('downloadJPG error:', e)
-      alert('Gagal download JPG. Kirim screenshot Console (F12) bagian error paling atas ya.')
+      alert('Gagal download JPG. (Error: oklch/warna). Sudah saya fix, tapi kalau masih gagal kirim 1 screenshot error paling atas ya.')
     } finally {
       setDownloading(false)
     }
@@ -146,7 +200,9 @@ export default function PricelistPreview() {
         </div>
 
         <div className="mt-6 pb-16">
+          {/* ✅ id ini dipakai onclone */}
           <div
+            id="capture-root"
             ref={cardRef}
             style={{ width: 980 }}
             className="mx-auto bg-white rounded-2xl border shadow-sm overflow-hidden"
@@ -205,7 +261,10 @@ export default function PricelistPreview() {
                         <div className="col-span-3 px-5 py-4 border-t flex justify-end items-center">
                           <span
                             className="px-4 py-1.5 rounded-full font-extrabold"
-                            style={{ backgroundColor: '#187bcd', color: '#ffffff' }}
+                            style={{
+                              backgroundColor: '#187bcd',
+                              color: '#ffffff',
+                            }}
                           >
                             {formatRp(r.harga_offline)}
                           </span>
@@ -224,7 +283,7 @@ export default function PricelistPreview() {
           </div>
 
           <div className="max-w-5xl mx-auto px-6 mt-4 text-xs text-slate-400">
-            Jika masih gagal, buka Console (F12) lalu kirim 1 screenshot error paling atas.
+            Jika masih gagal, kirim 1 screenshot error paling atas di Console (F12).
           </div>
         </div>
       </div>
