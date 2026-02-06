@@ -1,7 +1,10 @@
 // pages/pricelist.js
 import { useEffect, useMemo, useState } from 'react'
+import dayjs from 'dayjs'
 import { supabase } from '../lib/supabaseClient'
-import KategoriTable from '../components/KategoriTable'
+
+// ✅ PASTIKAN PATH INI SAMA DENGAN PROJECT KAMU
+import Layout from '../components/Layout'
 
 const toNumber = (v) =>
   typeof v === 'number'
@@ -10,102 +13,127 @@ const toNumber = (v) =>
 
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 
-function calcHarga(offline, persen, flat) {
-  const off = toNumber(offline)
-  const p = Number(persen || 0)
-  const f = toNumber(flat)
-  // rumus: offline + pajak% + biaya flat
-  const res = Math.round(off * (1 + p / 100) + f)
-  return res
+// hitung harga platform: offline * (1 + pajak%) + biaya_flat
+function calcPlatform(offline, pajakPct, biayaFlat) {
+  const base = toNumber(offline)
+  const pct = Number(pajakPct || 0) / 100
+  const flat = toNumber(biayaFlat)
+  // round ke rupiah (integer)
+  return Math.round(base * (1 + pct) + flat)
+}
+
+function normalizeKategoriLabel(x) {
+  const s = String(x || '').trim()
+  if (!s) return ''
+  return s
+    .split(' ')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+    .join(' ')
+    .replace(/\bIphone\b/g, 'iPhone')
+    .replace(/\bIpad\b/g, 'iPad')
+    .replace(/\bAirpods\b/g, 'AirPods')
 }
 
 export default function PricelistPage() {
-  const [activeKategori, setActiveKategori] = useState('Mac')
-
-  const [settings, setSettings] = useState([]) // list kategori settings
-  const settingsMap = useMemo(() => {
-    const m = new Map()
-    for (const s of settings) m.set(s.kategori, s)
-    return m
-  }, [settings])
-
-  const [kategoriList, setKategoriList] = useState([])
-
-  // data list per kategori
+  // ========= state =========
+  const [kategoriList, setKategoriList] = useState([]) // dari pricelist_kategori
+  const [activeKategori, setActiveKategori] = useState('') // kategori tab aktif
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // form tambah produk
+  // tambah produk
   const [form, setForm] = useState({
     nama_produk: '',
-    kategori: 'Mac',
+    kategori: '',
     harga_offline: '',
-    harga_tokopedia: '',
-    harga_shopee: '',
   })
-
   const [saving, setSaving] = useState(false)
 
-  // modal settings
-  const [openSettings, setOpenSettings] = useState(false)
+  // tambah kategori (di area tambah produk)
   const [newKategori, setNewKategori] = useState('')
+  const [addingKategori, setAddingKategori] = useState(false)
 
+  // search per kategori
+  const [search, setSearch] = useState('')
+
+  // bulk select
+  const [selectedIds, setSelectedIds] = useState(new Set())
+
+  // modal setting
+  const [showSetting, setShowSetting] = useState(false)
+  const [settingKategori, setSettingKategori] = useState('') // dropdown kategori
+  const [setting, setSetting] = useState({
+    tokped_pajak_pct: 0,
+    tokped_biaya_flat: 0,
+    shopee_pajak_pct: 0,
+    shopee_biaya_flat: 0,
+  })
+  const [savingSetting, setSavingSetting] = useState(false)
+
+  // edit modal (pakai style sederhana tapi rapi)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editRow, setEditRow] = useState(null)
+  const [editSaving, setEditSaving] = useState(false)
+
+  // ========= load kategori =========
   useEffect(() => {
-    init()
+    boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function init() {
-    await fetchSettings()
-    await fetchKategoriList()
-    await fetchRows(activeKategori)
+  async function boot() {
+    try {
+      setLoading(true)
+
+      // 1) ambil kategori master
+      const { data: kData, error: kErr } = await supabase
+        .from('pricelist_kategori')
+        .select('nama')
+        .order('nama', { ascending: true })
+
+      if (kErr) console.error('load kategori error:', kErr)
+
+      const list = (kData || []).map((x) => normalizeKategoriLabel(x.nama)).filter(Boolean)
+
+      // fallback: kalau tabel kategori masih kosong, ambil distinct dari pricelist
+      let finalList = list
+      if (!finalList.length) {
+        const { data: d2, error: e2 } = await supabase
+          .from('pricelist')
+          .select('kategori')
+
+        if (!e2) {
+          const uniq = new Set((d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean))
+          finalList = Array.from(uniq).sort((a, b) => a.localeCompare(b))
+        }
+      }
+
+      setKategoriList(finalList)
+      const first = finalList[0] || ''
+      setActiveKategori(first)
+      setForm((p) => ({ ...p, kategori: first }))
+      setSettingKategori(first)
+    } finally {
+      setLoading(false)
+    }
   }
 
+  // ========= load data per kategori =========
   useEffect(() => {
+    if (!activeKategori) return
     fetchRows(activeKategori)
+    // reset select & search saat pindah kategori
+    setSelectedIds(new Set())
+    setSearch('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKategori])
-
-  async function fetchSettings() {
-    const { data, error } = await supabase
-      .from('pricelist_kategori_settings')
-      .select('*')
-      .order('kategori', { ascending: true })
-
-    if (error) {
-      console.error('fetchSettings error:', error)
-      setSettings([])
-      return
-    }
-    setSettings(data || [])
-  }
-
-  async function fetchKategoriList() {
-    // gabungkan kategori dari: settings + data pricelist
-    const { data: dataPL, error: errPL } = await supabase
-      .from('pricelist')
-      .select('kategori')
-    if (errPL) console.error(errPL)
-
-    const setCat = new Set()
-    ;(settings || []).forEach((s) => setCat.add(s.kategori))
-    ;(dataPL || []).forEach((r) => r?.kategori && setCat.add(r.kategori))
-
-    const list = Array.from(setCat).filter(Boolean).sort((a, b) => a.localeCompare(b))
-    setKategoriList(list)
-
-    // jaga active kategori valid
-    if (list.length && !setCat.has(activeKategori)) setActiveKategori(list[0])
-    // set default form kategori
-    if (list.length) setForm((p) => ({ ...p, kategori: p.kategori || list[0] }))
-  }
 
   async function fetchRows(kategori) {
     try {
       setLoading(true)
       const { data, error } = await supabase
         .from('pricelist')
-        .select('*')
+        .select('id, nama_produk, kategori, harga_tokopedia, harga_shopee, harga_offline')
         .eq('kategori', kategori)
         .order('nama_produk', { ascending: true })
 
@@ -120,422 +148,721 @@ export default function PricelistPage() {
     }
   }
 
-  function getSettingFor(kategori) {
-    return (
-      settingsMap.get(kategori) || {
-        tokped_pajak_persen: 0,
+  const filteredRows = useMemo(() => {
+    const q = String(search || '').trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((r) => String(r.nama_produk || '').toLowerCase().includes(q))
+  }, [rows, search])
+
+  // ========= helpers: selection =========
+  function toggleSelectAll(checked) {
+    if (!checked) return setSelectedIds(new Set())
+    const s = new Set(filteredRows.map((r) => r.id))
+    setSelectedIds(s)
+  }
+
+  function toggleSelectOne(id, checked) {
+    const s = new Set(selectedIds)
+    if (checked) s.add(id)
+    else s.delete(id)
+    setSelectedIds(s)
+  }
+
+  // ========= kategori: tambah =========
+  async function addKategori() {
+    const nama = normalizeKategoriLabel(newKategori)
+    if (!nama) return alert('Nama kategori masih kosong.')
+    try {
+      setAddingKategori(true)
+
+      const { error } = await supabase.from('pricelist_kategori').insert([{ nama }])
+      if (error) {
+        // kalau sudah ada, tetap set aktif
+        console.error('addKategori error:', error)
+      }
+
+      // refresh kategori list
+      await boot()
+
+      // set kategori aktif ke kategori baru
+      setActiveKategori(nama)
+      setForm((p) => ({ ...p, kategori: nama }))
+      setSettingKategori(nama)
+      setNewKategori('')
+    } finally {
+      setAddingKategori(false)
+    }
+  }
+
+  // ========= setting pajak/biaya =========
+  async function openSetting() {
+    setShowSetting(true)
+    // load setting kategori yg dipilih
+    await loadSetting(settingKategori || activeKategori)
+  }
+
+  async function loadSetting(kategori) {
+    const k = kategori || activeKategori
+    if (!k) return
+
+    setSettingKategori(k)
+
+    const { data, error } = await supabase
+      .from('pricelist_setting')
+      .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+      .eq('kategori', k)
+      .maybeSingle()
+
+    if (error) {
+      console.error('loadSetting error:', error)
+      // fallback default
+      setSetting({
+        tokped_pajak_pct: 0,
         tokped_biaya_flat: 0,
-        shopee_pajak_persen: 0,
+        shopee_pajak_pct: 0,
         shopee_biaya_flat: 0,
-      }
-    )
-  }
+      })
+      return
+    }
 
-  function recalcFromOffline(offline, kategori) {
-    const s = getSettingFor(kategori)
-    const tokped = calcHarga(offline, s.tokped_pajak_persen, s.tokped_biaya_flat)
-    const shopee = calcHarga(offline, s.shopee_pajak_persen, s.shopee_biaya_flat)
-    return { tokped, shopee }
-  }
-
-  function handleFormChange(key, val) {
-    setForm((prev) => {
-      const next = { ...prev, [key]: val }
-
-      // auto update tokped/shopee saat offline atau kategori berubah
-      if (key === 'harga_offline' || key === 'kategori') {
-        const { tokped, shopee } = recalcFromOffline(next.harga_offline, next.kategori)
-        next.harga_tokopedia = tokped ? formatRp(tokped) : ''
-        next.harga_shopee = shopee ? formatRp(shopee) : ''
-      }
-      return next
+    setSetting({
+      tokped_pajak_pct: Number(data?.tokped_pajak_pct ?? 0),
+      tokped_biaya_flat: toNumber(data?.tokped_biaya_flat ?? 0),
+      shopee_pajak_pct: Number(data?.shopee_pajak_pct ?? 0),
+      shopee_biaya_flat: toNumber(data?.shopee_biaya_flat ?? 0),
     })
   }
 
-  async function addProduct() {
-    const nama = String(form.nama_produk || '').trim()
-    if (!nama) return alert('Nama Produk wajib diisi.')
-    const kategori = String(form.kategori || '').trim()
-    if (!kategori) return alert('Kategori wajib dipilih.')
+  async function saveSetting() {
+    const k = settingKategori || activeKategori
+    if (!k) return alert('Kategori belum dipilih.')
 
-    setSaving(true)
     try {
-      const offlineN = toNumber(form.harga_offline)
-      const { tokped, shopee } = recalcFromOffline(offlineN, kategori)
+      setSavingSetting(true)
 
       const payload = {
-        nama_produk: nama.toUpperCase(),
-        kategori,
-        harga_offline: formatRp(offlineN),
-        harga_tokopedia: formatRp(tokped),
-        harga_shopee: formatRp(shopee),
+        kategori: k,
+        tokped_pajak_pct: Number(setting.tokped_pajak_pct || 0),
+        tokped_biaya_flat: toNumber(setting.tokped_biaya_flat),
+        shopee_pajak_pct: Number(setting.shopee_pajak_pct || 0),
+        shopee_biaya_flat: toNumber(setting.shopee_biaya_flat),
       }
 
-      const { error } = await supabase.from('pricelist').insert([payload])
+      const { error } = await supabase.from('pricelist_setting').upsert(payload, { onConflict: 'kategori' })
+      if (error) {
+        console.error('saveSetting error:', error)
+        alert('Gagal simpan setting.')
+        return
+      }
+
+      alert('Setting tersimpan.')
+    } finally {
+      setSavingSetting(false)
+    }
+  }
+
+  // ========= hitung ulang harga platform (bulk / semua) =========
+  async function hitungUlangHarga({ onlySelected }) {
+    const k = activeKategori
+    if (!k) return
+
+    // load setting kategori aktif
+    const { data: sData } = await supabase
+      .from('pricelist_setting')
+      .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+      .eq('kategori', k)
+      .maybeSingle()
+
+    const tokPct = Number(sData?.tokped_pajak_pct ?? 0)
+    const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
+    const shpPct = Number(sData?.shopee_pajak_pct ?? 0)
+    const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
+
+    const target = (onlySelected ? rows.filter((r) => selectedIds.has(r.id)) : rows).filter(Boolean)
+    if (!target.length) return alert('Tidak ada data untuk dihitung ulang.')
+
+    try {
+      setLoading(true)
+
+      // update per batch (simple & aman)
+      for (const r of target) {
+        const offline = toNumber(r.harga_offline)
+        const harga_tokopedia = calcPlatform(offline, tokPct, tokFlat)
+        const harga_shopee = calcPlatform(offline, shpPct, shpFlat)
+
+        const { error } = await supabase
+          .from('pricelist')
+          .update({ harga_tokopedia, harga_shopee })
+          .eq('id', r.id)
+
+        if (error) {
+          console.error('hitungUlang update error:', error)
+          alert('Ada yang gagal update. Cek console.')
+          break
+        }
+      }
+
+      await fetchRows(activeKategori)
+      alert(onlySelected ? 'Harga platform untuk produk terpilih sudah dihitung ulang.' : 'Semua harga platform sudah dihitung ulang.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ========= tambah produk =========
+  async function addProduct() {
+    const nama_produk = String(form.nama_produk || '').trim()
+    const kategori = normalizeKategoriLabel(form.kategori)
+    const harga_offline = toNumber(form.harga_offline)
+
+    if (!nama_produk) return alert('Nama produk wajib diisi.')
+    if (!kategori) return alert('Kategori wajib dipilih.')
+    if (!harga_offline) return alert('Harga offline wajib diisi.')
+
+    // load setting kategori untuk auto hitung tokped/shopee
+    const { data: sData } = await supabase
+      .from('pricelist_setting')
+      .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+      .eq('kategori', kategori)
+      .maybeSingle()
+
+    const harga_tokopedia = calcPlatform(harga_offline, sData?.tokped_pajak_pct ?? 0, sData?.tokped_biaya_flat ?? 0)
+    const harga_shopee = calcPlatform(harga_offline, sData?.shopee_pajak_pct ?? 0, sData?.shopee_biaya_flat ?? 0)
+
+    try {
+      setSaving(true)
+
+      const { error } = await supabase.from('pricelist').insert([
+        {
+          nama_produk: nama_produk.toUpperCase(),
+          kategori,
+          harga_offline,
+          harga_tokopedia,
+          harga_shopee,
+        },
+      ])
+
       if (error) {
         console.error('addProduct error:', error)
         alert('Gagal tambah produk.')
         return
       }
 
-      setForm({
-        nama_produk: '',
-        kategori,
-        harga_offline: '',
-        harga_tokopedia: '',
-        harga_shopee: '',
-      })
-
-      await fetchKategoriList()
+      setForm({ nama_produk: '', kategori, harga_offline: '' })
       await fetchRows(activeKategori)
     } finally {
       setSaving(false)
     }
   }
 
-  async function upsertKategoriSetting(kategori) {
-    const k = String(kategori || '').trim()
-    if (!k) return
-
-    // jika kategori baru, buat setting default 0
-    const exists = settingsMap.has(k)
-    if (exists) return
-
-    const { error } = await supabase.from('pricelist_kategori_settings').insert([
-      {
-        kategori: k,
-        tokped_pajak_persen: 0,
-        tokped_biaya_flat: 0,
-        shopee_pajak_persen: 0,
-        shopee_biaya_flat: 0,
-      },
-    ])
-
-    if (error) {
-      console.error('upsertKategoriSetting error:', error)
-      alert('Gagal tambah kategori setting.')
-      return
-    }
-
-    await fetchSettings()
-    await fetchKategoriList()
-  }
-
-  async function addKategori() {
-    const k = String(newKategori || '').trim()
-    if (!k) return alert('Nama kategori wajib diisi.')
-    await upsertKategoriSetting(k)
-    setNewKategori('')
-    setActiveKategori(k)
-  }
-
-  async function saveSettingRow(row) {
-    const payload = {
-      tokped_pajak_persen: Number(row.tokped_pajak_persen || 0),
-      tokped_biaya_flat: toNumber(row.tokped_biaya_flat || 0),
-      shopee_pajak_persen: Number(row.shopee_pajak_persen || 0),
-      shopee_biaya_flat: toNumber(row.shopee_biaya_flat || 0),
-      updated_at: new Date().toISOString(),
-    }
-
-    const { error } = await supabase
-      .from('pricelist_kategori_settings')
-      .update(payload)
-      .eq('id', row.id)
-
-    if (error) {
-      console.error('saveSettingRow error:', error)
-      alert('Gagal simpan setting.')
-      return
-    }
-
-    await fetchSettings()
-    // setelah setting berubah, kategori list mungkin berubah
-    await fetchKategoriList()
-  }
-
-  // ✅ update data lama (semua produk dalam kategori) berdasarkan offline + setting
-  async function recalcAllInKategori(kategori) {
-    const { data, error } = await supabase
-      .from('pricelist')
-      .select('id, harga_offline, kategori')
-      .eq('kategori', kategori)
-
-    if (error) {
-      console.error('recalcAllInKategori select error:', error)
-      alert('Gagal ambil data untuk update massal.')
-      return
-    }
-
-    const s = getSettingFor(kategori)
-    const updates = (data || []).map((r) => {
-      const off = toNumber(r.harga_offline)
-      return {
-        id: r.id,
-        harga_tokopedia: formatRp(calcHarga(off, s.tokped_pajak_persen, s.tokped_biaya_flat)),
-        harga_shopee: formatRp(calcHarga(off, s.shopee_pajak_persen, s.shopee_biaya_flat)),
-      }
+  // ========= edit / hapus =========
+  function openEdit(r) {
+    setEditRow({
+      ...r,
+      nama_produk: r.nama_produk || '',
+      harga_offline: formatRp(r.harga_offline),
     })
-
-    // update per 50 biar aman
-    const chunkSize = 50
-    for (let i = 0; i < updates.length; i += chunkSize) {
-      const chunk = updates.slice(i, i + chunkSize)
-      const promises = chunk.map((u) =>
-        supabase.from('pricelist').update({
-          harga_tokopedia: u.harga_tokopedia,
-          harga_shopee: u.harga_shopee,
-        }).eq('id', u.id)
-      )
-      const res = await Promise.all(promises)
-      const hasErr = res.find((x) => x.error)
-      if (hasErr) {
-        console.error('recalcAllInKategori update error:', hasErr.error)
-        alert('Sebagian update gagal. Cek console.')
-        break
-      }
-    }
-
-    await fetchRows(kategori)
-    alert(`Selesai update harga Tokopedia & Shopee untuk kategori: ${kategori}`)
+    setEditOpen(true)
   }
 
+  async function saveEdit() {
+    if (!editRow?.id) return
+    const nama_produk = String(editRow.nama_produk || '').trim()
+    const harga_offline = toNumber(editRow.harga_offline)
+    if (!nama_produk) return alert('Nama produk wajib diisi.')
+    if (!harga_offline) return alert('Harga offline wajib diisi.')
+
+    // load setting kategori row (pakai kategori row)
+    const kategori = normalizeKategoriLabel(editRow.kategori || activeKategori)
+    const { data: sData } = await supabase
+      .from('pricelist_setting')
+      .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+      .eq('kategori', kategori)
+      .maybeSingle()
+
+    const harga_tokopedia = calcPlatform(harga_offline, sData?.tokped_pajak_pct ?? 0, sData?.tokped_biaya_flat ?? 0)
+    const harga_shopee = calcPlatform(harga_offline, sData?.shopee_pajak_pct ?? 0, sData?.shopee_biaya_flat ?? 0)
+
+    try {
+      setEditSaving(true)
+      const { error } = await supabase
+        .from('pricelist')
+        .update({
+          nama_produk: nama_produk.toUpperCase(),
+          harga_offline,
+          harga_tokopedia,
+          harga_shopee,
+        })
+        .eq('id', editRow.id)
+
+      if (error) {
+        console.error('saveEdit error:', error)
+        alert('Gagal simpan perubahan.')
+        return
+      }
+
+      setEditOpen(false)
+      setEditRow(null)
+      await fetchRows(activeKategori)
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  async function deleteRow(id) {
+    if (!confirm('Hapus produk ini?')) return
+    const { error } = await supabase.from('pricelist').delete().eq('id', id)
+    if (error) {
+      console.error('deleteRow error:', error)
+      alert('Gagal hapus.')
+      return
+    }
+    await fetchRows(activeKategori)
+  }
+
+  // ========= UI =========
   return (
-    <div className="p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Pricelist Produk</h1>
-          <div className="text-sm text-slate-600 mt-1">
-            Model tab per kategori (tanpa scroll) + download JPG hanya “Nama Produk & Harga Offline”.
+    <Layout>
+      <div style={{ padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900 }}>Pricelist Produk</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+              Tab per kategori + download JPG hanya “Nama Produk & Harga Offline”.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => fetchRows(activeKategori)}
+              style={btnOutline}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+            <button
+              onClick={openSetting}
+              style={btnOutline}
+            >
+              Setting Pajak & Biaya
+            </button>
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            className="border px-4 py-2 rounded-lg font-semibold"
-            onClick={() => fetchRows(activeKategori)}
-          >
-            Refresh
-          </button>
-          <button
-            className="border px-4 py-2 rounded-lg font-semibold"
-            onClick={async () => {
-              setOpenSettings(true)
-              await fetchSettings()
-              await fetchKategoriList()
-            }}
-          >
-            Setting Pajak & Biaya
-          </button>
-        </div>
-      </div>
+        {/* Tambah Produk */}
+        <div style={card}>
+          <div style={{ fontWeight: 900, marginBottom: 12 }}>Tambah Produk</div>
 
-      {/* Tambah Produk */}
-      <div className="mt-6 border rounded-xl p-4">
-        <div className="font-bold mb-3">Tambah Produk</div>
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            className="border rounded-lg px-3 py-2"
-            placeholder="Nama Produk"
-            value={form.nama_produk}
-            onChange={(e) => handleFormChange('nama_produk', e.target.value)}
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <input
+              value={form.nama_produk}
+              onChange={(e) => setForm((p) => ({ ...p, nama_produk: e.target.value }))}
+              placeholder="Nama Produk"
+              style={input}
+            />
 
-          <select
-            className="border rounded-lg px-3 py-2"
-            value={form.kategori}
-            onChange={(e) => handleFormChange('kategori', e.target.value)}
-          >
-            {(kategoriList.length ? kategoriList : ['Mac']).map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
-
-          <input
-            className="border rounded-lg px-3 py-2"
-            placeholder="Harga Tokopedia (auto)"
-            value={form.harga_tokopedia}
-            readOnly
-          />
-          <input
-            className="border rounded-lg px-3 py-2"
-            placeholder="Harga Shopee (auto)"
-            value={form.harga_shopee}
-            readOnly
-          />
-
-          <input
-            className="border rounded-lg px-3 py-2 col-span-2"
-            placeholder="Harga Offline"
-            value={form.harga_offline}
-            onChange={(e) => handleFormChange('harga_offline', e.target.value)}
-          />
-        </div>
-
-        <button
-          className="mt-3 bg-blue-600 text-white font-bold px-4 py-2 rounded-lg"
-          onClick={addProduct}
-          disabled={saving}
-        >
-          {saving ? 'Menyimpan...' : 'Tambah Produk'}
-        </button>
-      </div>
-
-      {/* Tabs Kategori */}
-      <div className="mt-6 border rounded-xl p-4">
-        <div className="flex flex-wrap gap-2">
-          {(kategoriList.length ? kategoriList : ['Mac', 'iPad', 'iPhone', 'Apple Watch', 'AirPods', 'Aksesoris']).map((k) => (
-            <button
-              key={k}
-              onClick={() => setActiveKategori(k)}
-              className={`px-3 py-2 rounded-lg font-semibold border ${
-                activeKategori === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
-              }`}
-            >
-              {k}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-4">
-          <KategoriTable
-            kategori={activeKategori}
-            rows={rows}
-            loading={loading}
-            setting={getSettingFor(activeKategori)}
-            recalcAll={() => recalcAllInKategori(activeKategori)}
-            onReload={() => fetchRows(activeKategori)}
-            calcFromOffline={(offline) => recalcFromOffline(offline, activeKategori)}
-          />
-        </div>
-      </div>
-
-      {/* MODAL SETTINGS */}
-      {openSettings && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-4xl rounded-2xl p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-xl font-bold">Setting Pajak & Biaya (Per Kategori)</div>
-                <div className="text-sm text-slate-600 mt-1">
-                  Rumus: <b>Harga Platform = Offline × (1 + pajak%) + biaya flat</b>
-                </div>
-              </div>
-              <button
-                className="border px-3 py-2 rounded-lg font-semibold"
-                onClick={() => setOpenSettings(false)}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <select
+                value={form.kategori}
+                onChange={(e) => {
+                  const k = normalizeKategoriLabel(e.target.value)
+                  setForm((p) => ({ ...p, kategori: k }))
+                  setActiveKategori(k)
+                }}
+                style={{ ...input, flex: 1 }}
               >
-                Tutup
+                {kategoriList.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+
+              {/* ✅ tambah kategori di area tambah produk */}
+              <button
+                onClick={() => {
+                  const nama = prompt('Nama kategori baru? (contoh: MacBook / iMac / dll)')
+                  if (nama != null) {
+                    setNewKategori(nama)
+                    setTimeout(() => addKategori(), 0)
+                  }
+                }}
+                style={btnOutline}
+              >
+                + Kategori
               </button>
             </div>
 
-            <div className="mt-4 border rounded-xl p-4">
-              <div className="font-bold mb-2">Tambah Kategori</div>
-              <div className="flex gap-2">
-                <input
-                  className="border rounded-lg px-3 py-2 flex-1"
-                  placeholder="Nama kategori baru (contoh: MacBook / iMac / dll)"
-                  value={newKategori}
-                  onChange={(e) => setNewKategori(e.target.value)}
-                />
-                <button className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg" onClick={addKategori}>
-                  Tambah
+            <input disabled placeholder="Harga Tokopedia (auto)" style={{ ...input, background: '#f8fafc' }} />
+            <input disabled placeholder="Harga Shopee (auto)" style={{ ...input, background: '#f8fafc' }} />
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <input
+              value={form.harga_offline}
+              onChange={(e) => setForm((p) => ({ ...p, harga_offline: e.target.value }))}
+              placeholder="Harga Offline"
+              style={input}
+            />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <button onClick={addProduct} style={btnPrimary} disabled={saving}>
+              {saving ? 'Menyimpan...' : 'Tambah Produk'}
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs kategori */}
+        <div style={card}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+            {kategoriList.map((k) => (
+              <button
+                key={k}
+                onClick={() => setActiveKategori(k)}
+                style={k === activeKategori ? tabActive : tabBtn}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+
+          {/* Bar: search + action */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Cari produk di ${activeKategori || 'kategori'}...`}
+              style={{ ...input, maxWidth: 340 }}
+            />
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => hitungUlangHarga({ onlySelected: false })}
+                style={btnOutline}
+                disabled={loading || !rows.length}
+                title="Hitung ulang harga Tokopedia/Shopee dari harga offline berdasarkan setting kategori"
+              >
+                Hitung Ulang Semua
+              </button>
+
+              <button
+                onClick={() => hitungUlangHarga({ onlySelected: true })}
+                style={btnPrimary}
+                disabled={loading || selectedIds.size === 0}
+                title="Hitung ulang hanya produk yang dicentang"
+              >
+                Hitung Ulang Terpilih
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={thCenter}>
+                    <input
+                      type="checkbox"
+                      checked={filteredRows.length > 0 && selectedIds.size === filteredRows.length}
+                      onChange={(e) => toggleSelectAll(e.target.checked)}
+                    />
+                  </th>
+                  <th style={thLeft}>Nama Produk</th>
+                  <th style={thRight}>Tokopedia</th>
+                  <th style={thRight}>Shopee</th>
+                  <th style={thRight}>Offline</th>
+                  <th style={thCenter}>Aksi</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 14, color: '#64748b' }}>
+                      Memuat...
+                    </td>
+                  </tr>
+                ) : filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 14, color: '#64748b' }}>
+                      Tidak ada data.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((r) => (
+                    <tr key={r.id} style={{ borderTop: '1px solid #e5e7eb' }}>
+                      <td style={tdCenter}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(r.id)}
+                          onChange={(e) => toggleSelectOne(r.id, e.target.checked)}
+                        />
+                      </td>
+                      <td style={tdLeft}>{String(r.nama_produk || '').toUpperCase()}</td>
+                      <td style={tdRight}>{formatRp(r.harga_tokopedia)}</td>
+                      <td style={tdRight}>{formatRp(r.harga_shopee)}</td>
+                      <td style={{ ...tdRight, fontWeight: 900 }}>{formatRp(r.harga_offline)}</td>
+                      <td style={tdCenter}>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                          <button onClick={() => openEdit(r)} style={btnEdit}>Edit</button>
+                          <button onClick={() => deleteRow(r.id)} style={btnDelete}>Hapus</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>
+            Setting kategori: harga Tokopedia/Shopee dihitung otomatis dari <b>Harga Offline</b> berdasarkan pajak & biaya pada kategori.
+          </div>
+        </div>
+
+        {/* MODAL SETTING */}
+        {showSetting && (
+          <div style={modalOverlay} onMouseDown={() => setShowSetting(false)}>
+            <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>Setting Pajak & Biaya</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                    Rumus: <b>Harga Platform = Offline × (1 + pajak%) + biaya flat</b>
+                  </div>
+                </div>
+                <button style={btnOutline} onClick={() => setShowSetting(false)}>Tutup</button>
+              </div>
+
+              <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: 13, width: 140 }}>Kategori</div>
+                <select
+                  value={settingKategori}
+                  onChange={async (e) => {
+                    const k = normalizeKategoriLabel(e.target.value)
+                    await loadSetting(k)
+                  }}
+                  style={{ ...input, flex: 1 }}
+                >
+                  {kategoriList.map((k) => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={subCard}>
+                  <div style={{ fontWeight: 900, marginBottom: 10 }}>Tokopedia</div>
+                  <div style={fieldRow}>
+                    <div style={label}>Pajak (%)</div>
+                    <input
+                      style={input}
+                      value={String(setting.tokped_pajak_pct ?? 0)}
+                      onChange={(e) => setSetting((p) => ({ ...p, tokped_pajak_pct: e.target.value }))}
+                    />
+                  </div>
+                  <div style={fieldRow}>
+                    <div style={label}>Biaya flat (Rp)</div>
+                    <input
+                      style={input}
+                      value={String(setting.tokped_biaya_flat ?? 0)}
+                      onChange={(e) => setSetting((p) => ({ ...p, tokped_biaya_flat: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div style={subCard}>
+                  <div style={{ fontWeight: 900, marginBottom: 10 }}>Shopee</div>
+                  <div style={fieldRow}>
+                    <div style={label}>Pajak (%)</div>
+                    <input
+                      style={input}
+                      value={String(setting.shopee_pajak_pct ?? 0)}
+                      onChange={(e) => setSetting((p) => ({ ...p, shopee_pajak_pct: e.target.value }))}
+                    />
+                  </div>
+                  <div style={fieldRow}>
+                    <div style={label}>Biaya flat (Rp)</div>
+                    <input
+                      style={input}
+                      value={String(setting.shopee_biaya_flat ?? 0)}
+                      onChange={(e) => setSetting((p) => ({ ...p, shopee_biaya_flat: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  Setelah ubah setting, klik <b>Hitung Ulang Semua</b> (di tab kategori) supaya data lama ikut update.
+                </div>
+                <button onClick={saveSetting} style={btnPrimary} disabled={savingSetting}>
+                  {savingSetting ? 'Menyimpan...' : 'Simpan Setting'}
                 </button>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="mt-4 border rounded-xl overflow-hidden">
-              <div className="grid grid-cols-12 bg-slate-100 font-bold text-sm">
-                <div className="col-span-2 p-3 border-r">Kategori</div>
-                <div className="col-span-2 p-3 border-r">Tokped Pajak %</div>
-                <div className="col-span-2 p-3 border-r">Tokped Biaya</div>
-                <div className="col-span-2 p-3 border-r">Shopee Pajak %</div>
-                <div className="col-span-2 p-3 border-r">Shopee Biaya</div>
-                <div className="col-span-2 p-3">Aksi</div>
+        {/* MODAL EDIT */}
+        {editOpen && (
+          <div style={modalOverlay} onMouseDown={() => setEditOpen(false)}>
+            <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 16, fontWeight: 900 }}>Edit Produk</div>
+                <button style={btnOutline} onClick={() => setEditOpen(false)}>Tutup</button>
               </div>
 
-              {(settings || []).map((s) => (
-                <SettingRow
-                  key={s.id}
-                  row={s}
-                  onSave={saveSettingRow}
-                  onUpdateKategori={() => recalcAllInKategori(s.kategori)}
-                />
-              ))}
-
-              {!settings?.length && (
-                <div className="p-4 text-sm text-slate-600">
-                  Belum ada setting. Tambahkan kategori dulu.
+              <div style={{ marginTop: 14 }}>
+                <div style={fieldRow}>
+                  <div style={label}>Nama Produk</div>
+                  <input
+                    style={input}
+                    value={editRow?.nama_produk ?? ''}
+                    onChange={(e) => setEditRow((p) => ({ ...p, nama_produk: e.target.value }))}
+                  />
                 </div>
-              )}
-            </div>
+                <div style={fieldRow}>
+                  <div style={label}>Harga Offline</div>
+                  <input
+                    style={input}
+                    value={editRow?.harga_offline ?? ''}
+                    onChange={(e) => setEditRow((p) => ({ ...p, harga_offline: e.target.value }))}
+                  />
+                </div>
+              </div>
 
-            <div className="mt-3 text-xs text-slate-500">
-              Tips: Setelah ubah pajak/biaya, klik <b>Update Semua Produk</b> agar data lama langsung ikut berubah.
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button style={btnOutline} onClick={() => setEditOpen(false)}>Batal</button>
+                <button style={btnPrimary} onClick={saveEdit} disabled={editSaving}>
+                  {editSaving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </Layout>
   )
 }
 
-function SettingRow({ row, onSave, onUpdateKategori }) {
-  const [v, setV] = useState(row)
-  useEffect(() => setV(row), [row])
+// ======= styles (simple, mirip yg kamu pakai sebelumnya) =======
+const card = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  padding: 16,
+  marginTop: 16,
+}
 
-  return (
-    <div className="grid grid-cols-12 text-sm border-t">
-      <div className="col-span-2 p-3 border-r font-bold">{row.kategori}</div>
+const input = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  outline: 'none',
+}
 
-      <div className="col-span-2 p-3 border-r">
-        <input
-          className="border rounded-lg px-2 py-1 w-full"
-          value={v.tokped_pajak_persen}
-          onChange={(e) => setV((p) => ({ ...p, tokped_pajak_persen: e.target.value }))}
-        />
-      </div>
+const btnPrimary = {
+  padding: '10px 14px',
+  borderRadius: 10,
+  border: 0,
+  background: '#2563eb',
+  color: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
 
-      <div className="col-span-2 p-3 border-r">
-        <input
-          className="border rounded-lg px-2 py-1 w-full"
-          value={v.tokped_biaya_flat}
-          onChange={(e) => setV((p) => ({ ...p, tokped_biaya_flat: e.target.value }))}
-        />
-      </div>
+const btnOutline = {
+  padding: '10px 14px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  fontWeight: 800,
+  cursor: 'pointer',
+}
 
-      <div className="col-span-2 p-3 border-r">
-        <input
-          className="border rounded-lg px-2 py-1 w-full"
-          value={v.shopee_pajak_persen}
-          onChange={(e) => setV((p) => ({ ...p, shopee_pajak_persen: e.target.value }))}
-        />
-      </div>
+const btnEdit = {
+  padding: '6px 10px',
+  borderRadius: 8,
+  border: 0,
+  background: '#f59e0b',
+  color: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
 
-      <div className="col-span-2 p-3 border-r">
-        <input
-          className="border rounded-lg px-2 py-1 w-full"
-          value={v.shopee_biaya_flat}
-          onChange={(e) => setV((p) => ({ ...p, shopee_biaya_flat: e.target.value }))}
-        />
-      </div>
+const btnDelete = {
+  padding: '6px 10px',
+  borderRadius: 8,
+  border: 0,
+  background: '#dc2626',
+  color: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
 
-      <div className="col-span-2 p-3 flex gap-2">
-        <button
-          className="bg-blue-600 text-white font-bold px-3 py-2 rounded-lg"
-          onClick={() => onSave(v)}
-        >
-          Simpan
-        </button>
-        <button
-          className="border font-bold px-3 py-2 rounded-lg"
-          onClick={onUpdateKategori}
-        >
-          Update Semua Produk
-        </button>
-      </div>
-    </div>
-  )
+const tabBtn = {
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
+
+const tabActive = {
+  ...tabBtn,
+  background: '#2563eb',
+  color: '#fff',
+  border: '1px solid #2563eb',
+}
+
+const thLeft = { textAlign: 'left', padding: 10, fontSize: 12 }
+const thRight = { textAlign: 'right', padding: 10, fontSize: 12 }
+const thCenter = { textAlign: 'center', padding: 10, fontSize: 12 }
+const tdLeft = { textAlign: 'left', padding: 10, fontSize: 13 }
+const tdRight = { textAlign: 'right', padding: 10, fontSize: 13 }
+const tdCenter = { textAlign: 'center', padding: 10, fontSize: 13 }
+
+const modalOverlay = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15,23,42,0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 18,
+  zIndex: 50,
+}
+
+const modalCard = {
+  width: 'min(900px, 100%)',
+  background: '#fff',
+  borderRadius: 14,
+  border: '1px solid #e5e7eb',
+  padding: 16,
+}
+
+const subCard = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  padding: 12,
+  background: '#fff',
+}
+
+const fieldRow = {
+  display: 'grid',
+  gridTemplateColumns: '140px 1fr',
+  gap: 10,
+  alignItems: 'center',
+  marginTop: 10,
+}
+
+const label = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: '#0f172a',
 }
