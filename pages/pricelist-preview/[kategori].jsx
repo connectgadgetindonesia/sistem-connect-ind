@@ -267,7 +267,7 @@ badgeText: {
   display: 'block',
   lineHeight: 1,
   // micro-adjust biar JPG benar-benar pas tengah
-  transform: 'translateY(-0.5px)',
+  transform: 'translateY(-1px)',
 },
 
   }
