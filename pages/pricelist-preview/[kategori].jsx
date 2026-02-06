@@ -264,10 +264,12 @@ export default function PricelistPreview() {
       textTransform: 'uppercase',
     },
     tdRight: {
-      padding: '14px 16px',
-      display: 'flex',
-      justifyContent: 'flex-end',
-    },
+  padding: '14px 16px',
+  display: 'flex',
+  justifyContent: 'center',   // ⬅️ ini kuncinya
+  alignItems: 'center',
+},
+
 
     // ✅ Harga biru #187bcd + font putih
     badge: {
