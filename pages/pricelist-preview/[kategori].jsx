@@ -34,7 +34,6 @@ export default function PricelistPreview() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
 
-  // ✅ ini yang akan di-capture (inline-only, tanpa tailwind dependency)
   const captureRef = useRef(null)
 
   useEffect(() => {
@@ -73,7 +72,7 @@ export default function PricelistPreview() {
       const html2canvas = mod.default
 
       // beri waktu render DOM
-      await new Promise((r) => setTimeout(r, 100))
+      await new Promise((r) => setTimeout(r, 120))
 
       const el = captureRef.current
 
@@ -85,19 +84,15 @@ export default function PricelistPreview() {
         logging: false,
         scrollX: 0,
         scrollY: 0,
-
-        // ✅ FIX utama: buang semua stylesheet di CLONE agar oklch tidak ikut kebaca
         onclone: (doc) => {
-          // hapus semua <style> (tailwind/shadcn inject) dan <link rel="stylesheet">
+          // buang semua stylesheet supaya tidak kebaca oklch dari global css
           doc.querySelectorAll('style').forEach((n) => n.remove())
           doc
             .querySelectorAll('link[rel="stylesheet"], link[as="style"]')
             .forEach((n) => n.remove())
 
-          // pastikan capture root tetap ada dan tidak berubah
           const cloned = doc.getElementById('capture-root')
           if (cloned) {
-            // safety: matikan filter/backdrop yang kadang bikin error
             cloned.querySelectorAll('*').forEach((node) => {
               try {
                 node.style.filter = 'none'
@@ -123,7 +118,7 @@ export default function PricelistPreview() {
       URL.revokeObjectURL(url)
     } catch (e) {
       console.error('downloadJPG error:', e)
-      alert('Gagal download JPG. Error masih terkait CSS (oklch). Setelah replace ini harusnya aman ya.')
+      alert('Gagal download JPG.')
     } finally {
       setDownloading(false)
     }
@@ -131,9 +126,6 @@ export default function PricelistPreview() {
 
   const updateDate = dayjs().format('DD MMM YYYY')
 
-  /**
-   * ✅ Inline style pack (biar hasil JPG konsisten & tidak tergantung CSS global)
-   */
   const S = {
     page: {
       minHeight: '100vh',
@@ -151,10 +143,7 @@ export default function PricelistPreview() {
       justifyContent: 'space-between',
       gap: 16,
     },
-    hint: {
-      fontSize: 13,
-      color: '#64748b',
-    },
+    hint: { fontSize: 13, color: '#64748b' },
     btn: (disabled) => ({
       padding: '10px 16px',
       borderRadius: 10,
@@ -166,7 +155,6 @@ export default function PricelistPreview() {
       letterSpacing: 0.2,
     }),
 
-    // CAPTURE CARD
     captureWrap: {
       marginTop: 18,
       maxWidth: 1100,
@@ -207,30 +195,12 @@ export default function PricelistPreview() {
       lineHeight: 1.1,
       marginTop: 4,
     },
-    sub: {
-      fontSize: 12,
-      color: '#cbd5e1',
-      marginTop: 6,
-      fontWeight: 600,
-    },
-    rightBox: {
-      textAlign: 'right',
-      color: '#ffffff',
-    },
-    rightSmall: {
-      fontSize: 12,
-      color: '#cbd5e1',
-      fontWeight: 700,
-    },
-    rightBold: {
-      fontSize: 14,
-      fontWeight: 900,
-      marginTop: 2,
-    },
+    sub: { fontSize: 12, color: '#cbd5e1', marginTop: 6, fontWeight: 600 },
+    rightBox: { textAlign: 'right', color: '#ffffff' },
+    rightSmall: { fontSize: 12, color: '#cbd5e1', fontWeight: 700 },
+    rightBold: { fontSize: 14, fontWeight: 900, marginTop: 2 },
 
-    body: {
-      padding: '26px 30px 28px',
-    },
+    body: { padding: '26px 30px 28px' },
     table: {
       border: '1px solid #e5e7eb',
       borderRadius: 14,
@@ -263,48 +233,35 @@ export default function PricelistPreview() {
       color: '#0f172a',
       textTransform: 'uppercase',
     },
-tdRight: {
-  padding: '14px 16px',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
 
-badge: {
-  background: '#187bcd',
-  color: '#ffffff',
+    // ✅ Pusatkan badge di kolom harga (ini yang ngaruh ke JPG)
+    tdRight: {
+      padding: '14px 16px',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
 
-  // ✅ bikin center 100% (horizontal & vertical)
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-
-  height: 34,
-  lineHeight: '34px',
-  padding: '0 18px',
-  borderRadius: 999,
-
-  fontWeight: 900,
-  fontSize: 13,
-  letterSpacing: 0.2,
-  whiteSpace: 'nowrap',
-
-  // optional biar konsisten lebar badge
-  minWidth: 140,
-
-  boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
-},
-    // ✅ Harga biru #187bcd + font putih
+    // ✅ Badge cuma 1 (tidak dobel) + center beneran
     badge: {
       background: '#187bcd',
       color: '#ffffff',
-      padding: '7px 14px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+
+      height: 34,
+      lineHeight: '34px',
+      padding: '0 18px',
       borderRadius: 999,
+
       fontWeight: 900,
       fontSize: 13,
       letterSpacing: 0.2,
-      boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
       whiteSpace: 'nowrap',
+      minWidth: 140,
+
+      boxShadow: '0 6px 16px rgba(24,123,205,0.22)',
     },
 
     footer: {
@@ -315,10 +272,7 @@ badge: {
       color: '#64748b',
       fontWeight: 600,
     },
-    brand: {
-      fontWeight: 900,
-      color: '#334155',
-    },
+    brand: { fontWeight: 900, color: '#334155' },
   }
 
   return (
@@ -337,7 +291,6 @@ badge: {
       </div>
 
       <div style={S.captureWrap}>
-        {/* ✅ Ini yang dicapture, jangan pakai className tailwind */}
         <div id="capture-root" ref={captureRef} style={S.card}>
           <div style={S.header}>
             <div style={S.headerRow}>
@@ -386,7 +339,7 @@ badge: {
         </div>
 
         <div style={{ maxWidth: 1100, margin: '12px auto 0', fontSize: 11, color: '#94a3b8' }}>
-          Jika masih gagal, berarti file yang terdeploy belum ke-replace / cache. Coba hard refresh (Ctrl+Shift+R).
+          Kalau masih terasa beda, coba hard refresh (Ctrl+Shift+R) setelah deploy.
         </div>
       </div>
     </div>
