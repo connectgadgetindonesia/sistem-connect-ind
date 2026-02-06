@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import dayjs from 'dayjs'
-import html2canvas from 'html2canvas'
 import { supabase } from '../../lib/supabaseClient'
 
 const toNumber = (v) =>
@@ -15,9 +14,7 @@ const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 function niceCategory(raw) {
   const s = String(raw || '').trim()
   if (!s) return ''
-  // route biasanya: mac / iphone / apple%20watch
   const up = decodeURIComponent(s).replace(/-/g, ' ')
-  // cari kategori sesuai DB (pakai Title Case sederhana)
   return up
     .split(' ')
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
@@ -51,8 +48,6 @@ export default function PricelistPreview() {
   async function fetchData() {
     try {
       setLoading(true)
-
-      // Ambil hanya nama_produk & harga_offline
       const { data, error } = await supabase
         .from('pricelist')
         .select('nama_produk, harga_offline, kategori')
@@ -60,12 +55,11 @@ export default function PricelistPreview() {
         .order('nama_produk', { ascending: true })
 
       if (error) {
-        console.error(error)
+        console.error('fetchData error:', error)
         alert('Gagal ambil data pricelist.')
         setRows([])
         return
       }
-
       setRows(data || [])
     } finally {
       setLoading(false)
@@ -73,33 +67,58 @@ export default function PricelistPreview() {
   }
 
   async function downloadJPG() {
-    if (!cardRef.current) return
-
     try {
+      if (!cardRef.current) return
       setDownloading(true)
 
-      // Pastikan font/layout stabil sebelum capture
-      await new Promise((r) => setTimeout(r, 150))
+      // ✅ dynamic import biar aman di Next (SSR)
+      const mod = await import('html2canvas')
+      const html2canvas = mod.default
 
-      const canvas = await html2canvas(cardRef.current, {
+      // pastikan layout stabil
+      await new Promise((r) => setTimeout(r, 200))
+
+      const el = cardRef.current
+      const prevScrollY = window.scrollY
+
+      // scroll ke atas supaya clone konsisten
+      window.scrollTo(0, 0)
+      await new Promise((r) => setTimeout(r, 80))
+
+      const canvas = await html2canvas(el, {
         backgroundColor: '#ffffff',
         scale: 2,
         useCORS: true,
+        allowTaint: true,
         logging: false,
-        windowWidth: 1100,
+        scrollX: 0,
+        scrollY: 0,
+        // penting untuk beberapa browser
+        windowWidth: el.scrollWidth || 980,
+        windowHeight: el.scrollHeight || 800,
       })
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+      // balikkan scroll
+      window.scrollTo(0, prevScrollY)
 
+      // ✅ pakai toBlob (lebih stabil daripada toDataURL)
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92)
+      )
+
+      if (!blob) throw new Error('toBlob() gagal (blob null)')
+
+      const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = dataUrl
+      a.href = url
       a.download = `pricelist-${(kategoriNice || 'kategori').replace(/\s+/g, '-')}.jpg`
       document.body.appendChild(a)
       a.click()
       a.remove()
+      URL.revokeObjectURL(url)
     } catch (e) {
-      console.error(e)
-      alert('Gagal download JPG. Coba refresh halaman lalu download lagi.')
+      console.error('downloadJPG error:', e)
+      alert('Gagal download JPG. Kirim screenshot Console (F12) bagian error paling atas ya.')
     } finally {
       setDownloading(false)
     }
@@ -109,7 +128,6 @@ export default function PricelistPreview() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Top Bar */}
       <div className="max-w-5xl mx-auto px-6 pt-10">
         <div className="flex items-center justify-between gap-4">
           <div className="text-sm text-slate-600">
@@ -127,14 +145,12 @@ export default function PricelistPreview() {
           </button>
         </div>
 
-        {/* Card */}
         <div className="mt-6 pb-16">
           <div
             ref={cardRef}
             style={{ width: 980 }}
             className="mx-auto bg-white rounded-2xl border shadow-sm overflow-hidden"
           >
-            {/* Header gradient */}
             <div
               className="px-8 py-7"
               style={{
@@ -147,7 +163,9 @@ export default function PricelistPreview() {
                   <div className="text-xs tracking-wide text-slate-300 font-semibold">
                     CONNECT.IND • PRICELIST
                   </div>
-                  <div className="text-3xl font-extrabold text-white leading-tight">{kategoriNice || '-'}</div>
+                  <div className="text-3xl font-extrabold text-white leading-tight">
+                    {kategoriNice || '-'}
+                  </div>
                   <div className="text-xs text-slate-300 mt-1">Update: {updateDate}</div>
                 </div>
 
@@ -158,7 +176,6 @@ export default function PricelistPreview() {
               </div>
             </div>
 
-            {/* Body */}
             <div className="p-8">
               <div className="rounded-xl border overflow-hidden">
                 <div className="grid grid-cols-12 bg-slate-100 text-slate-800 font-bold text-sm">
@@ -188,10 +205,7 @@ export default function PricelistPreview() {
                         <div className="col-span-3 px-5 py-4 border-t flex justify-end items-center">
                           <span
                             className="px-4 py-1.5 rounded-full font-extrabold"
-                            style={{
-                              backgroundColor: '#187bcd',
-                              color: '#ffffff',
-                            }}
+                            style={{ backgroundColor: '#187bcd', color: '#ffffff' }}
                           >
                             {formatRp(r.harga_offline)}
                           </span>
@@ -209,9 +223,8 @@ export default function PricelistPreview() {
             </div>
           </div>
 
-          {/* helper note kecil */}
           <div className="max-w-5xl mx-auto px-6 mt-4 text-xs text-slate-400">
-            Jika tombol download tidak bereaksi, coba refresh halaman lalu klik lagi.
+            Jika masih gagal, buka Console (F12) lalu kirim 1 screenshot error paling atas.
           </div>
         </div>
       </div>
