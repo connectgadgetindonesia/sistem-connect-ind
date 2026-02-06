@@ -1,8 +1,9 @@
 import Layout from '@/components/Layout'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import Select from 'react-select'
+import CreatableSelect from 'react-select/creatable'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
@@ -27,6 +28,95 @@ export default function Penjualan() {
     dilayani_oleh: ''
   })
 
+  // ===================== ✅ Customer Autocomplete =====================
+  const [customerOptions, setCustomerOptions] = useState([]) // {value,label,alamat,no_wa}
+
+  // buat key unik biar ga dobel: nama|wa (kalau wa kosong pakai nama saja)
+  const makeCustomerKey = (nama, wa) => {
+    const n = (nama || '').toString().trim().toUpperCase()
+    const w = (wa || '').toString().trim()
+    return `${n}||${w}`
+  }
+
+  async function fetchCustomers() {
+    // ambil kolom minimal biar ringan
+    const { data, error } = await supabase
+      .from('penjualan_baru')
+      .select('nama_pembeli, alamat, no_wa')
+      .order('tanggal', { ascending: false })
+      .limit(5000)
+
+    if (error) {
+      console.error('fetchCustomers error:', error)
+      setCustomerOptions([])
+      return
+    }
+
+    const map = new Map()
+    ;(data || []).forEach((r) => {
+      const nama = (r.nama_pembeli || '').toString().trim()
+      if (!nama) return
+      const alamat = (r.alamat || '').toString().trim()
+      const no_wa = (r.no_wa || '').toString().trim()
+
+      const key = makeCustomerKey(nama, no_wa)
+
+      // simpan yang paling lengkap
+      if (!map.has(key)) {
+        map.set(key, { nama, alamat, no_wa })
+      } else {
+        const cur = map.get(key)
+        map.set(key, {
+          nama,
+          alamat: cur.alamat || alamat,
+          no_wa: cur.no_wa || no_wa
+        })
+      }
+    })
+
+    const opts = Array.from(map.values())
+      .map((c) => {
+        const namaUpper = (c.nama || '').toString().trim().toUpperCase()
+        const wa = (c.no_wa || '').toString().trim()
+        const alamat = (c.alamat || '').toString().trim()
+        return {
+          value: makeCustomerKey(namaUpper, wa),
+          label: wa ? `${namaUpper} • ${wa}` : `${namaUpper}`,
+          nama: namaUpper,
+          alamat,
+          no_wa: wa
+        }
+      })
+      .sort((a, b) => a.nama.localeCompare(b.nama))
+
+    setCustomerOptions(opts)
+  }
+
+  useEffect(() => {
+    fetchCustomers()
+  }, [])
+
+  // helper: cari customer by nama (tanpa WA) kalau user ketik manual
+  const customerByNama = useMemo(() => {
+    const map = new Map()
+    customerOptions.forEach((c) => {
+      if (!map.has(c.nama)) map.set(c.nama, c)
+      // kalau sudah ada, biarkan yang pertama (sudah rapi)
+    })
+    return map
+  }, [customerOptions])
+
+  function applyCustomerToForm(customer) {
+    if (!customer) return
+    setFormData((prev) => ({
+      ...prev,
+      nama_pembeli: customer.nama || prev.nama_pembeli,
+      alamat: customer.alamat || prev.alamat,
+      no_wa: customer.no_wa || prev.no_wa
+    }))
+  }
+
+  // ===================== Produk / Bonus =====================
   const [produkBaru, setProdukBaru] = useState({
     sn_sku: '',
     harga_jual: '',
@@ -213,7 +303,7 @@ export default function Penjualan() {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
+    e.preventDefault()
 
     const ok = window.confirm(
       'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
@@ -241,7 +331,7 @@ export default function Penjualan() {
     // Biaya lain-lain sebagai baris “fee”
     const feeItems = biayaList.map((f, i) => ({
       sn_sku: `FEE-${i + 1}`,
-      nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
+      nama_produk: `BIAYA ${(f.desc || '').toUpperCase()}`,
       warna: '',
       garansi: '',
       storage: '',
@@ -302,7 +392,7 @@ export default function Penjualan() {
     await supabase
       .from('transaksi_indent')
       .update({ status: 'Sudah Diambil' })
-      .eq('nama', formData.nama_pembeli.toUpperCase())
+      .eq('nama', (formData.nama_pembeli || '').toUpperCase())
 
     alert('Berhasil simpan multi produk!')
     setFormData({
@@ -317,6 +407,9 @@ export default function Penjualan() {
     setBonusList([])
     setBiayaList([])
     setDiskonInvoice('')
+
+    // refresh list customer (biar customer baru langsung kebaca)
+    fetchCustomers()
   }
 
   // Ringkas angka (subtotal dari produk berbayar)
@@ -326,10 +419,25 @@ export default function Penjualan() {
   const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
   const isOfficeSKUBonus  = (bonusBaru.sn_sku  || '').trim().toUpperCase() === SKU_OFFICE
 
+  // opsi react-select customer: (dibuat ringan)
+  const selectedCustomerOption = useMemo(() => {
+    const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
+    const wa = (formData.no_wa || '').toString().trim()
+    if (!namaUpper) return null
+    // coba cari yang sama persis nama+wa
+    const key = makeCustomerKey(namaUpper, wa)
+    const exact = customerOptions.find((c) => c.value === key)
+    if (exact) return exact
+    // kalau wa kosong, coba match nama saja
+    const byNama = customerOptions.find((c) => c.nama === namaUpper)
+    return byNama || { value: makeCustomerKey(namaUpper, wa), label: wa ? `${namaUpper} • ${wa}` : namaUpper }
+  }, [formData.nama_pembeli, formData.no_wa, customerOptions])
+
   return (
     <Layout>
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Input Penjualan Multi Produk</h1>
+
         <form onSubmit={handleSubmit} className="grid gap-4 mb-6">
           {/* Tanggal */}
           <input
@@ -340,21 +448,62 @@ export default function Penjualan() {
             required
           />
 
-          {/* Data pembeli */}
-          {[
-            ['Nama Pembeli', 'nama_pembeli'],
-            ['Alamat', 'alamat'],
-            ['No. WA', 'no_wa'],
-          ].map(([label, field]) => (
-            <input
-              key={field}
-              className="border p-2"
-              placeholder={label}
-              value={formData[field]}
-              onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
-              required
+          {/* ✅ Nama Pembeli (Autocomplete) */}
+          <div>
+            <CreatableSelect
+              options={customerOptions}
+              value={selectedCustomerOption}
+              placeholder="Nama Pembeli (ketik / pilih customer lama)"
+              onChange={(opt) => {
+                // clear
+                if (!opt) {
+                  setFormData((prev) => ({ ...prev, nama_pembeli: '', alamat: '', no_wa: '' }))
+                  return
+                }
+                // jika pilih dari list: ada field nama/alamat/no_wa
+                if (opt.nama) {
+                  applyCustomerToForm(opt)
+                } else {
+                  // creatable: ambil label sebagai nama
+                  const namaUpper = (opt.label || '').toString().trim().toUpperCase()
+                  setFormData((prev) => ({ ...prev, nama_pembeli: namaUpper }))
+                }
+              }}
+              onInputChange={(val, meta) => {
+                if (meta.action !== 'input-change') return
+                // user mengetik: simpan ke form (uppercase) tapi jangan override alamat/no_wa
+                const namaUpper = (val || '').toString().trim().toUpperCase()
+                setFormData((prev) => ({ ...prev, nama_pembeli: namaUpper }))
+              }}
+              onBlur={() => {
+                // kalau user ketik manual dan ada match nama, auto isi alamat/wa
+                const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
+                if (!namaUpper) return
+                const match = customerByNama.get(namaUpper)
+                if (match) applyCustomerToForm(match)
+              }}
+              isClearable
+              formatCreateLabel={(input) => `Gunakan customer baru: "${input.toUpperCase()}"`}
             />
-          ))}
+          </div>
+
+          {/* Alamat */}
+          <input
+            className="border p-2"
+            placeholder="Alamat"
+            value={formData.alamat}
+            onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
+            required
+          />
+
+          {/* No. WA */}
+          <input
+            className="border p-2"
+            placeholder="No. WA"
+            value={formData.no_wa}
+            onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })}
+            required
+          />
 
           {/* Dropdown Referral & Dilayani Oleh */}
           <select
@@ -364,7 +513,7 @@ export default function Penjualan() {
             required
           >
             <option value="">Pilih Referral</option>
-            {KARYAWAN.map(n => (
+            {KARYAWAN.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
@@ -376,7 +525,7 @@ export default function Penjualan() {
             required
           >
             <option value="">Pilih Dilayani Oleh</option>
-            {KARYAWAN.map(n => (
+            {KARYAWAN.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
@@ -401,7 +550,6 @@ export default function Penjualan() {
               value={produkBaru.harga_jual}
               onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
             />
-            {/* Username Office untuk SKU OFC-365-1 (produk) */}
             {isOfficeSKUProduk && (
               <input
                 className="border p-2 mb-2"
@@ -432,7 +580,6 @@ export default function Penjualan() {
               }
               isClearable
             />
-            {/* Username Office untuk SKU OFC-365-1 (bonus) */}
             {isOfficeSKUBonus && (
               <input
                 className="border p-2 mb-2"
