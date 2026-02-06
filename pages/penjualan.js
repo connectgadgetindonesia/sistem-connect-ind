@@ -515,7 +515,7 @@ export default function Penjualan() {
                 buyerTab === 'customer' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
               }`}
             >
-              Customer Lama
+              Customer Baru/Lama
             </button>
             <button
               type="button"
