@@ -4,9 +4,6 @@ import { supabase } from '@/lib/supabaseClient'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
-// ✅ normalisasi title biar gak dobel (trim + rapikan spasi + uppercase)
-const normTitle = (v) => String(v || '').trim().replace(/\s+/g, ' ').toUpperCase()
-
 /** Daftar tugas harian + tambahan mingguan */
 function buildTasksFor(dateISO) {
   const d = new Date(dateISO)
@@ -30,8 +27,7 @@ function buildTasksFor(dateISO) {
   if (day === 3) base.push('BERSIHKAN KAMAR MANDI') // Rabu
   if (day === 5) base.push('LAP KACA DEPAN') // Jumat
 
-  // ✅ unique + normalisasi
-  return Array.from(new Set(base.map(normTitle))).filter(Boolean)
+  return Array.from(new Set(base.map((t) => t.toUpperCase())))
 }
 
 function fmtTimeID(ts) {
@@ -59,14 +55,11 @@ export default function AbsenTugasKaryawan() {
   const [selectedDate, setSelectedDate] = useState(todayStr())
   const isToday = selectedDate === todayStr()
 
-  // ----- MOUNT: load data untuk tanggal default -----
+  // ----- MOUNT: ambil data tanggal default -----
   useEffect(() => {
     ;(async () => {
       await loadAbsensi(selectedDate)
       await loadTasks(selectedDate)
-      if (selectedDate === todayStr()) {
-        await ensureTasksIfNeeded(selectedDate)
-      }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -76,6 +69,7 @@ export default function AbsenTugasKaryawan() {
     ;(async () => {
       await loadAbsensi(selectedDate)
       await loadTasks(selectedDate)
+      // Jangan generate tugas kalau bukan hari ini
       if (isToday) {
         await ensureTasksIfNeeded(selectedDate)
       }
@@ -93,9 +87,12 @@ export default function AbsenTugasKaryawan() {
 
   // ---------- ABSENSI ----------
   async function loadAbsensi(tgl) {
-    const { data, error } = await supabase.from('absensi_karyawan').select('*').eq('tanggal', tgl).order('nama', {
-      ascending: true,
-    })
+    const { data, error } = await supabase
+      .from('absensi_karyawan')
+      .select('*')
+      .eq('tanggal', tgl)
+      .order('nama', { ascending: true })
+
     if (!error) setAbsenList(data || [])
   }
 
@@ -117,7 +114,9 @@ export default function AbsenTugasKaryawan() {
 
     if (exist) {
       alert(
-        `${namaVal} sudah absen hari ini (Shift ${exist.shift}${exist.jam_absen ? `, jam ${exist.jam_absen}` : ''}).`
+        `${namaVal} sudah absen hari ini (Shift ${exist.shift}${
+          exist.jam_absen ? `, jam ${exist.jam_absen}` : ''
+        }).`
       )
       return
     }
@@ -127,7 +126,9 @@ export default function AbsenTugasKaryawan() {
       .insert({ nama: namaVal, shift, status, tanggal: selectedDate, jam_absen: jamNow })
 
     if (res.error) {
-      await supabase.from('absensi_karyawan').insert({ nama: namaVal, shift, status, tanggal: selectedDate })
+      await supabase
+        .from('absensi_karyawan')
+        .insert({ nama: namaVal, shift, status, tanggal: selectedDate })
     }
 
     setNama('')
@@ -164,11 +165,7 @@ export default function AbsenTugasKaryawan() {
 
     const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
-    const { error } = await supabase
-      .from('absensi_karyawan')
-      .update({ jam_pulang: jamNow })
-      .eq('id', row.id)
-      .eq('tanggal', selectedDate)
+    const { error } = await supabase.from('absensi_karyawan').update({ jam_pulang: jamNow }).eq('id', row.id).eq('tanggal', selectedDate)
 
     if (error) {
       alert('Gagal menyimpan absen pulang')
@@ -179,14 +176,13 @@ export default function AbsenTugasKaryawan() {
   }
 
   // ---------- TUGAS ----------
-  const hadirNames = useMemo(() => (absenList || []).filter((a) => a.status === 'Hadir').map((a) => a.nama), [absenList])
+  const hadirNames = useMemo(
+    () => (absenList || []).filter((a) => a.status === 'Hadir').map((a) => a.nama),
+    [absenList]
+  )
 
   async function loadTasks(tgl) {
-    const { data, error } = await supabase
-      .from('tugas_harian')
-      .select('*')
-      .eq('task_date', tgl)
-      .order('created_at', { ascending: true })
+    const { data, error } = await supabase.from('tugas_harian').select('*').eq('task_date', tgl).order('created_at', { ascending: true })
 
     if (!error) {
       setTasks(data || [])
@@ -198,9 +194,9 @@ export default function AbsenTugasKaryawan() {
     }
   }
 
-  /** ✅ Generate tugas aman (anti dobel) — HARI INI SAJA */
+  /** Jika ada minimal 1 "Hadir" dan belum ada tugas → generate otomatis (HARI INI SAJA). */
   async function ensureTasksIfNeeded(tgl) {
-    if (tgl !== todayStr()) return
+    if (tgl !== todayStr()) return // history: jangan generate
 
     const adaHadir = (absenList || []).some((a) => a.status === 'Hadir')
     if (!adaHadir) {
@@ -208,41 +204,27 @@ export default function AbsenTugasKaryawan() {
       return
     }
 
-    // ✅ ambil semua existing title untuk tanggal itu
-    const { data: existingAll, error: exErr } = await supabase
-      .from('tugas_harian')
-      .select('id, title')
-      .eq('task_date', tgl)
+    const { data: existing, error: exErr } = await supabase.from('tugas_harian').select('id').eq('task_date', tgl).limit(1)
 
-    if (exErr) {
-      alert('Gagal cek tugas existing: ' + exErr.message)
-      return
-    }
-
-    const existingSet = new Set((existingAll || []).map((x) => normTitle(x.title)))
-
-    const titles = buildTasksFor(tgl)
-    const rowsToInsert = titles
-      .map(normTitle)
-      .filter((t) => t && !existingSet.has(t))
-      .map((t) => ({
-        task_date: tgl,
-        title: t,
-        status: 'todo',
-        added_manually: false,
-      }))
-
-    if (rowsToInsert.length === 0) {
+    if (!exErr && existing && existing.length > 0) {
       await loadTasks(tgl)
       return
     }
 
-    const { error } = await supabase.from('tugas_harian').insert(rowsToInsert)
+    const titles = buildTasksFor(tgl)
+    const rows = titles.map((t) => ({
+      task_date: tgl,
+      title: t,
+      status: 'todo',
+      added_manually: false,
+    }))
+
+    const { error } = await supabase.from('tugas_harian').upsert(rows, { onConflict: 'task_date,title' })
+
     if (error) {
       alert('Gagal membuat tugas: ' + error.message)
       return
     }
-
     await loadTasks(tgl)
   }
 
@@ -251,6 +233,7 @@ export default function AbsenTugasKaryawan() {
 
     const next = task.status === 'done' ? 'todo' : 'done'
 
+    // Jika mau set DONE, wajib ada assignee dari dropdown
     const chosenAssignee = (assigneeMap[task.id] || '').toString().trim().toUpperCase()
     if (next === 'done' && !chosenAssignee) {
       alert('Pilih dulu "Dikerjakan oleh" sebelum menandai tugas selesai.')
@@ -278,30 +261,13 @@ export default function AbsenTugasKaryawan() {
   async function addManualTask() {
     if (!isToday) return alert('Tambah tugas hanya untuk HARI INI.')
     if (!newTaskTitle.trim()) return
-
-    const title = normTitle(newTaskTitle)
-    if (!title) return
-
-    // ✅ anti dobel manual
-    const { data: exist, error: eErr } = await supabase
-      .from('tugas_harian')
-      .select('id')
-      .eq('task_date', selectedDate)
-      .eq('title', title)
-      .maybeSingle()
-
-    if (!eErr && exist) {
-      alert('Tugas ini sudah ada.')
-      setNewTaskTitle('')
-      return
-    }
+    const title = newTaskTitle.trim().toUpperCase()
 
     const { error } = await supabase
       .from('tugas_harian')
-      .insert([{ task_date: selectedDate, title, status: 'todo', added_manually: true }])
+      .upsert([{ task_date: selectedDate, title, status: 'todo', added_manually: true }], { onConflict: 'task_date,title' })
 
     if (error) return alert('Gagal menambah tugas: ' + error.message)
-
     setNewTaskTitle('')
     await loadTasks(selectedDate)
   }
@@ -319,19 +285,12 @@ export default function AbsenTugasKaryawan() {
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h1 className="text-xl font-bold">Absensi & Tugas Harian</h1>
-            <div className="text-sm text-gray-600">
-              Mode: {isToday ? <b>Hari Ini</b> : <b>Laporan (Read-only)</b>}
-            </div>
+            <div className="text-sm text-gray-600">Mode: {isToday ? <b>Hari Ini</b> : <b>Laporan (Read-only)</b>}</div>
           </div>
 
           {/* ====== History Picker ====== */}
           <div className="flex items-center gap-2">
-            <input
-              type="date"
-              className="border p-2 rounded"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
+            <input type="date" className="border p-2 rounded" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
             <button
               className="border px-3 py-2 rounded"
               onClick={async () => {
@@ -418,6 +377,7 @@ export default function AbsenTugasKaryawan() {
                       onClick={() => handleAbsenPulang(row)}
                       disabled={!isToday || row.status !== 'Hadir'}
                       title={!isToday ? 'History mode (read-only)' : row.status !== 'Hadir' ? 'Hanya untuk yang Hadir' : ''}
+                      type="button"
                     >
                       {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
                     </button>
@@ -440,6 +400,7 @@ export default function AbsenTugasKaryawan() {
                 await loadTasks(selectedDate)
               }}
               title={!isToday ? 'History mode (read-only)' : ''}
+              type="button"
             >
               Muat Ulang
             </button>
