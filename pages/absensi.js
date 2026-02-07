@@ -261,34 +261,82 @@ export default function AbsenTugasKaryawan() {
     setTasks(filtered)
   }
 
-  async function ensureTasksIfNeeded(tgl) {
-    if (tgl !== todayStr()) return
-    if (ensureLockRef.current) return
+  aasync function ensureTasksIfNeeded(tgl) {
+  if (tgl !== todayStr()) return
+  if (ensureLockRef.current) return
 
-    const adaHadir = (absenList || []).some((a) => a.status === 'Hadir')
-    if (!adaHadir) {
-      setTasks([])
-      return
-    }
+  const adaHadir = (absenList || []).some((a) => a.status === 'Hadir')
+  if (!adaHadir) {
+    setTasks([])
+    return
+  }
 
-    ensureLockRef.current = true
-    try {
-      const titles = buildTasksFor(tgl)
-      const rows = titles.map((t) => ({
-        task_date: tgl,
-        title: t,
-        status: 'todo',
-        added_manually: false,
-      }))
+  ensureLockRef.current = true
+  try {
+    // ✅ bersihin duplikat dulu (penting)
+    await cleanupTaskDupes(tgl)
 
-      const { error } = await supabase.from('tugas_harian').upsert(rows, { onConflict: 'task_date,title' })
-      if (error) console.warn('ensureTasksIfNeeded warning:', error.message)
+    const titles = buildTasksFor(tgl)
+    const rows = titles.map((t) => ({
+      task_date: tgl,
+      title: t,
+      status: 'todo',
+      added_manually: false,
+    }))
 
-      await loadTasks(tgl)
-    } finally {
-      ensureLockRef.current = false
+    const { error } = await supabase
+      .from('tugas_harian')
+      .upsert(rows, { onConflict: 'task_date,title' })
+
+    if (error) console.warn('ensureTasksIfNeeded warning:', error.message)
+
+    // ✅ reload dari DB
+    await loadTasks(tgl)
+  } finally {
+    ensureLockRef.current = false
+  }
+}
+
+async function cleanupTaskDupes(tgl) {
+  // ambil semua task tanggal ini
+  const { data, error } = await supabase
+    .from('tugas_harian')
+    .select('id,title,status,added_manually,task_date')
+    .eq('task_date', tgl)
+
+  if (error) return
+
+  const canonMap = canonicalMapFor(tgl)
+  const allowedNormSet = new Set(canonMap.keys())
+
+  // group otomatis by normalized title (hanya yg canonical group)
+  const groups = new Map() // norm -> [rows]
+  for (const r of (data || [])) {
+    if (r.added_manually === true) continue
+    const nt = normalizeTitle(r.title)
+    if (!allowedNormSet.has(nt)) continue
+    if (!groups.has(nt)) groups.set(nt, [])
+    groups.get(nt).push(r)
+  }
+
+  const toDeleteIds = []
+  for (const [nt, rows] of groups.entries()) {
+    if (rows.length <= 1) continue
+
+    // pilih yang "done" kalau ada, kalau tidak pilih yang paling pertama
+    const pick =
+      rows.find((x) => (x.status || 'todo') === 'done') ||
+      rows[0]
+
+    for (const r of rows) {
+      if (r.id !== pick.id) toDeleteIds.push(r.id)
     }
   }
+
+  if (toDeleteIds.length > 0) {
+    await supabase.from('tugas_harian').delete().in('id', toDeleteIds)
+  }
+}
 
   async function addManualTask() {
     if (!isToday) return alert('Tambah tugas hanya untuk HARI INI.')
@@ -320,26 +368,48 @@ export default function AbsenTugasKaryawan() {
   }
 
   async function confirmWork() {
-    if (!workTask) return
-    const who = (workAssignee || '').trim().toUpperCase()
-    if (!who) return alert('Pilih siapa yang mengerjakan.')
+  if (!workTask) return
+  const who = (workAssignee || '').trim().toUpperCase()
+  if (!who) return alert('Pilih siapa yang mengerjakan.')
 
-    const payload = {
-      status: 'done',
-      done_at: new Date().toISOString(),
-      done_by: who,
-      assignee: who,
-    }
-
-    const { error } = await supabase.from('tugas_harian').update(payload).eq('id', workTask.id)
-    if (error) return alert('Gagal menyimpan: ' + error.message)
-
-    // langsung hilang dari list (hari ini)
-    setTasks((prev) => prev.filter((t) => t.id !== workTask.id))
-    setWorkModal(false)
-    setWorkTask(null)
-    setWorkAssignee('')
+  const payload = {
+    status: 'done',
+    done_at: new Date().toISOString(),
+    done_by: who,
+    assignee: who,
   }
+
+  // ✅ 1) update by id (normal)
+  let upd = null
+  if (workTask.id) {
+    upd = await supabase.from('tugas_harian').update(payload).eq('id', workTask.id)
+  }
+
+  // ✅ 2) fallback kalau id tidak ada / update gagal:
+  // update by task_date + title (lebih aman)
+  if (!upd || upd.error) {
+    const tgl = workTask.task_date || selectedDate
+    const title = (workTask.title || '').trim()
+    const upd2 = await supabase
+      .from('tugas_harian')
+      .update(payload)
+      .eq('task_date', tgl)
+      .eq('title', title)
+
+    if (upd2.error) {
+      console.error('confirmWork update failed:', upd?.error || upd2.error)
+      return alert('Gagal menyimpan status DONE ke database. Cek RLS/permission tabel tugas_harian.')
+    }
+  }
+
+  // ✅ 3) reload dari DB biar fix 100% (ini yang bikin refresh ga balik lagi)
+  await loadTasks(selectedDate)
+
+  setWorkModal(false)
+  setWorkTask(null)
+  setWorkAssignee('')
+}
+
 
   // ========= ABSEN PULANG (SHIFT RULE) =========
   async function handleAbsenPulang(row) {
