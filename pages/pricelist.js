@@ -197,6 +197,11 @@ export default function PricelistPage() {
     alert('Gagal download JPG. Error: ' + (e?.message || String(e)))
   }
 }
+useEffect(() => {
+  boot()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
+
 
 
   async function boot(nextActive) {
