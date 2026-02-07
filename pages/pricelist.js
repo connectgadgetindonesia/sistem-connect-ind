@@ -91,6 +91,9 @@ export default function PricelistPage() {
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState(new Set())
 
+  // ✅ SORT BY (default abjad A-Z)
+  const [sortBy, setSortBy] = useState('name_asc')
+
   const [showSetting, setShowSetting] = useState(false)
   const [settingKategori, setSettingKategori] = useState('')
   const [setting, setSetting] = useState({
@@ -117,160 +120,214 @@ export default function PricelistPage() {
   // ===== Download JPG =====
   const printRef = useRef(null)
 
-async function downloadJpgKategori() {
-  try {
-    const mod = await import('html2canvas')
-    const html2canvas = mod.default
+  // ✅ SEARCH + SORT (dipakai untuk tabel & download)
+  const filteredRows = useMemo(() => {
+    const q = String(search || '').trim().toLowerCase()
+    let arr = rows
 
-    const kategori = activeKategori || 'Kategori'
-    const rowsData = (filteredRows || []).map((r) => ({
-      id: r.id,
-      nama: String(r.nama_produk || '').toUpperCase(),
-      harga: formatRp(r.harga_offline),
-    }))
-
-    if (!rowsData.length) return alert('Tidak ada data untuk didownload.')
-
-    // ====== SETTING 9:16 ======
-    const W = 1080
-    const H = 1920
-
-    // kapasitas baris per halaman (aman untuk berbagai device)
-    const ITEMS_PER_PAGE = 18
-
-    const chunks = []
-    for (let i = 0; i < rowsData.length; i += ITEMS_PER_PAGE) {
-      chunks.push(rowsData.slice(i, i + ITEMS_PER_PAGE))
+    if (q) {
+      arr = arr.filter((r) => String(r.nama_produk || '').toLowerCase().includes(q))
     }
 
-    const tanggal = new Date().toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })
+    const copy = [...arr]
+    const byName = (a, b) =>
+      String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''), 'id', { sensitivity: 'base' })
+    const byPrice = (a, b) => toNumber(a.harga_offline) - toNumber(b.harga_offline)
 
-    // helper bikin 1 halaman
-    const renderPage = async (items, pageIndex, totalPages) => {
-      const wrap = document.createElement('div')
-      wrap.style.position = 'fixed'
-      wrap.style.left = '-99999px'
-      wrap.style.top = '0'
-      wrap.style.width = W + 'px'
-      wrap.style.height = H + 'px'
-      wrap.style.background = '#ffffff'
-      wrap.style.fontFamily = 'Arial, sans-serif'
-      wrap.style.color = '#0f172a'
-      wrap.style.overflow = 'hidden'
+    switch (sortBy) {
+      case 'name_desc':
+        copy.sort((a, b) => -byName(a, b))
+        break
+      case 'price_asc':
+        copy.sort((a, b) => byPrice(a, b))
+        break
+      case 'price_desc':
+        copy.sort((a, b) => -byPrice(a, b))
+        break
+      case 'name_asc':
+      default:
+        copy.sort((a, b) => byName(a, b))
+        break
+    }
 
-      // ====== TEMPLATE 9:16 ======
-      wrap.innerHTML = `
-        <div style="
-          height: 260px;
-          padding: 44px 48px;
-          color: #ffffff;
-          background: linear-gradient(135deg, #0b1220 0%, #111827 55%, #0f172a 100%);
-          position: relative;
-        ">
-          <div style="font-size: 22px; letter-spacing: 2px; opacity: .9; font-weight: 800;">
-            CONNECT.IND • PRICELIST
-          </div>
+    return copy
+  }, [rows, search, sortBy])
 
-          <div style="margin-top: 18px; font-size: 72px; font-weight: 900; line-height: 1;">
-            ${String(kategori)}
-          </div>
+  async function downloadJpgKategori() {
+    try {
+      const mod = await import('html2canvas')
+      const html2canvas = mod.default
 
-          <div style="margin-top: 14px; font-size: 26px; opacity: .9; font-weight: 700;">
-            Update: ${tanggal}
-          </div>
+      const kategori = activeKategori || 'Kategori'
+      // ✅ pakai filteredRows (sudah include sort)
+      const rowsData = (filteredRows || []).map((r) => ({
+        id: r.id,
+        nama: String(r.nama_produk || '').toUpperCase(),
+        harga: formatRp(r.harga_offline),
+      }))
 
-          <div style="position:absolute; right:48px; top:44px; text-align:right;">
-            <div style="font-size: 22px; opacity:.9; font-weight:800;">Harga Offline</div>
-            <div style="font-size: 28px; font-weight:900;">Semarang</div>
-            ${
-              totalPages > 1
-                ? `<div style="margin-top:10px; font-size:18px; opacity:.9; font-weight:800;">${pageIndex + 1}/${totalPages}</div>`
-                : ''
-            }
-          </div>
-        </div>
+      if (!rowsData.length) return alert('Tidak ada data untuk didownload.')
 
-        <div style="padding: 34px 36px;">
+      // ====== SETTING 9:16 ======
+      const W = 1080
+      const H = 1920
+
+      // SAFE AREA biar bawah rapi dan tidak “kepotong”
+      const PAD = 64
+      const HEADER_H = 260
+      const FOOTER_H = 140
+      const TABLE_HEAD_H = 74
+      const ROW_H = 86
+
+      const tableAreaH = H - (PAD * 2) - HEADER_H - FOOTER_H - TABLE_HEAD_H
+      const ITEMS_PER_PAGE = Math.max(1, Math.floor(tableAreaH / ROW_H))
+
+      const chunks = []
+      for (let i = 0; i < rowsData.length; i += ITEMS_PER_PAGE) {
+        chunks.push(rowsData.slice(i, i + ITEMS_PER_PAGE))
+      }
+
+      // format tanggal: 07 Feb 2026
+      const now = new Date()
+      const month = now.toLocaleString('id-ID', { month: 'short' })
+      const day = String(now.getDate()).padStart(2, '0')
+      const year = now.getFullYear()
+      const tanggal = `${day} ${month} ${year}`
+
+      // helper bikin 1 halaman
+      const renderPage = async (items, pageIndex, totalPages) => {
+        const wrap = document.createElement('div')
+        wrap.style.position = 'fixed'
+        wrap.style.left = '-99999px'
+        wrap.style.top = '0'
+        wrap.style.width = W + 'px'
+        wrap.style.height = H + 'px'
+        wrap.style.background = '#ffffff'
+        wrap.style.fontFamily = 'Arial, sans-serif'
+        wrap.style.color = '#0f172a'
+        wrap.style.overflow = 'hidden'
+        wrap.style.borderRadius = '28px'
+
+        wrap.innerHTML = `
           <div style="
-            border: 1px solid #e5e7eb;
-            border-radius: 22px;
-            overflow: hidden;
-            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+            height:${HEADER_H}px;
+            padding:${PAD}px;
+            color:#ffffff;
+            background: linear-gradient(135deg, #0b1220 0%, #111827 55%, #0f172a 100%);
+            position: relative;
           ">
-            <div style="display:flex; background:#f1f5f9; border-bottom:1px solid #e5e7eb;">
-              <div style="flex:1; padding: 20px 22px; font-size: 22px; font-weight: 900;">Nama Produk</div>
-              <div style="width: 320px; padding: 20px 22px; font-size: 22px; font-weight: 900; text-align:right;">Harga</div>
+            <div style="font-size:18px; letter-spacing:2px; opacity:.9; font-weight:800;">
+              CONNECT.IND • PRICELIST
             </div>
 
-            <div>
-              ${items
-                .map(
-                  (x) => `
-                <div style="display:flex; border-top:1px solid #e5e7eb; background:#ffffff;">
-                  <div style="flex:1; padding: 22px 22px; font-size: 24px; font-weight: 900; letter-spacing: .2px;">
-                    ${x.nama}
-                  </div>
-                  <div style="width: 320px; padding: 22px 22px; font-size: 28px; font-weight: 900; text-align:right;">
-                    ${x.harga}
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
+            <div style="margin-top:18px; font-size:72px; font-weight:900; line-height:1;">
+              ${String(kategori)}
+            </div>
+
+            <div style="margin-top:14px; font-size:26px; opacity:.9; font-weight:700;">
+              Update: <b>${tanggal}</b>
+            </div>
+
+            <div style="position:absolute; right:${PAD}px; top:${PAD}px; text-align:right;">
+              <div style="font-size:18px; opacity:.9; font-weight:800;">Harga Offline</div>
+              <div style="font-size:34px; font-weight:900;">Semarang</div>
+              ${
+                totalPages > 1
+                  ? `<div style="margin-top:10px; font-size:18px; opacity:.9; font-weight:800;">${pageIndex + 1}/${totalPages}</div>`
+                  : ''
+              }
             </div>
           </div>
 
-          <div style="margin-top: 26px; display:flex; justify-content:space-between; align-items:center; color:#64748b;">
-            <div style="font-size: 20px; font-weight: 700;">Harga dapat berubah sewaktu-waktu.</div>
-            <div style="font-size: 20px; font-weight: 900;">CONNECT.IND</div>
+          <div style="padding:${PAD}px;">
+            <div style="
+              border:1px solid #e5e7eb;
+              border-radius:22px;
+              overflow:hidden;
+              box-shadow: 0 6px 20px rgba(15,23,42,0.06);
+              background:#fff;
+            ">
+              <div style="display:flex; background:#f1f5f9; border-bottom:1px solid #e5e7eb;">
+                <div style="flex:1; padding:18px 20px; font-size:20px; font-weight:900;">Nama Produk</div>
+                <div style="width:320px; padding:18px 20px; font-size:20px; font-weight:900; text-align:right;">Harga</div>
+              </div>
+
+              <div>
+                ${items
+                  .map(
+                    (x) => `
+                  <div style="display:flex; border-top:1px solid #e5e7eb; background:#ffffff;">
+                    <div style="flex:1; padding:20px 20px; font-size:22px; font-weight:900; letter-spacing:.2px;">
+                      ${x.nama}
+                    </div>
+                    <div style="width:320px; padding:20px 20px; font-size:26px; font-weight:900; text-align:right;">
+                      ${x.harga}
+                    </div>
+                  </div>
+                `
+                  )
+                  .join('')}
+              </div>
+            </div>
           </div>
-        </div>
-      `
 
-      document.body.appendChild(wrap)
+          <!-- ✅ FOOTER FIXED: batas bawah rapi / margin aman -->
+          <div style="
+            position:absolute;
+            left:0; right:0; bottom:0;
+            height:${FOOTER_H}px;
+            padding: 0 ${PAD}px ${PAD}px ${PAD}px;
+            display:flex;
+            align-items:flex-end;
+            justify-content:space-between;
+            color:#64748b;
+            font-size:20px;
+            font-weight:700;
+            background: transparent;
+          ">
+            <div>Harga dapat berubah sewaktu-waktu.</div>
+            <div style="font-weight:900;">CONNECT.IND</div>
+          </div>
+        `
 
-      const canvas = await html2canvas(wrap, {
-        scale: 2, // biar tajem
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        width: W,
-        height: H,
-        windowWidth: W,
-        windowHeight: H,
-      })
+        document.body.appendChild(wrap)
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-      const a = document.createElement('a')
-      const safeKategori = String(kategori).replace(/\s+/g, '-')
-      const suffix = totalPages > 1 ? `-${pageIndex + 1}` : ''
-      a.href = dataUrl
-      a.download = `Pricelist-${safeKategori}${suffix}.jpg`
-      a.click()
+        const canvas = await html2canvas(wrap, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          width: W,
+          height: H,
+          windowWidth: W,
+          windowHeight: H,
+        })
 
-      wrap.remove()
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+        const a = document.createElement('a')
+        const safeKategori = String(kategori).replace(/\s+/g, '-')
+        const suffix = totalPages > 1 ? `-${pageIndex + 1}` : ''
+        a.href = dataUrl
+        a.download = `Pricelist-${safeKategori}${suffix}.jpg`
+        a.click()
+
+        wrap.remove()
+      }
+
+      // download semua halaman
+      for (let i = 0; i < chunks.length; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await renderPage(chunks[i], i, chunks.length)
+      }
+    } catch (e) {
+      console.error('downloadJpgKategori error:', e)
+      alert('Gagal download JPG. Error: ' + (e?.message || String(e)))
     }
-
-    // download semua halaman
-    for (let i = 0; i < chunks.length; i++) {
-      // eslint-disable-next-line no-await-in-loop
-      await renderPage(chunks[i], i, chunks.length)
-    }
-  } catch (e) {
-    console.error('downloadJpgKategori error:', e)
-    alert('Gagal download JPG. Error: ' + (e?.message || String(e)))
   }
-}
 
-useEffect(() => {
-  boot()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [])
-
-
+  useEffect(() => {
+    boot()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function boot(nextActive) {
     try {
@@ -346,12 +403,6 @@ useEffect(() => {
       setLoading(false)
     }
   }
-
-  const filteredRows = useMemo(() => {
-    const q = String(search || '').trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) => String(r.nama_produk || '').toLowerCase().includes(q))
-  }, [rows, search])
 
   function toggleSelectAll(checked) {
     if (!checked) return setSelectedIds(new Set())
@@ -804,7 +855,20 @@ useEffect(() => {
               style={{ ...input, maxWidth: 340 }}
             />
 
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              {/* ✅ SORT BY */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                style={{ ...input, width: 220 }}
+                title="Urutkan data"
+              >
+                <option value="name_asc">Abjad (A–Z)</option>
+                <option value="name_desc">Abjad (Z–A)</option>
+                <option value="price_desc">Harga (Tertinggi)</option>
+                <option value="price_asc">Harga (Terendah)</option>
+              </select>
+
               <button
                 onClick={downloadJpgKategori}
                 style={btnOutline}
