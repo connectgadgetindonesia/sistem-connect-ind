@@ -3,6 +3,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
 
+const toDecimal = (v) => {
+  if (typeof v === 'number') return v
+  const s = String(v ?? '').trim()
+  if (!s) return 0
+  // support "8,5" atau "8.5"
+  const norm = s.replace(',', '.').replace(/[^\d.-]/g, '')
+  const n = Number(norm)
+  return Number.isFinite(n) ? n : 0
+}
+
+const formatRpInput = (v) => {
+  const n = toNumber(v)
+  return n ? 'Rp ' + n.toLocaleString('id-ID') : ''
+}
+
 const toNumber = (v) =>
   typeof v === 'number'
     ? v
@@ -13,10 +28,11 @@ const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 // hitung harga platform: offline * (1 + pajak%) + biaya_flat
 function calcPlatform(offline, pajakPct, biayaFlat) {
   const base = toNumber(offline)
-  const pct = Number(pajakPct || 0) / 100
+  const pct = toDecimal(pajakPct) / 100
   const flat = toNumber(biayaFlat)
   return Math.round(base * (1 + pct) + flat)
 }
+
 
 function normalizeKategoriLabel(x) {
   const s = String(x || '').trim()
@@ -236,12 +252,13 @@ setNewKategori('')
 
     if (error) {
       console.error('loadSetting error:', error)
-      setSetting({
-        tokped_pajak_pct: 0,
-        tokped_biaya_flat: 0,
-        shopee_pajak_pct: 0,
-        shopee_biaya_flat: 0,
-      })
+     setSetting({
+  tokped_pajak_pct: toDecimal(data?.tokped_pajak_pct ?? 0),
+  tokped_biaya_flat: toNumber(data?.tokped_biaya_flat ?? 0),
+  shopee_pajak_pct: toDecimal(data?.shopee_pajak_pct ?? 0),
+  shopee_biaya_flat: toNumber(data?.shopee_biaya_flat ?? 0),
+})
+
       return
     }
 
@@ -252,37 +269,95 @@ setNewKategori('')
       shopee_biaya_flat: toNumber(data?.shopee_biaya_flat ?? 0),
     })
   }
+async function applySettingToKategori(kategori) {
+  const k = kategori || activeKategori
+  if (!k) return
 
-  async function saveSetting() {
-    const k = settingKategori || activeKategori
-    if (!k) return alert('Kategori belum dipilih.')
+  // ambil setting terbaru
+  const { data: sData, error: sErr } = await supabase
+    .from('pricelist_setting')
+    .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+    .eq('kategori', k)
+    .maybeSingle()
 
-    try {
-      setSavingSetting(true)
+  if (sErr) {
+    console.error('applySetting load error:', sErr)
+    throw new Error('Gagal load setting.')
+  }
 
-      const payload = {
-        kategori: k,
-        tokped_pajak_pct: Number(setting.tokped_pajak_pct || 0),
-        tokped_biaya_flat: toNumber(setting.tokped_biaya_flat),
-        shopee_pajak_pct: Number(setting.shopee_pajak_pct || 0),
-        shopee_biaya_flat: toNumber(setting.shopee_biaya_flat),
-      }
+  const tokPct = toDecimal(sData?.tokped_pajak_pct ?? 0)
+  const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
+  const shpPct = toDecimal(sData?.shopee_pajak_pct ?? 0)
+  const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
 
-      const { error } = await supabase
-        .from('pricelist_setting')
-        .upsert(payload, { onConflict: 'kategori' })
+  // ambil semua produk kategori tsb
+  const { data: pData, error: pErr } = await supabase
+    .from('pricelist')
+    .select('id, harga_offline')
+    .eq('kategori', k)
 
-      if (error) {
-        console.error('saveSetting error:', error)
-        alert('Gagal simpan setting.')
-        return
-      }
+  if (pErr) {
+    console.error('applySetting fetch products error:', pErr)
+    throw new Error('Gagal ambil data produk.')
+  }
 
-      alert('Setting tersimpan.')
-    } finally {
-      setSavingSetting(false)
+  const products = pData || []
+  for (const r of products) {
+    const offline = toNumber(r.harga_offline)
+    const harga_tokopedia = calcPlatform(offline, tokPct, tokFlat)
+    const harga_shopee = calcPlatform(offline, shpPct, shpFlat)
+
+    const { error: uErr } = await supabase
+      .from('pricelist')
+      .update(buildPlatformPayload({ harga_tokopedia, harga_shopee }))
+      .eq('id', r.id)
+
+    if (uErr) {
+      console.error('applySetting update error:', uErr)
+      throw new Error('Ada produk gagal diupdate.')
     }
   }
+}
+
+  async function saveSetting() {
+  const k = settingKategori || activeKategori
+  if (!k) return alert('Kategori belum dipilih.')
+
+  try {
+    setSavingSetting(true)
+
+    const payload = {
+      kategori: k,
+      tokped_pajak_pct: toDecimal(setting.tokped_pajak_pct || 0),
+      tokped_biaya_flat: toNumber(setting.tokped_biaya_flat),
+      shopee_pajak_pct: toDecimal(setting.shopee_pajak_pct || 0),
+      shopee_biaya_flat: toNumber(setting.shopee_biaya_flat),
+    }
+
+    const { error } = await supabase
+      .from('pricelist_setting')
+      .upsert(payload, { onConflict: 'kategori' })
+
+    if (error) {
+      console.error('saveSetting error:', error)
+      alert('Gagal simpan setting.')
+      return
+    }
+
+    // ✅ langsung apply ke data lama
+    await applySettingToKategori(k)
+
+    // refresh list di tab aktif kalau kategorinya sama
+    if (activeKategori === k) await fetchRows(activeKategori)
+
+    alert('Setting tersimpan & harga semua produk kategori sudah diupdate.')
+  } catch (e) {
+    console.error(e)
+    alert('Ada yang gagal update. Cek console.')
+  } finally {
+    setSavingSetting(false)
+  }
+}
 
   // ===== Bulk Edit handlers =====
   function openBulkEdit() {
@@ -737,11 +812,15 @@ setNewKategori('')
                   </div>
                   <div style={fieldRow}>
                     <div style={label}>Biaya flat (Rp)</div>
-                    <input
-                      style={input}
-                      value={String(setting.tokped_biaya_flat ?? 0)}
-                      onChange={(e) => setSetting((p) => ({ ...p, tokped_biaya_flat: e.target.value }))}
-                    />
+                 <input
+  style={input}
+  value={String(setting.tokped_biaya_flat ?? '')}
+  onChange={(e) => setSetting((p) => ({ ...p, tokped_biaya_flat: e.target.value }))}
+  onBlur={() =>
+    setSetting((p) => ({ ...p, tokped_biaya_flat: formatRpInput(p.tokped_biaya_flat) }))
+  }
+/>
+
                   </div>
                 </div>
 
@@ -757,11 +836,15 @@ setNewKategori('')
                   </div>
                   <div style={fieldRow}>
                     <div style={label}>Biaya flat (Rp)</div>
-                    <input
-                      style={input}
-                      value={String(setting.shopee_biaya_flat ?? 0)}
-                      onChange={(e) => setSetting((p) => ({ ...p, shopee_biaya_flat: e.target.value }))}
-                    />
+                <input
+  style={input}
+  value={String(setting.shopee_biaya_flat ?? '')}
+  onChange={(e) => setSetting((p) => ({ ...p, shopee_biaya_flat: e.target.value }))}
+  onBlur={() =>
+    setSetting((p) => ({ ...p, shopee_biaya_flat: formatRpInput(p.shopee_biaya_flat) }))
+  }
+/>
+
                   </div>
                 </div>
               </div>
