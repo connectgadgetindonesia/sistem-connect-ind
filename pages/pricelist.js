@@ -105,42 +105,49 @@ export default function PricelistPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function boot() {
-    try {
-      setLoading(true)
+  async function boot(nextActive) {
+  try {
+    setLoading(true)
 
-      const { data: kData, error: kErr } = await supabase
-        .from('pricelist_kategori')
-        .select('nama')
-        .order('nama', { ascending: true })
+    // 1) ambil dari tabel kategori
+    const { data: kData, error: kErr } = await supabase
+      .from('pricelist_kategori')
+      .select('nama')
+      .order('nama', { ascending: true })
 
-      if (kErr) console.error('load kategori error:', kErr)
+    if (kErr) console.error('load kategori error:', kErr)
 
-      const list = (kData || [])
-        .map((x) => normalizeKategoriLabel(x.nama))
-        .filter(Boolean)
+    const listFromKategori = (kData || [])
+      .map((x) => normalizeKategoriLabel(x.nama))
+      .filter(Boolean)
 
-      // fallback: kalau tabel kategori kosong, ambil distinct dari pricelist
-      let finalList = list
-      if (!finalList.length) {
-        const { data: d2, error: e2 } = await supabase.from('pricelist').select('kategori')
-        if (!e2) {
-          const uniq = new Set(
-            (d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean)
-          )
-          finalList = Array.from(uniq).sort((a, b) => a.localeCompare(b))
-        }
-      }
+    // 2) ambil distinct dari tabel pricelist (buat jaga-jaga biar tab gak pernah hilang)
+    const { data: d2, error: e2 } = await supabase.from('pricelist').select('kategori')
+    if (e2) console.error('load distinct kategori error:', e2)
 
-      setKategoriList(finalList)
-      const first = finalList[0] || ''
-      setActiveKategori(first)
-      setForm((p) => ({ ...p, kategori: first }))
-      setSettingKategori(first)
-    } finally {
-      setLoading(false)
-    }
+    const listFromPricelist = Array.from(
+      new Set((d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean))
+    )
+
+    // 3) gabungkan & sort
+    const merged = Array.from(new Set([...listFromKategori, ...listFromPricelist])).sort((a, b) =>
+      a.localeCompare(b)
+    )
+
+    setKategoriList(merged)
+
+    // 4) tentukan active kategori tanpa ngereset sembarangan
+    const keep = normalizeKategoriLabel(nextActive || activeKategori || form.kategori)
+    const finalActive = merged.includes(keep) ? keep : merged[0] || ''
+
+    setActiveKategori(finalActive)
+    setForm((p) => ({ ...p, kategori: finalActive }))
+    setSettingKategori(finalActive)
+  } finally {
+    setLoading(false)
   }
+}
+
 
   useEffect(() => {
     if (!activeKategori) return
@@ -202,12 +209,9 @@ export default function PricelistPage() {
       const { error } = await supabase.from('pricelist_kategori').insert([{ nama }])
       if (error) console.error('addKategori error:', error)
 
-      await boot()
+      await boot(nama) // langsung jadikan kategori baru sebagai active
+setNewKategori('')
 
-      setActiveKategori(nama)
-      setForm((p) => ({ ...p, kategori: nama }))
-      setSettingKategori(nama)
-      setNewKategori('')
     } finally {
       setAddingKategori(false)
     }
