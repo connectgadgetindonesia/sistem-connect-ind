@@ -117,86 +117,154 @@ export default function PricelistPage() {
   // ===== Download JPG =====
   const printRef = useRef(null)
 
- async function downloadJpgKategori() {
+async function downloadJpgKategori() {
   try {
     const mod = await import('html2canvas')
     const html2canvas = mod.default
 
     const kategori = activeKategori || 'Kategori'
-
-    // Data yang didownload: nama produk + harga offline (sesuai requirement)
-    const data = (filteredRows || []).map((r) => ({
+    const rowsData = (filteredRows || []).map((r) => ({
       id: r.id,
       nama: String(r.nama_produk || '').toUpperCase(),
       harga: formatRp(r.harga_offline),
     }))
 
-    if (!data.length) return alert('Tidak ada data untuk didownload.')
+    if (!rowsData.length) return alert('Tidak ada data untuk didownload.')
 
-    // ===== BIKIN DOM KHUSUS (TANPA CSS GLOBAL / TANPA OKLCH) =====
-    const wrap = document.createElement('div')
-    wrap.style.position = 'fixed'
-    wrap.style.left = '-99999px'
-    wrap.style.top = '0'
-    wrap.style.width = '900px'
-    wrap.style.background = '#ffffff'
-    wrap.style.padding = '24px'
-    wrap.style.fontFamily = 'Arial, sans-serif'
-    wrap.style.color = '#0f172a'
-    wrap.style.border = '1px solid #e5e7eb'
-    wrap.style.borderRadius = '12px'
+    // ====== SETTING 9:16 ======
+    const W = 1080
+    const H = 1920
 
-    wrap.innerHTML = `
-      <div style="font-size:18px;font-weight:900;margin-bottom:12px;">
-        PRICE LIST - ${String(kategori).toUpperCase()}
-      </div>
+    // kapasitas baris per halaman (aman untuk berbagai device)
+    const ITEMS_PER_PAGE = 18
 
-      <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="background:#f8fafc;">
-              <th style="text-align:left;padding:10px;font-size:12px;">NAMA PRODUK</th>
-              <th style="text-align:right;padding:10px;font-size:12px;">HARGA OFFLINE</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data
-              .map(
-                (x) => `
-              <tr style="border-top:1px solid #e5e7eb;">
-                <td style="text-align:left;padding:10px;font-size:13px;">${x.nama}</td>
-                <td style="text-align:right;padding:10px;font-size:13px;font-weight:900;">${x.harga}</td>
-              </tr>
-            `
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>
+    const chunks = []
+    for (let i = 0; i < rowsData.length; i += ITEMS_PER_PAGE) {
+      chunks.push(rowsData.slice(i, i + ITEMS_PER_PAGE))
+    }
 
-      <div style="margin-top:10px;font-size:11px;color:#64748b;">CONNECT.IND</div>
-    `
-
-    document.body.appendChild(wrap)
-
-    const canvas = await html2canvas(wrap, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true,
+    const tanggal = new Date().toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
     })
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = `Pricelist-${String(kategori).replace(/\s+/g, '-')}.jpg`
-    a.click()
+    // helper bikin 1 halaman
+    const renderPage = async (items, pageIndex, totalPages) => {
+      const wrap = document.createElement('div')
+      wrap.style.position = 'fixed'
+      wrap.style.left = '-99999px'
+      wrap.style.top = '0'
+      wrap.style.width = W + 'px'
+      wrap.style.height = H + 'px'
+      wrap.style.background = '#ffffff'
+      wrap.style.fontFamily = 'Arial, sans-serif'
+      wrap.style.color = '#0f172a'
+      wrap.style.overflow = 'hidden'
 
-    wrap.remove()
+      // ====== TEMPLATE 9:16 ======
+      wrap.innerHTML = `
+        <div style="
+          height: 260px;
+          padding: 44px 48px;
+          color: #ffffff;
+          background: linear-gradient(135deg, #0b1220 0%, #111827 55%, #0f172a 100%);
+          position: relative;
+        ">
+          <div style="font-size: 22px; letter-spacing: 2px; opacity: .9; font-weight: 800;">
+            CONNECT.IND • PRICELIST
+          </div>
+
+          <div style="margin-top: 18px; font-size: 72px; font-weight: 900; line-height: 1;">
+            ${String(kategori)}
+          </div>
+
+          <div style="margin-top: 14px; font-size: 26px; opacity: .9; font-weight: 700;">
+            Update: ${tanggal}
+          </div>
+
+          <div style="position:absolute; right:48px; top:44px; text-align:right;">
+            <div style="font-size: 22px; opacity:.9; font-weight:800;">Harga Offline</div>
+            <div style="font-size: 28px; font-weight:900;">Semarang</div>
+            ${
+              totalPages > 1
+                ? `<div style="margin-top:10px; font-size:18px; opacity:.9; font-weight:800;">${pageIndex + 1}/${totalPages}</div>`
+                : ''
+            }
+          </div>
+        </div>
+
+        <div style="padding: 34px 36px;">
+          <div style="
+            border: 1px solid #e5e7eb;
+            border-radius: 22px;
+            overflow: hidden;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+          ">
+            <div style="display:flex; background:#f1f5f9; border-bottom:1px solid #e5e7eb;">
+              <div style="flex:1; padding: 20px 22px; font-size: 22px; font-weight: 900;">Nama Produk</div>
+              <div style="width: 320px; padding: 20px 22px; font-size: 22px; font-weight: 900; text-align:right;">Harga</div>
+            </div>
+
+            <div>
+              ${items
+                .map(
+                  (x) => `
+                <div style="display:flex; border-top:1px solid #e5e7eb; background:#ffffff;">
+                  <div style="flex:1; padding: 22px 22px; font-size: 24px; font-weight: 900; letter-spacing: .2px;">
+                    ${x.nama}
+                  </div>
+                  <div style="width: 320px; padding: 22px 22px; font-size: 28px; font-weight: 900; text-align:right;">
+                    ${x.harga}
+                  </div>
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          </div>
+
+          <div style="margin-top: 26px; display:flex; justify-content:space-between; align-items:center; color:#64748b;">
+            <div style="font-size: 20px; font-weight: 700;">Harga dapat berubah sewaktu-waktu.</div>
+            <div style="font-size: 20px; font-weight: 900;">CONNECT.IND</div>
+          </div>
+        </div>
+      `
+
+      document.body.appendChild(wrap)
+
+      const canvas = await html2canvas(wrap, {
+        scale: 2, // biar tajem
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        width: W,
+        height: H,
+        windowWidth: W,
+        windowHeight: H,
+      })
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+      const a = document.createElement('a')
+      const safeKategori = String(kategori).replace(/\s+/g, '-')
+      const suffix = totalPages > 1 ? `-${pageIndex + 1}` : ''
+      a.href = dataUrl
+      a.download = `Pricelist-${safeKategori}${suffix}.jpg`
+      a.click()
+
+      wrap.remove()
+    }
+
+    // download semua halaman
+    for (let i = 0; i < chunks.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await renderPage(chunks[i], i, chunks.length)
+    }
   } catch (e) {
     console.error('downloadJpgKategori error:', e)
     alert('Gagal download JPG. Error: ' + (e?.message || String(e)))
   }
 }
+
 useEffect(() => {
   boot()
   // eslint-disable-next-line react-hooks/exhaustive-deps
