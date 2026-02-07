@@ -194,42 +194,41 @@ export default function AbsenTugasKaryawan() {
     () => (absenList || []).filter((a) => a.status === 'Hadir').map((a) => a.nama),
     [absenList]
   )
+async function loadTasks(tgl) {
+  const { data, error } = await supabase
+    .from('tugas_harian')
+    .select('*')
+    .eq('task_date', tgl)
+    .order('created_at', { ascending: true })
 
-  async function loadTasks(tgl) {
-    const { data, error } = await supabase
-      .from('tugas_harian')
-      .select('*')
-      .eq('task_date', tgl)
-      .order('created_at', { ascending: true })
+  if (error) return
 
-    if (error) return
+  const canonMap = canonicalMapFor(tgl)          // normalized -> canonical
+  const allowedNormSet = new Set(canonMap.keys()) // semua judul allowed versi normalize
 
-    const canonMap = canonicalMapFor(tgl)
-    const allowedSet = new Set(canonMap.keys())
+  // ✅ Aturan baru:
+  // - Otomatis: HARUS persis sama dengan canonical (uppercase versi script)
+  // - Manual: tetap boleh tampil
+  const filtered = (data || []).filter((t) => {
+    if (t.added_manually === true) return true
 
-    // ✅ tampil hanya judul yang termasuk versi script, + manual boleh tampil
-    const filtered = (data || []).filter((t) => {
-      if (t.added_manually === true) return true
-      const nt = normalizeTitle(t.title)
-      return allowedSet.has(nt)
-    })
+    const nt = normalizeTitle(t.title)
+    if (!allowedNormSet.has(nt)) return false
 
-    // ✅ paksa judul tampil versi canonical script (bukan yg dari DB)
-    const normalizedShown = filtered.map((t) => {
-      if (t.added_manually === true) return t
-      const nt = normalizeTitle(t.title)
-      const canonical = canonMap.get(nt)
-      return canonical ? { ...t, title: canonical } : t
-    })
+    const canonical = canonMap.get(nt)
+    // hanya tampil kalau title di DB memang sudah canonical (persis)
+    return (t.title || '').trim() === canonical
+  })
 
-    setTasks(normalizedShown)
+  setTasks(filtered)
 
-    const m = {}
-    normalizedShown.forEach((t) => {
-      if (t.assignee) m[t.id] = t.assignee
-    })
-    setAssigneeMap(m)
-  }
+  const m = {}
+  filtered.forEach((t) => {
+    if (t.assignee) m[t.id] = t.assignee
+  })
+  setAssigneeMap(m)
+}
+
 
   /** Pastikan tugas standar ada (HARI INI SAJA). Ini idempotent: selalu upsert list canonical. */
   async function ensureTasksIfNeeded(tgl) {
