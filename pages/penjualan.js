@@ -5,6 +5,12 @@ import dayjs from 'dayjs'
 import Select from 'react-select'
 
 const toNumber = (v) => (typeof v === 'number' ? v : parseInt(String(v || '0'), 10) || 0)
+const clampInt = (v, min = 1, max = 999) => {
+  const n = parseInt(String(v || '0'), 10)
+  if (!Number.isFinite(n)) return min
+  return Math.max(min, Math.min(max, n))
+}
+
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
 const SKU_OFFICE = 'OFC-365-1'
 
@@ -42,8 +48,11 @@ export default function Penjualan() {
     harga_modal: '',
     garansi: '',
     storage: '',
-    office_username: '' // ⬅️ untuk OFC-365-1 (produk)
+    office_username: '',
+    qty: 1, // ✅ tambah qty (dipakai hanya jika aksesoris)
+    is_aksesoris: false // ✅ auto detect dari DB
   })
+
   const [bonusBaru, setBonusBaru] = useState({
     sn_sku: '',
     nama_produk: '',
@@ -51,8 +60,11 @@ export default function Penjualan() {
     harga_modal: '',
     garansi: '',
     storage: '',
-    office_username: '' // ⬅️ untuk OFC-365-1 (bonus)
+    office_username: '',
+    qty: 1, // ✅ tambah qty (dipakai hanya jika aksesoris)
+    is_aksesoris: false // ✅ auto detect dari DB
   })
+
   const [options, setOptions] = useState([])
 
   // ====== OPTIONS SN/SKU ======
@@ -85,7 +97,6 @@ export default function Penjualan() {
   // ====== OPTIONS CUSTOMER LAMA ======
   useEffect(() => {
     async function fetchCustomers() {
-      // ambil riwayat penjualan (ringan: ambil kolom penting saja)
       const { data, error } = await supabase
         .from('penjualan_baru')
         .select('nama_pembeli, alamat, no_wa, tanggal')
@@ -98,7 +109,6 @@ export default function Penjualan() {
         return
       }
 
-      // unik berdasarkan nama+wa, pakai record terbaru untuk alamat
       const map = new Map()
       ;(data || []).forEach((r) => {
         const nama = (r.nama_pembeli || '').toString().trim().toUpperCase()
@@ -195,7 +205,6 @@ export default function Penjualan() {
         alamat: c.alamat || '',
         no_wa: c.no_wa || ''
       }))
-      // reset indent selection biar tidak salah update
       setSelectedIndent(null)
     } else {
       if (!selectedIndent?.meta) return
@@ -206,27 +215,28 @@ export default function Penjualan() {
         alamat: i.alamat || '',
         no_wa: i.no_wa || ''
       }))
-      // reset customer selection biar rapi
       setSelectedCustomer(null)
     }
   }, [buyerTab, selectedCustomer, selectedIndent])
 
   // ====== CARI STOK (auto isi detail) ======
   useEffect(() => {
-    if (produkBaru.sn_sku.length > 0) cariStok(produkBaru.sn_sku, setProdukBaru)
+    if (produkBaru.sn_sku.length > 0) cariStok(produkBaru.sn_sku, setProdukBaru, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [produkBaru.sn_sku])
 
   useEffect(() => {
-    if (bonusBaru.sn_sku.length > 0) cariStok(bonusBaru.sn_sku, setBonusBaru)
+    if (bonusBaru.sn_sku.length > 0) cariStok(bonusBaru.sn_sku, setBonusBaru, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bonusBaru.sn_sku])
 
-  async function cariStok(snsku, setter) {
+  async function cariStok(snsku, setter, isProduk) {
+    const code = (snsku || '').toString().trim()
+
     const { data: unit } = await supabase
       .from('stok')
       .select('*')
-      .eq('sn', snsku)
+      .eq('sn', code)
       .eq('status', 'READY')
       .maybeSingle()
 
@@ -237,7 +247,9 @@ export default function Penjualan() {
         warna: unit.warna,
         harga_modal: unit.harga_modal,
         garansi: unit.garansi || '',
-        storage: unit.storage || ''
+        storage: unit.storage || '',
+        is_aksesoris: false,
+        qty: 1 // SN unit selalu qty 1
       }))
       return
     }
@@ -245,7 +257,7 @@ export default function Penjualan() {
     const { data: aks } = await supabase
       .from('stok_aksesoris')
       .select('*')
-      .eq('sku', snsku)
+      .eq('sku', code)
       .maybeSingle()
 
     if (aks) {
@@ -255,7 +267,16 @@ export default function Penjualan() {
         warna: aks.warna,
         harga_modal: aks.harga_modal,
         garansi: '',
-        storage: ''
+        storage: '',
+        is_aksesoris: true,
+        qty: prev.qty && prev.qty > 0 ? prev.qty : 1 // aksesoris boleh qty
+      }))
+    } else {
+      // kalau tidak ketemu apa-apa, jangan paksa is_aksesoris true
+      setter((prev) => ({
+        ...prev,
+        is_aksesoris: false,
+        qty: 1
       }))
     }
   }
@@ -264,11 +285,23 @@ export default function Penjualan() {
     if (!produkBaru.sn_sku || !produkBaru.harga_jual)
       return alert('Lengkapi SN/SKU dan Harga Jual')
 
-    if (produkBaru.sn_sku.trim().toUpperCase() === SKU_OFFICE && !produkBaru.office_username.trim()) {
+    const code = (produkBaru.sn_sku || '').trim().toUpperCase()
+
+    if (code === SKU_OFFICE && !produkBaru.office_username.trim()) {
       return alert('Masukkan Username Office untuk produk OFC-365-1')
     }
 
-    setProdukList([...produkList, produkBaru])
+    // ✅ qty hanya untuk aksesoris
+    const qty = produkBaru.is_aksesoris ? clampInt(produkBaru.qty, 1, 100) : 1
+
+    setProdukList([
+      ...produkList,
+      {
+        ...produkBaru,
+        qty
+      }
+    ])
+
     setProdukBaru({
       sn_sku: '',
       harga_jual: '',
@@ -277,18 +310,32 @@ export default function Penjualan() {
       harga_modal: '',
       garansi: '',
       storage: '',
-      office_username: ''
+      office_username: '',
+      qty: 1,
+      is_aksesoris: false
     })
   }
 
   function tambahBonusKeList() {
     if (!bonusBaru.sn_sku) return alert('Lengkapi SN/SKU Bonus')
 
-    if (bonusBaru.sn_sku.trim().toUpperCase() === SKU_OFFICE && !bonusBaru.office_username.trim()) {
+    const code = (bonusBaru.sn_sku || '').trim().toUpperCase()
+
+    if (code === SKU_OFFICE && !bonusBaru.office_username.trim()) {
       return alert('Masukkan Username Office untuk bonus OFC-365-1')
     }
 
-    setBonusList([...bonusList, bonusBaru])
+    // ✅ qty hanya untuk aksesoris
+    const qty = bonusBaru.is_aksesoris ? clampInt(bonusBaru.qty, 1, 100) : 1
+
+    setBonusList([
+      ...bonusList,
+      {
+        ...bonusBaru,
+        qty
+      }
+    ])
+
     setBonusBaru({
       sn_sku: '',
       nama_produk: '',
@@ -296,7 +343,9 @@ export default function Penjualan() {
       harga_modal: '',
       garansi: '',
       storage: '',
-      office_username: ''
+      office_username: '',
+      qty: 1,
+      is_aksesoris: false
     })
   }
 
@@ -367,16 +416,38 @@ export default function Penjualan() {
 
     const invoice = await generateInvoiceId(formData.tanggal)
 
-    const produkBerbayar = produkList.map((p) => ({
-      ...p,
-      harga_jual: toNumber(p.harga_jual),
-      is_bonus: false
-    }))
-    const bonusItems = bonusList.map((b) => ({
-      ...b,
-      harga_jual: 0,
-      is_bonus: true
-    }))
+    // ✅ expand qty khusus aksesoris → jadi baris per pcs (paling aman)
+    const expandQty = (arr, isBonus) => {
+      const out = []
+      for (const it of arr) {
+        const qty = it.is_aksesoris ? clampInt(it.qty, 1, 100) : 1
+        for (let i = 0; i < qty; i++) {
+          out.push({
+            ...it,
+            __qty_index: i + 1,
+            __qty_total: qty,
+            is_bonus: isBonus
+          })
+        }
+      }
+      return out
+    }
+
+    const produkBerbayarExpanded = expandQty(
+      produkList.map((p) => ({
+        ...p,
+        harga_jual: toNumber(p.harga_jual)
+      })),
+      false
+    )
+
+    const bonusExpanded = expandQty(
+      bonusList.map((b) => ({
+        ...b,
+        harga_jual: 0
+      })),
+      true
+    )
 
     // Biaya lain-lain sebagai baris “fee”
     const feeItems = biayaList.map((f, i) => ({
@@ -392,19 +463,25 @@ export default function Penjualan() {
     }))
 
     const diskonNominal = toNumber(diskonInvoice)
-    const petaDiskon = distribusiDiskon(produkBerbayar, diskonNominal)
 
-    const semuaProduk = [...produkBerbayar, ...bonusItems, ...feeItems]
+    // diskon dibagi berdasarkan daftar produk "asli" (bukan expand) agar tidak aneh
+    const produkBerbayarForDiskon = produkList.map((p) => ({
+      ...p,
+      harga_jual: toNumber(p.harga_jual)
+    }))
+    const petaDiskon = distribusiDiskon(produkBerbayarForDiskon, diskonNominal)
+
+    const semuaProduk = [...produkBerbayarExpanded, ...bonusExpanded, ...feeItems]
 
     for (const item of semuaProduk) {
       const harga_modal = toNumber(item.harga_modal)
       const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskon.get(item.sn_sku) || 0)
+
       // laba = (harga_jual - diskon_item) - harga_modal
       const laba = (toNumber(item.harga_jual) - diskon_item) - harga_modal
 
       const rowToInsert = {
         ...formData,
-        // simpan sebagai uppercase biar konsisten
         nama_pembeli: (formData.nama_pembeli || '').toString().trim().toUpperCase(),
         alamat: (formData.alamat || '').toString().trim(),
         no_wa: (formData.no_wa || '').toString().trim(),
@@ -430,6 +507,11 @@ export default function Penjualan() {
         rowToInsert.office_username = item.office_username.trim()
       }
 
+      // ✅ kalau aksesoris qty > 1, tambahkan keterangan biar gampang audit (optional, tidak ganggu)
+      // (kalau kolom tidak ada, aman karena supabase akan error - jadi kita skip)
+      // Jika Anda punya kolom "note" / "keterangan", aktifkan.
+      // rowToInsert.keterangan = item.__qty_total > 1 ? `QTY ${item.__qty_index}/${item.__qty_total}` : null
+
       await supabase.from('penjualan_baru').insert(rowToInsert)
 
       if (item.__is_fee) continue // biaya: tidak ubah stok
@@ -443,12 +525,12 @@ export default function Penjualan() {
       if (stokUnit) {
         await supabase.from('stok').update({ status: 'SOLD' }).eq('sn', item.sn_sku)
       } else {
+        // ✅ aksesoris: kurangi stok 1 per loop (sudah di-expand qty)
         await supabase.rpc('kurangi_stok_aksesoris', { sku_input: item.sn_sku })
       }
     }
 
-    // ====== UPDATE INDENT: PAKAI ID JIKA PILIH DARI TAB INDENT ======
-    // kalau tidak pilih indent, tetap coba match nama+wa sebagai fallback (biar tidak merusak sistem lama)
+    // ====== UPDATE INDENT ======
     const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
     const waTrim = (formData.no_wa || '').toString().trim()
 
@@ -545,7 +627,7 @@ export default function Penjualan() {
             isClearable
           />
 
-          {/* Manual input (tetap ada, bisa koreksi kalau perlu) */}
+          {/* Manual input */}
           {[
             ['Nama Pembeli', 'nama_pembeli'],
             ['Alamat', 'alamat'],
@@ -599,30 +681,47 @@ export default function Penjualan() {
               }
               isClearable
             />
-            <input
-              className="border p-2 mb-2"
-              placeholder="Harga Jual"
-              type="number"
-              value={produkBaru.harga_jual}
-              onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
-            />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center mb-2">
+              <input
+                className="border p-2"
+                placeholder="Harga Jual"
+                type="number"
+                value={produkBaru.harga_jual}
+                onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
+              />
+
+              {/* ✅ QTY hanya muncul jika aksesoris */}
+              {produkBaru.is_aksesoris ? (
+                <input
+                  className="border p-2"
+                  placeholder="Qty"
+                  type="number"
+                  min="1"
+                  value={produkBaru.qty}
+                  onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })}
+                />
+              ) : (
+                <div className="text-sm text-gray-500">Qty: 1 (unit SN)</div>
+              )}
+
+              <button
+                type="button"
+                onClick={tambahProdukKeList}
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Tambah Produk
+              </button>
+            </div>
 
             {isOfficeSKUProduk && (
               <input
-                className="border p-2 mb-2"
+                className="border p-2 mb-2 w-full"
                 placeholder="Username Office (email pelanggan)"
                 value={produkBaru.office_username}
                 onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
               />
             )}
-
-            <button
-              type="button"
-              onClick={tambahProdukKeList}
-              className="bg-blue-600 text-white px-4 py-1 rounded"
-            >
-              Tambah Produk
-            </button>
           </div>
 
           {/* Tambah Bonus */}
@@ -639,22 +738,40 @@ export default function Penjualan() {
               isClearable
             />
 
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center mb-2">
+              {/* ✅ QTY hanya muncul jika aksesoris */}
+              {bonusBaru.is_aksesoris ? (
+                <input
+                  className="border p-2"
+                  placeholder="Qty Bonus"
+                  type="number"
+                  min="1"
+                  value={bonusBaru.qty}
+                  onChange={(e) => setBonusBaru({ ...bonusBaru, qty: clampInt(e.target.value, 1, 100) })}
+                />
+              ) : (
+                <div className="text-sm text-gray-500">Qty: 1 (unit SN)</div>
+              )}
+
+              <div />
+
+              <button
+                type="button"
+                onClick={tambahBonusKeList}
+                className="bg-yellow-600 text-white px-4 py-2 rounded"
+              >
+                Tambah Bonus
+              </button>
+            </div>
+
             {isOfficeSKUBonus && (
               <input
-                className="border p-2 mb-2"
+                className="border p-2 mb-2 w-full"
                 placeholder="Username Office (email pelanggan)"
                 value={bonusBaru.office_username}
                 onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })}
               />
             )}
-
-            <button
-              type="button"
-              onClick={tambahBonusKeList}
-              className="bg-yellow-600 text-white px-4 py-1 rounded"
-            >
-              Tambah Bonus
-            </button>
           </div>
 
           {/* Biaya Lain-lain */}
@@ -717,7 +834,9 @@ export default function Penjualan() {
               <ul className="text-sm list-disc ml-4">
                 {produkList.map((p, i) => (
                   <li key={i}>
-                    {p.nama_produk} ({p.sn_sku}) - Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}
+                    {p.nama_produk} ({p.sn_sku})
+                    {p.is_aksesoris ? ` • QTY ${clampInt(p.qty, 1, 999)}` : ''}
+                    {' '} - Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}
                     {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username
                       ? <> • <i>Username Office:</i> {p.office_username}</>
                       : null}
@@ -734,7 +853,9 @@ export default function Penjualan() {
               <ul className="text-sm list-disc ml-4">
                 {bonusList.map((b, i) => (
                   <li key={i}>
-                    {b.nama_produk} ({b.sn_sku}) - BONUS
+                    {b.nama_produk} ({b.sn_sku})
+                    {b.is_aksesoris ? ` • QTY ${clampInt(b.qty, 1, 999)}` : ''}
+                    {' '} - BONUS
                     {b.sn_sku?.toUpperCase() === SKU_OFFICE && b.office_username
                       ? <> • <i>Username Office:</i> {b.office_username}</>
                       : null}
