@@ -91,7 +91,7 @@ export default function AbsenTugasKaryawan() {
     ;(async () => {
       await loadEmployees()
       await loadAbsensi(selectedDate)
-      // ✅ pastikan tugas dibuat dulu baru load, biar UI stabil
+      // penting: ensure dulu baru load (biar list konsisten)
       if (isToday) await ensureTasksIfNeeded(selectedDate)
       await loadTasks(selectedDate)
     })()
@@ -101,7 +101,7 @@ export default function AbsenTugasKaryawan() {
   useEffect(() => {
     ;(async () => {
       await loadAbsensi(selectedDate)
-      if (selectedDate === todayStr()) await ensureTasksIfNeeded(selectedDate)
+      if (isToday) await ensureTasksIfNeeded(selectedDate)
       await loadTasks(selectedDate)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,8 +109,10 @@ export default function AbsenTugasKaryawan() {
 
   useEffect(() => {
     ;(async () => {
-      if (selectedDate === todayStr()) await ensureTasksIfNeeded(selectedDate)
-      await loadTasks(selectedDate)
+      if (isToday) {
+        await ensureTasksIfNeeded(selectedDate)
+        await loadTasks(selectedDate)
+      }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [absenList])
@@ -244,10 +246,10 @@ export default function AbsenTugasKaryawan() {
       const nt = normalizeTitle(t.title)
       if (!allowedNormSet.has(nt)) return false
       const canonical = canonMap.get(nt)
-      return ((t.title || '').trim() === canonical)
+      return (t.title || '').trim() === canonical
     })
 
-    // ✅ Hari ini: tampil cuma TODO
+    // Hari ini: tampilkan hanya TODO (DONE disembunyikan)
     if (tgl === todayStr()) {
       filtered = filtered.filter((t) => (t.status || 'todo') !== 'done')
     }
@@ -275,7 +277,12 @@ export default function AbsenTugasKaryawan() {
         added_manually: false,
       }))
 
-      const { error } = await supabase.from('tugas_harian').upsert(rows, { onConflict: 'task_date,title' })
+      // ✅ PENTING:
+      // ignoreDuplicates = true -> kalau sudah ada (misal status DONE), TIDAK di-override jadi TODO lagi
+      const { error } = await supabase
+        .from('tugas_harian')
+        .upsert(rows, { onConflict: 'task_date,title', ignoreDuplicates: true })
+
       if (error) console.warn('ensureTasksIfNeeded warning:', error.message)
     } finally {
       ensureLockRef.current = false
@@ -289,7 +296,9 @@ export default function AbsenTugasKaryawan() {
 
     const { error } = await supabase
       .from('tugas_harian')
-      .upsert([{ task_date: selectedDate, title, status: 'todo', added_manually: true }], { onConflict: 'task_date,title' })
+      .upsert([{ task_date: selectedDate, title, status: 'todo', added_manually: true }], {
+        onConflict: 'task_date,title',
+      })
 
     if (error) return alert('Gagal menambah tugas: ' + error.message)
 
@@ -311,7 +320,7 @@ export default function AbsenTugasKaryawan() {
     setWorkModal(true)
   }
 
-  // ✅✅✅ FIX UTAMA DI SINI
+  // ✅ FIX FINAL: update + fallback + reload DB
   async function confirmWork() {
     if (!workTask) return
     const who = (workAssignee || '').trim().toUpperCase()
@@ -324,14 +333,13 @@ export default function AbsenTugasKaryawan() {
       assignee: who,
     }
 
-    // ✅ 1) update by id (normal)
+    // 1) update by id
     let upd = null
     if (workTask.id) {
       upd = await supabase.from('tugas_harian').update(payload).eq('id', workTask.id)
     }
 
-    // ✅ 2) fallback kalau id tidak ada / update gagal:
-    // update by task_date + title (lebih aman)
+    // 2) fallback update by task_date + title
     if (!upd || upd.error) {
       const tgl = workTask.task_date || selectedDate
       const title = (workTask.title || '').trim()
@@ -347,7 +355,7 @@ export default function AbsenTugasKaryawan() {
       }
     }
 
-    // ✅ 3) reload dari DB biar fix 100% (ini yang bikin refresh ga balik lagi)
+    // 3) reload DB biar refresh tidak balik
     await loadTasks(selectedDate)
 
     setWorkModal(false)
@@ -374,7 +382,7 @@ export default function AbsenTugasKaryawan() {
       const nt = normalizeTitle(t.title)
       if (!allowedNormSet.has(nt)) return false
       const canonical = canonMap.get(nt)
-      return ((t.title || '').trim() === canonical)
+      return (t.title || '').trim() === canonical
     })
 
     const total = validTasks.length
@@ -461,11 +469,7 @@ export default function AbsenTugasKaryawan() {
           <div className="border rounded p-4 lg:col-span-2">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold">Form Absensi</div>
-              <button
-                className="border px-3 py-2 rounded text-sm"
-                onClick={() => setEmpModal(true)}
-                type="button"
-              >
+              <button className="border px-3 py-2 rounded text-sm" onClick={() => setEmpModal(true)} type="button">
                 Data Karyawan
               </button>
             </div>
@@ -488,27 +492,15 @@ export default function AbsenTugasKaryawan() {
                       <option key={n} value={n} />
                     ))}
                   </datalist>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Ketik nama → akan muncul saran.
-                  </div>
+                  <div className="text-xs text-gray-500 mt-1">Ketik nama → akan muncul saran.</div>
                 </div>
 
-                <select
-                  value={shift}
-                  onChange={(e) => setShift(e.target.value)}
-                  className="border p-2 rounded"
-                  disabled={!isToday}
-                >
+                <select value={shift} onChange={(e) => setShift(e.target.value)} className="border p-2 rounded" disabled={!isToday}>
                   <option value="Pagi">Shift Pagi (09.00–17.00)</option>
                   <option value="Siang">Shift Siang (13.00–20.00)</option>
                 </select>
 
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="border p-2 rounded"
-                  disabled={!isToday}
-                >
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="border p-2 rounded" disabled={!isToday}>
                   <option value="Hadir">Hadir</option>
                   <option value="Izin">Izin</option>
                   <option value="Sakit">Sakit</option>
@@ -665,17 +657,11 @@ export default function AbsenTugasKaryawan() {
                   </div>
 
                   {isToday ? (
-                    <button
-                      className="bg-green-600 text-white px-3 py-2 rounded"
-                      onClick={() => openWork(t)}
-                      type="button"
-                    >
+                    <button className="bg-green-600 text-white px-3 py-2 rounded" onClick={() => openWork(t)} type="button">
                       Kerjakan
                     </button>
                   ) : (
-                    <span className="text-xs px-2 py-1 rounded border">
-                      {t.status === 'done' ? 'DONE' : 'TODO'}
-                    </span>
+                    <span className="text-xs px-2 py-1 rounded border">{t.status === 'done' ? 'DONE' : 'TODO'}</span>
                   )}
                 </li>
               ))}
@@ -690,10 +676,14 @@ export default function AbsenTugasKaryawan() {
           <div className="bg-white w-full max-w-3xl rounded-lg shadow-lg overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">Data Karyawan</div>
-              <button className="text-sm border px-3 py-1 rounded" onClick={() => {
-                setEmpModal(false)
-                setEmpForm({ id: null, nama: '', aktif: true })
-              }} type="button">
+              <button
+                className="text-sm border px-3 py-1 rounded"
+                onClick={() => {
+                  setEmpModal(false)
+                  setEmpForm({ id: null, nama: '', aktif: true })
+                }}
+                type="button"
+              >
                 Tutup
               </button>
             </div>
@@ -727,18 +717,12 @@ export default function AbsenTugasKaryawan() {
                     >
                       {empForm.id ? 'Simpan Perubahan' : 'Tambah'}
                     </button>
-                    <button
-                      className="border px-3 py-2 rounded"
-                      onClick={() => setEmpForm({ id: null, nama: '', aktif: true })}
-                      type="button"
-                    >
+                    <button className="border px-3 py-2 rounded" onClick={() => setEmpForm({ id: null, nama: '', aktif: true })} type="button">
                       Reset
                     </button>
                   </div>
 
-                  <div className="text-xs text-gray-500">
-                    Nama akan otomatis disimpan dalam format kapital (UPPERCASE).
-                  </div>
+                  <div className="text-xs text-gray-500">Nama akan otomatis disimpan dalam format kapital (UPPERCASE).</div>
                 </div>
               </div>
 
@@ -771,11 +755,7 @@ export default function AbsenTugasKaryawan() {
                               >
                                 Edit
                               </button>
-                              <button
-                                className="border px-2 py-1 rounded text-red-600"
-                                onClick={() => deleteEmployee(e.id)}
-                                type="button"
-                              >
+                              <button className="border px-2 py-1 rounded text-red-600" onClick={() => deleteEmployee(e.id)} type="button">
                                 Hapus
                               </button>
                             </div>
@@ -820,11 +800,7 @@ export default function AbsenTugasKaryawan() {
 
               <div>
                 <div className="text-sm text-gray-600 mb-1">Dikerjakan oleh:</div>
-                <select
-                  className="border p-2 rounded w-full"
-                  value={workAssignee}
-                  onChange={(e) => setWorkAssignee(e.target.value)}
-                >
+                <select className="border p-2 rounded w-full" value={workAssignee} onChange={(e) => setWorkAssignee(e.target.value)}>
                   {hadirNames.map((n) => (
                     <option key={n} value={n}>
                       {n}
