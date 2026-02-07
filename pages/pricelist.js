@@ -117,34 +117,87 @@ export default function PricelistPage() {
   // ===== Download JPG =====
   const printRef = useRef(null)
 
-  async function downloadJpgKategori() {
-    try {
-      const mod = await import('html2canvas')
-      const html2canvas = mod.default
+ async function downloadJpgKategori() {
+  try {
+    const mod = await import('html2canvas')
+    const html2canvas = mod.default
 
-      if (!printRef.current) return alert('Area download belum siap.')
+    const kategori = activeKategori || 'Kategori'
 
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-      })
+    // Data yang didownload: nama produk + harga offline (sesuai requirement)
+    const data = (filteredRows || []).map((r) => ({
+      id: r.id,
+      nama: String(r.nama_produk || '').toUpperCase(),
+      harga: formatRp(r.harga_offline),
+    }))
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-      const a = document.createElement('a')
-      a.href = dataUrl
-      a.download = `Pricelist-${(activeKategori || 'Kategori').replace(/\s+/g, '-')}.jpg`
-      a.click()
-    } catch (e) {
-      console.error('downloadJpgKategori error:', e)
-      alert('Gagal download JPG. Pastikan html2canvas sudah diinstall.')
-    }
+    if (!data.length) return alert('Tidak ada data untuk didownload.')
+
+    // ===== BIKIN DOM KHUSUS (TANPA CSS GLOBAL / TANPA OKLCH) =====
+    const wrap = document.createElement('div')
+    wrap.style.position = 'fixed'
+    wrap.style.left = '-99999px'
+    wrap.style.top = '0'
+    wrap.style.width = '900px'
+    wrap.style.background = '#ffffff'
+    wrap.style.padding = '24px'
+    wrap.style.fontFamily = 'Arial, sans-serif'
+    wrap.style.color = '#0f172a'
+    wrap.style.border = '1px solid #e5e7eb'
+    wrap.style.borderRadius = '12px'
+
+    wrap.innerHTML = `
+      <div style="font-size:18px;font-weight:900;margin-bottom:12px;">
+        PRICE LIST - ${String(kategori).toUpperCase()}
+      </div>
+
+      <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="text-align:left;padding:10px;font-size:12px;">NAMA PRODUK</th>
+              <th style="text-align:right;padding:10px;font-size:12px;">HARGA OFFLINE</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data
+              .map(
+                (x) => `
+              <tr style="border-top:1px solid #e5e7eb;">
+                <td style="text-align:left;padding:10px;font-size:13px;">${x.nama}</td>
+                <td style="text-align:right;padding:10px;font-size:13px;font-weight:900;">${x.harga}</td>
+              </tr>
+            `
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:10px;font-size:11px;color:#64748b;">CONNECT.IND</div>
+    `
+
+    document.body.appendChild(wrap)
+
+    const canvas = await html2canvas(wrap, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+    })
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `Pricelist-${String(kategori).replace(/\s+/g, '-')}.jpg`
+    a.click()
+
+    wrap.remove()
+  } catch (e) {
+    console.error('downloadJpgKategori error:', e)
+    alert('Gagal download JPG. Error: ' + (e?.message || String(e)))
   }
+}
 
-  useEffect(() => {
-    boot()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   async function boot(nextActive) {
     try {
