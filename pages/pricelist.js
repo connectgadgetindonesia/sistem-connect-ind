@@ -1,6 +1,5 @@
 // pages/pricelist.js
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
 
@@ -14,17 +13,17 @@ const toDecimal = (v) => {
   return Number.isFinite(n) ? n : 0
 }
 
-const formatRpInput = (v) => {
-  const n = toNumber(v)
-  return n ? 'Rp ' + n.toLocaleString('id-ID') : ''
-}
-
 const toNumber = (v) =>
   typeof v === 'number'
     ? v
     : parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
 
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
+
+const formatRpInput = (v) => {
+  const n = toNumber(v)
+  return n ? 'Rp ' + n.toLocaleString('id-ID') : ''
+}
 
 // hitung harga platform: offline * (1 + pajak%) + biaya_flat
 function calcPlatform(offline, pajakPct, biayaFlat) {
@@ -33,7 +32,6 @@ function calcPlatform(offline, pajakPct, biayaFlat) {
   const flat = toNumber(biayaFlat)
   return Math.round(base * (1 + pct) + flat)
 }
-
 
 function normalizeKategoriLabel(x) {
   const s = String(x || '').trim()
@@ -52,7 +50,7 @@ function normalizeKategoriLabel(x) {
  * UI maunya: harga_tokopedia
  * Jadi kita mapping:
  * - read: harga_tokopedia = harga_tokped
- * - write: update BOTH harga_tokped & harga_tokopedia (biar aman kalau nanti rename kolom)
+ * - write: update ONLY harga_tokped (sesuai DB)
  */
 function mapRowFromDb(r) {
   return {
@@ -74,9 +72,7 @@ function buildPlatformPayload({ harga_tokopedia, harga_shopee }) {
   }
 }
 
-
 export default function PricelistPage() {
-  const printRef = useRef(null)
   const [kategoriList, setKategoriList] = useState([])
   const [activeKategori, setActiveKategori] = useState('')
   const [rows, setRows] = useState([])
@@ -108,32 +104,6 @@ export default function PricelistPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
-  async function downloadJpgKategori() {
-  try {
-    // html2canvas aman untuk “screenshot div”
-    const mod = await import('html2canvas')
-    const html2canvas = mod.default
-
-    if (!printRef.current) return alert('Area download belum siap.')
-
-    const canvas = await html2canvas(printRef.current, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-    })
-
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = `Pricelist-${(activeKategori || 'Kategori').replace(/\s+/g, '-')}.jpg`
-    a.click()
-  } catch (e) {
-    console.error('downloadJpgKategori error:', e)
-    alert('Gagal download JPG. Cek console.')
-  }
-}
-
 
   // ===== Bulk Edit =====
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -144,54 +114,80 @@ export default function PricelistPage() {
   })
   const [bulkSaving, setBulkSaving] = useState(false)
 
+  // ===== Download JPG =====
+  const printRef = useRef(null)
+
+  async function downloadJpgKategori() {
+    try {
+      const mod = await import('html2canvas')
+      const html2canvas = mod.default
+
+      if (!printRef.current) return alert('Area download belum siap.')
+
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+      })
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `Pricelist-${(activeKategori || 'Kategori').replace(/\s+/g, '-')}.jpg`
+      a.click()
+    } catch (e) {
+      console.error('downloadJpgKategori error:', e)
+      alert('Gagal download JPG. Pastikan html2canvas sudah diinstall.')
+    }
+  }
+
   useEffect(() => {
     boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function boot(nextActive) {
-  try {
-    setLoading(true)
+    try {
+      setLoading(true)
 
-    // 1) ambil dari tabel kategori
-    const { data: kData, error: kErr } = await supabase
-      .from('pricelist_kategori')
-      .select('nama')
-      .order('nama', { ascending: true })
+      // 1) ambil dari tabel kategori
+      const { data: kData, error: kErr } = await supabase
+        .from('pricelist_kategori')
+        .select('nama')
+        .order('nama', { ascending: true })
 
-    if (kErr) console.error('load kategori error:', kErr)
+      if (kErr) console.error('load kategori error:', kErr)
 
-    const listFromKategori = (kData || [])
-      .map((x) => normalizeKategoriLabel(x.nama))
-      .filter(Boolean)
+      const listFromKategori = (kData || [])
+        .map((x) => normalizeKategoriLabel(x.nama))
+        .filter(Boolean)
 
-    // 2) ambil distinct dari tabel pricelist (buat jaga-jaga biar tab gak pernah hilang)
-    const { data: d2, error: e2 } = await supabase.from('pricelist').select('kategori')
-    if (e2) console.error('load distinct kategori error:', e2)
+      // 2) ambil distinct dari tabel pricelist (buat jaga-jaga biar tab gak pernah hilang)
+      const { data: d2, error: e2 } = await supabase.from('pricelist').select('kategori')
+      if (e2) console.error('load distinct kategori error:', e2)
 
-    const listFromPricelist = Array.from(
-      new Set((d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean))
-    )
+      const listFromPricelist = Array.from(
+        new Set((d2 || []).map((r) => normalizeKategoriLabel(r.kategori)).filter(Boolean))
+      )
 
-    // 3) gabungkan & sort
-    const merged = Array.from(new Set([...listFromKategori, ...listFromPricelist])).sort((a, b) =>
-      a.localeCompare(b)
-    )
+      // 3) gabungkan & sort
+      const merged = Array.from(new Set([...listFromKategori, ...listFromPricelist])).sort((a, b) =>
+        a.localeCompare(b)
+      )
 
-    setKategoriList(merged)
+      setKategoriList(merged)
 
-    // 4) tentukan active kategori tanpa ngereset sembarangan
-    const keep = normalizeKategoriLabel(nextActive || activeKategori || form.kategori)
-    const finalActive = merged.includes(keep) ? keep : merged[0] || ''
+      // 4) tentukan active kategori tanpa ngereset sembarangan
+      const keep = normalizeKategoriLabel(nextActive || activeKategori || form.kategori)
+      const finalActive = merged.includes(keep) ? keep : merged[0] || ''
 
-    setActiveKategori(finalActive)
-    setForm((p) => ({ ...p, kategori: finalActive }))
-    setSettingKategori(finalActive)
-  } finally {
-    setLoading(false)
+      setActiveKategori(finalActive)
+      setForm((p) => ({ ...p, kategori: finalActive }))
+      setSettingKategori(finalActive)
+    } finally {
+      setLoading(false)
+    }
   }
-}
-
 
   useEffect(() => {
     if (!activeKategori) return
@@ -254,8 +250,7 @@ export default function PricelistPage() {
       if (error) console.error('addKategori error:', error)
 
       await boot(nama) // langsung jadikan kategori baru sebagai active
-setNewKategori('')
-
+      setNewKategori('')
     } finally {
       setAddingKategori(false)
     }
@@ -280,112 +275,105 @@ setNewKategori('')
 
     if (error) {
       console.error('loadSetting error:', error)
-     setSetting({
-  tokped_pajak_pct: toDecimal(data?.tokped_pajak_pct ?? 0),
-  tokped_biaya_flat: toNumber(data?.tokped_biaya_flat ?? 0),
-  shopee_pajak_pct: toDecimal(data?.shopee_pajak_pct ?? 0),
-  shopee_biaya_flat: toNumber(data?.shopee_biaya_flat ?? 0),
-})
-
+      setSetting({
+        tokped_pajak_pct: 0,
+        tokped_biaya_flat: 0,
+        shopee_pajak_pct: 0,
+        shopee_biaya_flat: 0,
+      })
       return
     }
 
     setSetting({
-      tokped_pajak_pct: Number(data?.tokped_pajak_pct ?? 0),
+      tokped_pajak_pct: toDecimal(data?.tokped_pajak_pct ?? 0),
       tokped_biaya_flat: toNumber(data?.tokped_biaya_flat ?? 0),
-      shopee_pajak_pct: Number(data?.shopee_pajak_pct ?? 0),
+      shopee_pajak_pct: toDecimal(data?.shopee_pajak_pct ?? 0),
       shopee_biaya_flat: toNumber(data?.shopee_biaya_flat ?? 0),
     })
   }
-async function applySettingToKategori(kategori) {
-  const k = kategori || activeKategori
-  if (!k) return
 
-  // ambil setting terbaru
-  const { data: sData, error: sErr } = await supabase
-    .from('pricelist_setting')
-    .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
-    .eq('kategori', k)
-    .maybeSingle()
+  async function applySettingToKategori(kategori) {
+    const k = kategori || activeKategori
+    if (!k) return
 
-  if (sErr) {
-    console.error('applySetting load error:', sErr)
-    throw new Error('Gagal load setting.')
-  }
+    const { data: sData, error: sErr } = await supabase
+      .from('pricelist_setting')
+      .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+      .eq('kategori', k)
+      .maybeSingle()
 
-  const tokPct = toDecimal(sData?.tokped_pajak_pct ?? 0)
-  const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
-  const shpPct = toDecimal(sData?.shopee_pajak_pct ?? 0)
-  const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
+    if (sErr) {
+      console.error('applySetting load error:', sErr)
+      throw new Error('Gagal load setting.')
+    }
 
-  // ambil semua produk kategori tsb
-  const { data: pData, error: pErr } = await supabase
-    .from('pricelist')
-    .select('id, harga_offline')
-    .eq('kategori', k)
+    const tokPct = toDecimal(sData?.tokped_pajak_pct ?? 0)
+    const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
+    const shpPct = toDecimal(sData?.shopee_pajak_pct ?? 0)
+    const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
 
-  if (pErr) {
-    console.error('applySetting fetch products error:', pErr)
-    throw new Error('Gagal ambil data produk.')
-  }
-
-  const products = pData || []
-  for (const r of products) {
-    const offline = toNumber(r.harga_offline)
-    const harga_tokopedia = calcPlatform(offline, tokPct, tokFlat)
-    const harga_shopee = calcPlatform(offline, shpPct, shpFlat)
-
-    const { error: uErr } = await supabase
+    const { data: pData, error: pErr } = await supabase
       .from('pricelist')
-      .update(buildPlatformPayload({ harga_tokopedia, harga_shopee }))
-      .eq('id', r.id)
+      .select('id, harga_offline')
+      .eq('kategori', k)
 
-    if (uErr) {
-      console.error('applySetting update error:', uErr)
-      throw new Error('Ada produk gagal diupdate.')
+    if (pErr) {
+      console.error('applySetting fetch products error:', pErr)
+      throw new Error('Gagal ambil data produk.')
+    }
+
+    const products = pData || []
+    for (const r of products) {
+      const offline = toNumber(r.harga_offline)
+      const harga_tokopedia = calcPlatform(offline, tokPct, tokFlat)
+      const harga_shopee = calcPlatform(offline, shpPct, shpFlat)
+
+      const { error: uErr } = await supabase
+        .from('pricelist')
+        .update(buildPlatformPayload({ harga_tokopedia, harga_shopee }))
+        .eq('id', r.id)
+
+      if (uErr) {
+        console.error('applySetting update error:', uErr)
+        throw new Error('Ada produk gagal diupdate.')
+      }
     }
   }
-}
 
   async function saveSetting() {
-  const k = settingKategori || activeKategori
-  if (!k) return alert('Kategori belum dipilih.')
+    const k = settingKategori || activeKategori
+    if (!k) return alert('Kategori belum dipilih.')
 
-  try {
-    setSavingSetting(true)
+    try {
+      setSavingSetting(true)
 
-    const payload = {
-      kategori: k,
-      tokped_pajak_pct: toDecimal(setting.tokped_pajak_pct || 0),
-      tokped_biaya_flat: toNumber(setting.tokped_biaya_flat),
-      shopee_pajak_pct: toDecimal(setting.shopee_pajak_pct || 0),
-      shopee_biaya_flat: toNumber(setting.shopee_biaya_flat),
+      const payload = {
+        kategori: k,
+        tokped_pajak_pct: toDecimal(setting.tokped_pajak_pct || 0),
+        tokped_biaya_flat: toNumber(setting.tokped_biaya_flat),
+        shopee_pajak_pct: toDecimal(setting.shopee_pajak_pct || 0),
+        shopee_biaya_flat: toNumber(setting.shopee_biaya_flat),
+      }
+
+      const { error } = await supabase.from('pricelist_setting').upsert(payload, { onConflict: 'kategori' })
+
+      if (error) {
+        console.error('saveSetting error:', error)
+        alert('Gagal simpan setting.')
+        return
+      }
+
+      await applySettingToKategori(k)
+      if (activeKategori === k) await fetchRows(activeKategori)
+
+      alert('Setting tersimpan & harga semua produk kategori sudah diupdate.')
+    } catch (e) {
+      console.error(e)
+      alert('Ada yang gagal update. Cek console.')
+    } finally {
+      setSavingSetting(false)
     }
-
-    const { error } = await supabase
-      .from('pricelist_setting')
-      .upsert(payload, { onConflict: 'kategori' })
-
-    if (error) {
-      console.error('saveSetting error:', error)
-      alert('Gagal simpan setting.')
-      return
-    }
-
-    // ✅ langsung apply ke data lama
-    await applySettingToKategori(k)
-
-    // refresh list di tab aktif kalau kategorinya sama
-    if (activeKategori === k) await fetchRows(activeKategori)
-
-    alert('Setting tersimpan & harga semua produk kategori sudah diupdate.')
-  } catch (e) {
-    console.error(e)
-    alert('Ada yang gagal update. Cek console.')
-  } finally {
-    setSavingSetting(false)
   }
-}
 
   // ===== Bulk Edit handlers =====
   function openBulkEdit() {
@@ -418,11 +406,9 @@ async function applySettingToKategori(kategori) {
     try {
       setBulkSaving(true)
 
-      // rows yg dipilih (yang tampil di tab aktif)
       const target = rows.filter((r) => selectedIds.has(r.id))
       if (!target.length) return alert('Data terpilih tidak ditemukan.')
 
-      // setting dihitung berdasarkan kategori akhir
       const kategoriUntukHitung = hasKategori ? nextKategori : activeKategori
 
       const { data: sData, error: sErr } = await supabase
@@ -433,9 +419,9 @@ async function applySettingToKategori(kategori) {
 
       if (sErr) console.error('load setting bulk error:', sErr)
 
-      const tokPct = Number(sData?.tokped_pajak_pct ?? 0)
+      const tokPct = toDecimal(sData?.tokped_pajak_pct ?? 0)
       const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
-      const shpPct = Number(sData?.shopee_pajak_pct ?? 0)
+      const shpPct = toDecimal(sData?.shopee_pajak_pct ?? 0)
       const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
 
       for (const r of target) {
@@ -463,8 +449,6 @@ async function applySettingToKategori(kategori) {
 
       setBulkOpen(false)
       setSelectedIds(new Set())
-
-      // refresh tab aktif (kalau pindah kategori, item akan hilang dari tab ini)
       await fetchRows(activeKategori)
       alert('Edit massal berhasil.')
     } finally {
@@ -487,16 +471,8 @@ async function applySettingToKategori(kategori) {
       .eq('kategori', kategori)
       .maybeSingle()
 
-    const harga_tokopedia = calcPlatform(
-      harga_offline,
-      sData?.tokped_pajak_pct ?? 0,
-      sData?.tokped_biaya_flat ?? 0
-    )
-    const harga_shopee = calcPlatform(
-      harga_offline,
-      sData?.shopee_pajak_pct ?? 0,
-      sData?.shopee_biaya_flat ?? 0
-    )
+    const harga_tokopedia = calcPlatform(harga_offline, sData?.tokped_pajak_pct ?? 0, sData?.tokped_biaya_flat ?? 0)
+    const harga_shopee = calcPlatform(harga_offline, sData?.shopee_pajak_pct ?? 0, sData?.shopee_biaya_flat ?? 0)
 
     try {
       setSaving(true)
@@ -509,7 +485,6 @@ async function applySettingToKategori(kategori) {
       }
 
       const { error } = await supabase.from('pricelist').insert([payload])
-
       if (error) {
         console.error('addProduct error:', error)
         alert('Gagal tambah produk.')
@@ -547,16 +522,8 @@ async function applySettingToKategori(kategori) {
       .eq('kategori', kategori)
       .maybeSingle()
 
-    const harga_tokopedia = calcPlatform(
-      harga_offline,
-      sData?.tokped_pajak_pct ?? 0,
-      sData?.tokped_biaya_flat ?? 0
-    )
-    const harga_shopee = calcPlatform(
-      harga_offline,
-      sData?.shopee_pajak_pct ?? 0,
-      sData?.shopee_biaya_flat ?? 0
-    )
+    const harga_tokopedia = calcPlatform(harga_offline, sData?.tokped_pajak_pct ?? 0, sData?.tokped_biaya_flat ?? 0)
+    const harga_shopee = calcPlatform(harga_offline, sData?.shopee_pajak_pct ?? 0, sData?.shopee_biaya_flat ?? 0)
 
     try {
       setEditSaving(true)
@@ -711,26 +678,25 @@ async function applySettingToKategori(kategori) {
               style={{ ...input, maxWidth: 340 }}
             />
 
-          <div style={{ display: 'flex', gap: 10 }}>
-  <button
-    onClick={downloadJpgKategori}
-    style={btnOutline}
-    disabled={loading || filteredRows.length === 0}
-    title="Download JPG (Nama Produk & Harga Offline)"
-  >
-    Download JPG
-  </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={downloadJpgKategori}
+                style={btnOutline}
+                disabled={loading || filteredRows.length === 0}
+                title="Download JPG (Nama Produk & Harga Offline)"
+              >
+                Download JPG
+              </button>
 
-  <button
-    onClick={openBulkEdit}
-    style={btnPrimary}
-    disabled={loading || selectedIds.size === 0}
-    title="Edit massal produk yang dicentang"
-  >
-    Edit Massal
-  </button>
-</div>
-
+              <button
+                onClick={openBulkEdit}
+                style={btnPrimary}
+                disabled={loading || selectedIds.size === 0}
+                title="Edit massal produk yang dicentang"
+              >
+                Edit Massal
+              </button>
+            </div>
           </div>
 
           {/* Table */}
@@ -801,49 +767,48 @@ async function applySettingToKategori(kategori) {
             Setting kategori: harga Tokopedia/Shopee dihitung otomatis dari <b>Harga Offline</b> berdasarkan pajak & biaya
             pada kategori.
           </div>
+
+          {/* ===== AREA KHUSUS UNTUK DOWNLOAD JPG (hidden offscreen) ===== */}
           <div
-  ref={printRef}
-  style={{
-    position: 'fixed',
-    left: -99999,
-    top: 0,
-    width: 900,
-    padding: 24,
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 12,
-  }}
->
-  <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
-    PRICE LIST - {activeKategori}
-  </div>
+            ref={printRef}
+            style={{
+              position: 'fixed',
+              left: -99999,
+              top: 0,
+              width: 900,
+              padding: 24,
+              background: '#fff',
+              border: '1px solid #e5e7eb',
+              borderRadius: 12,
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
+              PRICE LIST - {activeKategori}
+            </div>
 
-  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-    <thead>
-      <tr style={{ background: '#f8fafc' }}>
-        <th style={{ textAlign: 'left', padding: 10, fontSize: 12 }}>Nama Produk</th>
-        <th style={{ textAlign: 'right', padding: 10, fontSize: 12 }}>Harga Offline</th>
-      </tr>
-    </thead>
-    <tbody>
-      {(filteredRows || []).map((r) => (
-        <tr key={r.id} style={{ borderTop: '1px solid #e5e7eb' }}>
-          <td style={{ textAlign: 'left', padding: 10, fontSize: 13 }}>
-            {String(r.nama_produk || '').toUpperCase()}
-          </td>
-          <td style={{ textAlign: 'right', padding: 10, fontSize: 13, fontWeight: 900 }}>
-            {formatRp(r.harga_offline)}
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ textAlign: 'left', padding: 10, fontSize: 12 }}>Nama Produk</th>
+                  <th style={{ textAlign: 'right', padding: 10, fontSize: 12 }}>Harga Offline</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(filteredRows || []).map((r) => (
+                  <tr key={r.id} style={{ borderTop: '1px solid #e5e7eb' }}>
+                    <td style={{ textAlign: 'left', padding: 10, fontSize: 13 }}>
+                      {String(r.nama_produk || '').toUpperCase()}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: 10, fontSize: 13, fontWeight: 900 }}>
+                      {formatRp(r.harga_offline)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-  <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>
-    CONNECT.IND
-  </div>
-</div>
-
+            <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>CONNECT.IND</div>
+          </div>
         </div>
 
         {/* MODAL SETTING */}
@@ -893,15 +858,14 @@ async function applySettingToKategori(kategori) {
                   </div>
                   <div style={fieldRow}>
                     <div style={label}>Biaya flat (Rp)</div>
-                 <input
-  style={input}
-  value={String(setting.tokped_biaya_flat ?? '')}
-  onChange={(e) => setSetting((p) => ({ ...p, tokped_biaya_flat: e.target.value }))}
-  onBlur={() =>
-    setSetting((p) => ({ ...p, tokped_biaya_flat: formatRpInput(p.tokped_biaya_flat) }))
-  }
-/>
-
+                    <input
+                      style={input}
+                      value={String(setting.tokped_biaya_flat ?? '')}
+                      onChange={(e) => setSetting((p) => ({ ...p, tokped_biaya_flat: e.target.value }))}
+                      onBlur={() =>
+                        setSetting((p) => ({ ...p, tokped_biaya_flat: formatRpInput(p.tokped_biaya_flat) }))
+                      }
+                    />
                   </div>
                 </div>
 
@@ -917,15 +881,14 @@ async function applySettingToKategori(kategori) {
                   </div>
                   <div style={fieldRow}>
                     <div style={label}>Biaya flat (Rp)</div>
-                <input
-  style={input}
-  value={String(setting.shopee_biaya_flat ?? '')}
-  onChange={(e) => setSetting((p) => ({ ...p, shopee_biaya_flat: e.target.value }))}
-  onBlur={() =>
-    setSetting((p) => ({ ...p, shopee_biaya_flat: formatRpInput(p.shopee_biaya_flat) }))
-  }
-/>
-
+                    <input
+                      style={input}
+                      value={String(setting.shopee_biaya_flat ?? '')}
+                      onChange={(e) => setSetting((p) => ({ ...p, shopee_biaya_flat: e.target.value }))}
+                      onBlur={() =>
+                        setSetting((p) => ({ ...p, shopee_biaya_flat: formatRpInput(p.shopee_biaya_flat) }))
+                      }
+                    />
                   </div>
                 </div>
               </div>
@@ -1016,9 +979,7 @@ async function applySettingToKategori(kategori) {
                   <select
                     style={input}
                     value={bulkForm.kategori}
-                    onChange={(e) =>
-                      setBulkForm((p) => ({ ...p, kategori: normalizeKategoriLabel(e.target.value) }))
-                    }
+                    onChange={(e) => setBulkForm((p) => ({ ...p, kategori: normalizeKategoriLabel(e.target.value) }))}
                   >
                     {kategoriList.map((k) => (
                       <option key={k} value={k}>
