@@ -92,6 +92,15 @@ export default function PricelistPage() {
   const [editRow, setEditRow] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
 
+  // ===== Bulk Edit =====
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkForm, setBulkForm] = useState({
+    nama_produk: '',
+    kategori: '',
+    harga_offline: '',
+  })
+  const [bulkSaving, setBulkSaving] = useState(false)
+
   useEffect(() => {
     boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,52 +281,88 @@ export default function PricelistPage() {
     }
   }
 
-  async function hitungUlangHarga({ onlySelected }) {
-    const k = activeKategori
-    if (!k) return
+  // ===== Bulk Edit handlers =====
+  function openBulkEdit() {
+    setBulkForm({
+      nama_produk: '',
+      kategori: activeKategori || '',
+      harga_offline: '',
+    })
+    setBulkOpen(true)
+  }
 
-    const { data: sData } = await supabase
-      .from('pricelist_setting')
-      .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
-      .eq('kategori', k)
-      .maybeSingle()
+  async function saveBulkEdit() {
+    const ids = Array.from(selectedIds || [])
+    if (!ids.length) return alert('Pilih minimal 1 produk.')
 
-    const tokPct = Number(sData?.tokped_pajak_pct ?? 0)
-    const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
-    const shpPct = Number(sData?.shopee_pajak_pct ?? 0)
-    const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
+    const nextNama = String(bulkForm.nama_produk || '').trim()
+    const hasNama = nextNama.length > 0
 
-    const target = (onlySelected ? rows.filter((r) => selectedIds.has(r.id)) : rows).filter(Boolean)
-    if (!target.length) return alert('Tidak ada data untuk dihitung ulang.')
+    const nextKategori = normalizeKategoriLabel(bulkForm.kategori || activeKategori)
+    const hasKategori = Boolean(nextKategori) && nextKategori !== ''
+
+    const hasOffline = String(bulkForm.harga_offline || '').trim().length > 0
+    const nextOffline = hasOffline ? toNumber(bulkForm.harga_offline) : null
+
+    if (!hasNama && !hasKategori && !hasOffline) {
+      return alert('Isi minimal salah satu: Nama Produk / Kategori / Harga Offline.')
+    }
+    if (hasOffline && !nextOffline) return alert('Harga Offline tidak valid.')
 
     try {
-      setLoading(true)
+      setBulkSaving(true)
+
+      // rows yg dipilih (yang tampil di tab aktif)
+      const target = rows.filter((r) => selectedIds.has(r.id))
+      if (!target.length) return alert('Data terpilih tidak ditemukan.')
+
+      // setting dihitung berdasarkan kategori akhir
+      const kategoriUntukHitung = hasKategori ? nextKategori : activeKategori
+
+      const { data: sData, error: sErr } = await supabase
+        .from('pricelist_setting')
+        .select('tokped_pajak_pct, tokped_biaya_flat, shopee_pajak_pct, shopee_biaya_flat')
+        .eq('kategori', kategoriUntukHitung)
+        .maybeSingle()
+
+      if (sErr) console.error('load setting bulk error:', sErr)
+
+      const tokPct = Number(sData?.tokped_pajak_pct ?? 0)
+      const tokFlat = toNumber(sData?.tokped_biaya_flat ?? 0)
+      const shpPct = Number(sData?.shopee_pajak_pct ?? 0)
+      const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
 
       for (const r of target) {
-        const offline = toNumber(r.harga_offline)
-        const harga_tokopedia = calcPlatform(offline, tokPct, tokFlat)
-        const harga_shopee = calcPlatform(offline, shpPct, shpFlat)
+        const offlineFinal = hasOffline ? nextOffline : toNumber(r.harga_offline)
 
-        const { error } = await supabase
-          .from('pricelist')
-          .update(buildPlatformPayload({ harga_tokopedia, harga_shopee }))
-          .eq('id', r.id)
+        const harga_tokopedia = calcPlatform(offlineFinal, tokPct, tokFlat)
+        const harga_shopee = calcPlatform(offlineFinal, shpPct, shpFlat)
+
+        const payload = {
+          ...buildPlatformPayload({ harga_tokopedia, harga_shopee }),
+        }
+
+        if (hasNama) payload.nama_produk = nextNama.toUpperCase()
+        if (hasKategori) payload.kategori = nextKategori
+        if (hasOffline) payload.harga_offline = offlineFinal
+
+        const { error } = await supabase.from('pricelist').update(payload).eq('id', r.id)
 
         if (error) {
-          console.error('hitungUlang update error:', error)
+          console.error('bulk update error:', error)
           alert('Ada yang gagal update. Cek console.')
-          break
+          return
         }
       }
 
+      setBulkOpen(false)
+      setSelectedIds(new Set())
+
+      // refresh tab aktif (kalau pindah kategori, item akan hilang dari tab ini)
       await fetchRows(activeKategori)
-      alert(
-        onlySelected
-          ? 'Harga platform untuk produk terpilih sudah dihitung ulang.'
-          : 'Semua harga platform sudah dihitung ulang.'
-      )
+      alert('Edit massal berhasil.')
     } finally {
-      setLoading(false)
+      setBulkSaving(false)
     }
   }
 
@@ -562,21 +607,12 @@ export default function PricelistPage() {
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={() => hitungUlangHarga({ onlySelected: false })}
-                style={btnOutline}
-                disabled={loading || !rows.length}
-                title="Hitung ulang harga Tokopedia/Shopee dari harga offline berdasarkan setting kategori"
-              >
-                Hitung Ulang Semua
-              </button>
-
-              <button
-                onClick={() => hitungUlangHarga({ onlySelected: true })}
+                onClick={openBulkEdit}
                 style={btnPrimary}
                 disabled={loading || selectedIds.size === 0}
-                title="Hitung ulang hanya produk yang dicentang"
+                title="Edit massal produk yang dicentang"
               >
-                Hitung Ulang Terpilih
+                Edit Massal
               </button>
             </div>
           </div>
@@ -729,7 +765,7 @@ export default function PricelistPage() {
 
               <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>
-                  Setelah ubah setting, klik <b>Hitung Ulang Semua</b> (di tab kategori) supaya data lama ikut update.
+                  Setelah ubah setting, sistem akan otomatis hitung ulang harga saat Edit / Edit Massal.
                 </div>
                 <button onClick={saveSetting} style={btnPrimary} disabled={savingSetting}>
                   {savingSetting ? 'Menyimpan...' : 'Simpan Setting'}
@@ -775,6 +811,73 @@ export default function PricelistPage() {
                 </button>
                 <button style={btnPrimary} onClick={saveEdit} disabled={editSaving}>
                   {editSaving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL BULK EDIT */}
+        {bulkOpen && (
+          <div style={modalOverlay} onMouseDown={() => setBulkOpen(false)}>
+            <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>Edit Massal</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                    Mengubah {selectedIds.size} produk yang dicentang. Kosongkan field yang tidak ingin diubah.
+                  </div>
+                </div>
+                <button style={btnOutline} onClick={() => setBulkOpen(false)}>
+                  Tutup
+                </button>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div style={fieldRow}>
+                  <div style={label}>Nama Produk</div>
+                  <input
+                    style={input}
+                    value={bulkForm.nama_produk}
+                    placeholder="Kosongkan jika tidak diubah"
+                    onChange={(e) => setBulkForm((p) => ({ ...p, nama_produk: e.target.value }))}
+                  />
+                </div>
+
+                <div style={fieldRow}>
+                  <div style={label}>Kategori</div>
+                  <select
+                    style={input}
+                    value={bulkForm.kategori}
+                    onChange={(e) =>
+                      setBulkForm((p) => ({ ...p, kategori: normalizeKategoriLabel(e.target.value) }))
+                    }
+                  >
+                    {kategoriList.map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={fieldRow}>
+                  <div style={label}>Harga Offline</div>
+                  <input
+                    style={input}
+                    value={bulkForm.harga_offline}
+                    placeholder="Kosongkan jika tidak diubah"
+                    onChange={(e) => setBulkForm((p) => ({ ...p, harga_offline: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button style={btnOutline} onClick={() => setBulkOpen(false)}>
+                  Batal
+                </button>
+                <button style={btnPrimary} onClick={saveBulkEdit} disabled={bulkSaving}>
+                  {bulkSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
               </div>
             </div>
