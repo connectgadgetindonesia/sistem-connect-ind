@@ -30,6 +30,18 @@ function buildTasksFor(dateISO) {
   return Array.from(new Set(base.map((t) => t.toUpperCase())))
 }
 
+/** NORMALIZER supaya judul DB yang beda spasi/case tidak lolos */
+function normalizeTitle(s) {
+  return (s || '')
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function allowedTitlesFor(dateISO) {
+  return new Set(buildTasksFor(dateISO).map(normalizeTitle))
+}
+
 function fmtTimeID(ts) {
   if (!ts) return ''
   try {
@@ -142,7 +154,10 @@ export default function AbsenTugasKaryawan() {
   async function handleAbsenPulang(row) {
     if (!isToday) return alert('History bersifat laporan. Absen pulang hanya untuk HARI INI.')
 
-    const { data: tdata, error: terr } = await supabase.from('tugas_harian').select('status').eq('task_date', selectedDate)
+    const { data: tdata, error: terr } = await supabase
+      .from('tugas_harian')
+      .select('status')
+      .eq('task_date', selectedDate)
 
     const total = (tdata || []).length
     const done = (tdata || []).filter((t) => t.status === 'done').length
@@ -165,7 +180,11 @@ export default function AbsenTugasKaryawan() {
 
     const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
-    const { error } = await supabase.from('absensi_karyawan').update({ jam_pulang: jamNow }).eq('id', row.id).eq('tanggal', selectedDate)
+    const { error } = await supabase
+      .from('absensi_karyawan')
+      .update({ jam_pulang: jamNow })
+      .eq('id', row.id)
+      .eq('tanggal', selectedDate)
 
     if (error) {
       alert('Gagal menyimpan absen pulang')
@@ -182,16 +201,28 @@ export default function AbsenTugasKaryawan() {
   )
 
   async function loadTasks(tgl) {
-    const { data, error } = await supabase.from('tugas_harian').select('*').eq('task_date', tgl).order('created_at', { ascending: true })
+    const { data, error } = await supabase
+      .from('tugas_harian')
+      .select('*')
+      .eq('task_date', tgl)
+      .order('created_at', { ascending: true })
 
-    if (!error) {
-      setTasks(data || [])
-      const m = {}
-      ;(data || []).forEach((t) => {
-        if (t.assignee) m[t.id] = t.assignee
-      })
-      setAssigneeMap(m)
-    }
+    if (error) return
+
+    // ✅ FILTER: yang tampil hanya judul yang ada di script
+    const allowed = allowedTitlesFor(tgl)
+    const filtered = (data || []).filter((t) => {
+      const title = normalizeTitle(t.title)
+      return allowed.has(title) || t.added_manually === true // manual tetap boleh
+    })
+
+    setTasks(filtered)
+
+    const m = {}
+    filtered.forEach((t) => {
+      if (t.assignee) m[t.id] = t.assignee
+    })
+    setAssigneeMap(m)
   }
 
   /** Jika ada minimal 1 "Hadir" dan belum ada tugas → generate otomatis (HARI INI SAJA). */
@@ -204,7 +235,11 @@ export default function AbsenTugasKaryawan() {
       return
     }
 
-    const { data: existing, error: exErr } = await supabase.from('tugas_harian').select('id').eq('task_date', tgl).limit(1)
+    const { data: existing, error: exErr } = await supabase
+      .from('tugas_harian')
+      .select('id')
+      .eq('task_date', tgl)
+      .limit(1)
 
     if (!exErr && existing && existing.length > 0) {
       await loadTasks(tgl)
