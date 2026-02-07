@@ -8,7 +8,6 @@ const rupiah = (n) => {
   const v = parseInt(n || 0, 10) || 0
   return 'Rp ' + v.toLocaleString('id-ID')
 }
-
 const up = (s) => (s || '').toString().trim().toUpperCase()
 
 export default function StokAksesoris() {
@@ -16,18 +15,22 @@ export default function StokAksesoris() {
   const [sku, setSku] = useState('')
   const [namaProduk, setNamaProduk] = useState('')
   const [warna, setWarna] = useState('')
-  const [kategori, setKategori] = useState('')
+  const [kategori, setKategori] = useState('') // dropdown
   const [stok, setStok] = useState('')
   const [hargaModal, setHargaModal] = useState('')
+
+  // Modal tambah kategori (seperti Pricelist)
+  const [showKategoriModal, setShowKategoriModal] = useState(false)
+  const [newKategoriName, setNewKategoriName] = useState('')
 
   // Data
   const [data, setData] = useState([])
   const [search, setSearch] = useState('')
-  const [filterKategori, setFilterKategori] = useState('')
+  const [filterKategori, setFilterKategori] = useState('') // untuk chip/tab + dropdown filter
 
   // Sort + Paging
-  const [sortBy, setSortBy] = useState('nama_produk') // nama_produk | sku | stok | harga_modal | kategori
-  const [sortDir, setSortDir] = useState('asc') // asc | desc
+  const [sortBy, setSortBy] = useState('nama_produk')
+  const [sortDir, setSortDir] = useState('asc')
   const [page, setPage] = useState(1)
 
   // Modal update stok
@@ -51,7 +54,6 @@ export default function StokAksesoris() {
   const [massWarna, setMassWarna] = useState('')
   const [massHargaModal, setMassHargaModal] = useState('')
 
-  // Loading kecil biar UI terasa “modern”
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -71,7 +73,7 @@ export default function StokAksesoris() {
     }
   }
 
-  // ===== Helpers =====
+  // ===== OPTIONS KATEGORI =====
   const kategoriOptions = useMemo(() => {
     const set = new Set()
     ;(data || []).forEach((x) => {
@@ -81,6 +83,7 @@ export default function StokAksesoris() {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [data])
 
+  // ===== FILTER + SORT =====
   const filteredSortedData = useMemo(() => {
     const s = (search || '').toLowerCase().trim()
     const fk = up(filterKategori)
@@ -128,7 +131,7 @@ export default function StokAksesoris() {
     setPage(1)
   }, [search, filterKategori, sortBy, sortDir])
 
-  // ===== CRUD =====
+  // ===== CRUD ADD =====
   async function handleSubmit(e) {
     e.preventDefault()
     if (!sku || !namaProduk || !warna || !stok || !hargaModal) return alert('Lengkapi semua data')
@@ -169,7 +172,7 @@ export default function StokAksesoris() {
     await fetchData()
   }
 
-  // ===== Update stok modal =====
+  // ===== Update stok =====
   const handleOpenUpdateModal = (item) => {
     setSelectedData(item)
     setTambahStok(0)
@@ -191,7 +194,7 @@ export default function StokAksesoris() {
     await fetchData()
   }
 
-  // ===== Edit data modal =====
+  // ===== Edit item =====
   const handleOpenEditModal = (item) => {
     setSelectedData(item)
     setEditSku(item.sku || '')
@@ -266,13 +269,29 @@ export default function StokAksesoris() {
     await fetchData()
   }
 
+  // ===== KATEGORI: tambah manual via modal (tanpa tabel kategori) =====
+  const openKategoriModal = () => {
+    setNewKategoriName('')
+    setShowKategoriModal(true)
+  }
+
+  const saveNewKategori = () => {
+    const k = up(newKategoriName)
+    if (!k) return alert('Nama kategori wajib diisi.')
+    // kita tidak bikin tabel kategori baru agar sederhana:
+    // kategori akan langsung dipakai sebagai value dropdown (disimpan ketika tambah item / edit / mass edit)
+    setKategori(k)
+    setFilterKategori(k)
+    setShowKategoriModal(false)
+  }
+
   const showingFrom = filteredSortedData.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const showingTo = Math.min(page * PAGE_SIZE, filteredSortedData.length)
 
   return (
     <Layout>
       <div className="max-w-6xl mx-auto">
-        {/* HEADER mirip Pricelist */}
+        {/* HEADER */}
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h1 className="text-2xl font-bold">Stok Aksesoris</h1>
@@ -289,58 +308,105 @@ export default function StokAksesoris() {
             >
               Refresh
             </button>
-            <button
-              onClick={openMassModal}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              type="button"
-            >
-              Edit Massal
-            </button>
           </div>
         </div>
 
-        {/* CARD: Form Tambah (mirip Pricelist) */}
+        {/* FORM TAMBAH (mirip Pricelist) */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-5">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div>
-              <div className="font-semibold">Tambah Produk Aksesoris</div>
-              <div className="text-xs text-slate-500">SKU wajib unik. Kategori untuk filter.</div>
-            </div>
-            <div className="text-sm text-slate-600">
-              Dipilih: <b>{selectedIds.length}</b>
-            </div>
-          </div>
+          <div className="font-semibold mb-3">Tambah Produk</div>
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <input className="border p-2.5 rounded-lg" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} />
             <input className="border p-2.5 rounded-lg" placeholder="Nama Produk" value={namaProduk} onChange={(e) => setNamaProduk(e.target.value)} />
             <input className="border p-2.5 rounded-lg" placeholder="Warna" value={warna} onChange={(e) => setWarna(e.target.value)} />
-            <input className="border p-2.5 rounded-lg" placeholder="Kategori (misal: CASE / CABLE / CHARGER)" value={kategori} onChange={(e) => setKategori(e.target.value)} />
+
+            {/* KATEGORI: dropdown + tombol +Kategori (persis Pricelist feel) */}
+            <div className="flex gap-2">
+              <select
+                className="border p-2.5 rounded-lg flex-1 bg-white"
+                value={kategori}
+                onChange={(e) => setKategori(e.target.value)}
+              >
+                <option value="">Pilih Kategori</option>
+                {kategoriOptions.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={openKategoriModal}
+                className="border px-3 py-2.5 rounded-lg bg-white hover:bg-slate-50 whitespace-nowrap"
+              >
+                + Kategori
+              </button>
+            </div>
+
             <input className="border p-2.5 rounded-lg" placeholder="Stok" type="number" value={stok} onChange={(e) => setStok(e.target.value)} />
             <input className="border p-2.5 rounded-lg" placeholder="Harga Modal" type="number" value={hargaModal} onChange={(e) => setHargaModal(e.target.value)} />
 
-            <div className="md:col-span-2 flex items-center justify-end">
+            <div className="md:col-span-2 flex justify-end">
               <button type="submit" className="bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700">
-                Tambah
+                Tambah Produk
               </button>
             </div>
           </form>
         </div>
 
-        {/* FILTER BAR + SORT (mirip Pricelist) */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-4">
+        {/* TAB KATEGORI di atas tabel (kayak Pricelist) */}
+        {kategoriOptions.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setFilterKategori('')}
+                className={`px-3 py-1.5 rounded-lg text-sm border ${
+                  filterKategori ? 'bg-white hover:bg-slate-50' : 'bg-blue-600 text-white border-blue-600'
+                }`}
+              >
+                Semua
+              </button>
+
+              {kategoriOptions.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFilterKategori(k)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border ${
+                    up(filterKategori) === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-xs text-slate-500 mt-3">
+              {loading ? 'Memuat data…' : `Total ${filteredSortedData.length} item • Menampilkan ${showingFrom}–${showingTo}`}
+            </div>
+          </div>
+        )}
+
+        {/* TOOLBAR atas tabel: search + sort + tombol edit massal persis di sini */}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-3">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
             <div className="md:col-span-5">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari SKU / Nama Produk / Warna / Kategori..."
+                placeholder={`Cari produk di ${filterKategori ? filterKategori : 'semua kategori'}...`}
                 className="border p-2.5 rounded-lg w-full"
               />
             </div>
 
             <div className="md:col-span-3">
-              <select className="border p-2.5 rounded-lg w-full" value={filterKategori} onChange={(e) => setFilterKategori(e.target.value)}>
+              <select
+                className="border p-2.5 rounded-lg w-full bg-white"
+                value={filterKategori}
+                onChange={(e) => setFilterKategori(e.target.value)}
+              >
                 <option value="">Semua Kategori</option>
                 {kategoriOptions.map((k) => (
                   <option key={k} value={k}>
@@ -351,7 +417,7 @@ export default function StokAksesoris() {
             </div>
 
             <div className="md:col-span-2">
-              <select className="border p-2.5 rounded-lg w-full" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <select className="border p-2.5 rounded-lg w-full bg-white" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="nama_produk">Abjad (Nama)</option>
                 <option value="sku">SKU</option>
                 <option value="kategori">Kategori</option>
@@ -360,47 +426,28 @@ export default function StokAksesoris() {
               </select>
             </div>
 
-            <div className="md:col-span-2">
-              <select className="border p-2.5 rounded-lg w-full" value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
+            <div className="md:col-span-2 flex gap-2">
+              <select className="border p-2.5 rounded-lg w-full bg-white" value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
                 <option value="asc">ASC</option>
                 <option value="desc">DESC</option>
               </select>
+
+              <button
+                onClick={openMassModal}
+                className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 whitespace-nowrap"
+                type="button"
+              >
+                Edit Massal
+              </button>
             </div>
           </div>
 
-          {/* CHIP KATEGORI ala tab Pricelist */}
-          {kategoriOptions.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setFilterKategori('')}
-                className={`px-3 py-1.5 rounded-full text-sm border ${
-                  filterKategori ? 'bg-white hover:bg-slate-50' : 'bg-blue-600 text-white border-blue-600'
-                }`}
-              >
-                Semua
-              </button>
-              {kategoriOptions.slice(0, 12).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setFilterKategori(k)}
-                  className={`px-3 py-1.5 rounded-full text-sm border ${
-                    up(filterKategori) === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-slate-50'
-                  }`}
-                >
-                  {k}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="text-xs text-slate-500 mt-3">
-            {loading ? 'Memuat data…' : `Total ${filteredSortedData.length} item • Menampilkan ${showingFrom}–${showingTo}`}
+            Dipilih: <b>{selectedIds.length}</b> item
           </div>
         </div>
 
-        {/* TABLE CARD */}
+        {/* TABLE */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -419,7 +466,7 @@ export default function StokAksesoris() {
                   <th className="px-4 py-3 text-left">Kategori</th>
                   <th className="px-4 py-3 text-right">Stok</th>
                   <th className="px-4 py-3 text-right">Modal</th>
-                  <th className="px-4 py-3 text-left w-[220px]">Aksi</th>
+                  <th className="px-4 py-3 text-left w-[240px]">Aksi</th>
                 </tr>
               </thead>
 
@@ -442,25 +489,32 @@ export default function StokAksesoris() {
                       <td className="px-4 py-3">{item.kategori || '-'}</td>
                       <td className="px-4 py-3 text-right">{item.stok ?? 0}</td>
                       <td className="px-4 py-3 text-right">{rupiah(item.harga_modal)}</td>
+
+                      {/* AKSI: warna seperti Pricelist */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
+                          {/* Edit = kuning */}
                           <button
                             onClick={() => handleOpenEditModal(item)}
-                            className="px-3 py-1.5 rounded-full text-xs border bg-white hover:bg-slate-50"
+                            className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md text-xs"
                             type="button"
                           >
                             Edit
                           </button>
+
+                          {/* Update stok = tombol netral (abu) */}
                           <button
                             onClick={() => handleOpenUpdateModal(item)}
-                            className="px-3 py-1.5 rounded-full text-xs border bg-white hover:bg-slate-50"
+                            className="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-md text-xs"
                             type="button"
                           >
                             Update Stok
                           </button>
+
+                          {/* Hapus = merah */}
                           <button
                             onClick={() => handleDelete(item.id)}
-                            className="px-3 py-1.5 rounded-full text-xs border border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
+                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-xs"
                             type="button"
                           >
                             Hapus
@@ -500,6 +554,57 @@ export default function StokAksesoris() {
             </div>
           </div>
         </div>
+
+        {/* ===== MODALS ===== */}
+
+        {/* MODAL TAMBAH KATEGORI */}
+        {showKategoriModal && (
+          <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-lg overflow-hidden">
+              <div className="px-5 py-4 border-b flex items-center justify-between">
+                <div className="font-semibold">Tambah Kategori</div>
+                <button
+                  className="text-sm border px-3 py-1.5 rounded-lg"
+                  onClick={() => setShowKategoriModal(false)}
+                  type="button"
+                >
+                  Tutup
+                </button>
+              </div>
+
+              <div className="p-5">
+                <label className="block text-sm text-slate-600 mb-1">Nama Kategori</label>
+                <input
+                  className="border px-3 py-2.5 w-full rounded-lg mb-4"
+                  placeholder="Misal: CASE / CABLE / CHARGER"
+                  value={newKategoriName}
+                  onChange={(e) => setNewKategoriName(e.target.value)}
+                />
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowKategoriModal(false)}
+                    className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+                    type="button"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={saveNewKategori}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    type="button"
+                  >
+                    Simpan
+                  </button>
+                </div>
+
+                <div className="text-xs text-slate-500 mt-3">
+                  Kategori akan langsung terpilih di form dan filter.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODAL UPDATE STOK */}
         {showUpdateModal && (
@@ -576,7 +681,18 @@ export default function StokAksesoris() {
 
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Kategori</label>
-                    <input className="border px-3 py-2.5 w-full rounded-lg" value={editKategori} onChange={(e) => setEditKategori(e.target.value)} />
+                    <select
+                      className="border px-3 py-2.5 w-full rounded-lg bg-white"
+                      value={editKategori || ''}
+                      onChange={(e) => setEditKategori(e.target.value)}
+                    >
+                      <option value="">Pilih Kategori</option>
+                      {kategoriOptions.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -617,12 +733,18 @@ export default function StokAksesoris() {
                 <div className="grid grid-cols-1 gap-3">
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Kategori (opsional)</label>
-                    <input
-                      className="border px-3 py-2.5 w-full rounded-lg"
-                      placeholder="Misal: CASE / CABLE / CHARGER"
+                    <select
+                      className="border px-3 py-2.5 w-full rounded-lg bg-white"
                       value={massKategori}
                       onChange={(e) => setMassKategori(e.target.value)}
-                    />
+                    >
+                      <option value="">(Tidak diubah)</option>
+                      {kategoriOptions.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
