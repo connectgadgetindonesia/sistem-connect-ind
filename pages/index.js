@@ -1,17 +1,23 @@
 import Layout from '@/components/Layout'
 import { supabase } from '../lib/supabaseClient'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-export default function Home() {
-  const [stok, setStok] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [isEditing, setIsEditing] = useState(false)
-  const [editId, setEditId] = useState(null)
+const PAGE_SIZE = 20
+const up = (s) => (s || '').toString().trim().toUpperCase()
+const rupiah = (n) => 'Rp ' + (parseInt(n || 0, 10)).toLocaleString('id-ID')
+
+export default function StokBarang() {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // filter & paging
+  const [search, setSearch] = useState('')
+  const [filterKategori, setFilterKategori] = useState('')
   const [filterStatus, setFilterStatus] = useState('READY')
-  const [filterStartDate, setFilterStartDate] = useState('')
-  const [filterEndDate, setFilterEndDate] = useState('')
+  const [page, setPage] = useState(1)
 
-  const [formData, setFormData] = useState({
+  // form
+  const [form, setForm] = useState({
     nama_produk: '',
     sn: '',
     imei: '',
@@ -21,70 +27,89 @@ export default function Home() {
     asal_produk: '',
     harga_modal: '',
     tanggal_masuk: '',
+    kategori: '',
     status: 'READY'
   })
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [editId, setEditId] = useState(null)
 
   useEffect(() => {
     fetchData()
   }, [])
 
   async function fetchData() {
+    setLoading(true)
     const { data, error } = await supabase
-  .from('stok')
-  .select('*')
-  .order('nama_produk', { ascending: true }) // ✅ urut abjad A-Z
-    if (error) console.error('Gagal ambil data:', error)
-    else setStok(data)
-  }
-
-  async function handleSubmit(e) {
-  e.preventDefault();
-
-  if (isEditing) {
-    const { error } = await supabase.from('stok').update(formData).eq('id', editId);
-    if (error) alert('Gagal update data');
-    else {
-      alert('Berhasil diupdate');
-      resetForm();
-      fetchData();
-    }
-  } else {
-    // ✅ Cek apakah SN sudah ada
-    const { data: existing } = await supabase
       .from('stok')
-      .select('id')
-      .eq('sn', formData.sn.trim());
+      .select('*')
+      .order('nama_produk', { ascending: true })
 
-    if (existing && existing.length > 0) {
-      alert('❗ SN sudah ada, silakan klik "Edit" untuk ubah data.');
-      return;
-    }
-
-    const { error } = await supabase.from('stok').insert([formData]);
-    if (error) alert('Gagal tambah data');
-    else {
-      alert('Berhasil ditambahkan');
-      resetForm();
-      fetchData();
-    }
-  }
-}
-
-  async function handleDelete(id) {
-    if (confirm('Yakin hapus data ini?')) {
-      const { error } = await supabase.from('stok').delete().eq('id', id)
-      if (!error) fetchData()
-    }
+    if (!error) setData(data || [])
+    setLoading(false)
   }
 
-  function handleEdit(item) {
-    setFormData(item)
-    setEditId(item.id)
-    setIsEditing(true)
+  /* =======================
+      KATEGORI
+  ======================= */
+  const kategoriOptions = useMemo(() => {
+    const set = new Set()
+    data.forEach((x) => {
+      if (x.kategori) set.add(up(x.kategori))
+    })
+    return Array.from(set)
+  }, [data])
+
+  /* =======================
+      FILTERED DATA
+  ======================= */
+  const filteredData = useMemo(() => {
+    const s = search.toLowerCase()
+
+    return data.filter((item) => {
+      const matchSearch =
+        item.nama_produk?.toLowerCase().includes(s) ||
+        item.sn?.toLowerCase().includes(s) ||
+        item.warna?.toLowerCase().includes(s)
+
+      const matchKategori = !filterKategori || up(item.kategori) === filterKategori
+      const matchStatus = !filterStatus || item.status === filterStatus
+
+      return matchSearch && matchKategori && matchStatus
+    })
+  }, [data, search, filterKategori, filterStatus])
+
+  const totalPages = Math.ceil(filteredData.length / PAGE_SIZE)
+  const pageData = filteredData.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  useEffect(() => setPage(1), [search, filterKategori, filterStatus])
+
+  /* =======================
+      CRUD
+  ======================= */
+  async function handleSubmit(e) {
+    e.preventDefault()
+
+    if (!form.nama_produk || !form.sn) {
+      alert('Nama produk & SN wajib diisi')
+      return
+    }
+
+    if (isEditing) {
+      await supabase.from('stok').update(form).eq('id', editId)
+    } else {
+      const { data: existing } = await supabase.from('stok').select('id').eq('sn', form.sn)
+      if (existing.length) return alert('SN sudah ada')
+
+      await supabase.from('stok').insert([form])
+    }
+
+    resetForm()
+    fetchData()
   }
 
   function resetForm() {
-    setFormData({
+    setForm({
       nama_produk: '',
       sn: '',
       imei: '',
@@ -94,102 +119,144 @@ export default function Home() {
       asal_produk: '',
       harga_modal: '',
       tanggal_masuk: '',
+      kategori: '',
       status: 'READY'
     })
     setIsEditing(false)
     setEditId(null)
   }
 
-  const filteredStok = stok.filter(item => {
-    const matchSearch = [item.nama_produk, item.sn, item.warna].some(field =>
-      field?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    const matchStatus = filterStatus ? item.status === filterStatus : true
-    const matchStart = filterStartDate ? new Date(item.tanggal_masuk) >= new Date(filterStartDate) : true
-    const matchEnd = filterEndDate ? new Date(item.tanggal_masuk) <= new Date(filterEndDate) : true
-    return matchSearch && matchStatus && matchStart && matchEnd
-  })
+  function handleEdit(item) {
+    setForm(item)
+    setIsEditing(true)
+    setEditId(item.id)
+  }
+
+  async function handleDelete(id) {
+    if (!confirm('Yakin hapus data?')) return
+    await supabase.from('stok').delete().eq('id', id)
+    fetchData()
+  }
 
   return (
     <Layout>
-      <div className="p-4">
-        <h1 className="text-2xl font-bold mb-4">Form Stok Barang CONNECT.IND</h1>
+      <div className="max-w-6xl mx-auto">
 
-        <form onSubmit={handleSubmit} className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            ['Nama Produk', 'nama_produk'],
-            ['Serial Number (SN)', 'sn'],
-            ['IMEI', 'imei'],
-            ['Warna', 'warna'],
-            ['Storage', 'storage'],
-            ['Garansi', 'garansi'],
-            ['Asal Produk', 'asal_produk'],
-            ['Harga Modal (Rp)', 'harga_modal'],
-            ['Tanggal Masuk', 'tanggal_masuk']
-          ].map(([label, field]) => (
-            <input
-              key={field}
-              className="border p-2"
-              type={field === 'harga_modal' ? 'number' : field === 'tanggal_masuk' ? 'date' : 'text'}
-              placeholder={label}
-              value={formData[field]}
-              onChange={(e) =>
-                setFormData({ ...formData, [field]: e.target.value })
-              }
-            />
-          ))}
+        {/* HEADER */}
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold">Stok Barang</h1>
+          <p className="text-sm text-slate-500">Kelola stok READY & SOLD</p>
+        </div>
 
-          <button
-            className="bg-green-600 text-white px-4 py-2 rounded col-span-1 md:col-span-2"
-            type="submit"
-          >
-            {isEditing ? 'Update Data' : 'Simpan ke Database'}
+        {/* FORM */}
+        <div className="bg-white rounded-2xl border p-5 mb-6">
+          <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-3">
+            {[
+              ['Nama Produk', 'nama_produk'],
+              ['Serial Number (SN)', 'sn'],
+              ['IMEI', 'imei'],
+              ['Warna', 'warna'],
+              ['Storage', 'storage'],
+              ['Garansi', 'garansi'],
+              ['Asal Produk', 'asal_produk'],
+              ['Harga Modal', 'harga_modal'],
+              ['Tanggal Masuk', 'tanggal_masuk']
+            ].map(([label, key]) => (
+              <input
+                key={key}
+                placeholder={label}
+                type={key === 'harga_modal' ? 'number' : key === 'tanggal_masuk' ? 'date' : 'text'}
+                className="border p-2.5 rounded-lg"
+                value={form[key]}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+              />
+            ))}
+
+            {/* KATEGORI */}
+            <select
+              className="border p-2.5 rounded-lg"
+              value={form.kategori || ''}
+              onChange={(e) => setForm({ ...form, kategori: e.target.value })}
+            >
+              <option value="">Pilih Kategori</option>
+              {kategoriOptions.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+
+            <button className="bg-green-600 text-white py-2.5 rounded-lg md:col-span-2">
+              {isEditing ? 'Update Data' : 'Simpan ke Database'}
+            </button>
+          </form>
+        </div>
+
+        {/* TAB KATEGORI */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          <button onClick={() => setFilterKategori('')} className={`px-3 py-1.5 rounded-lg border ${!filterKategori ? 'bg-blue-600 text-white' : ''}`}>
+            Semua
           </button>
-        </form>
+          {kategoriOptions.map((k) => (
+            <button
+              key={k}
+              onClick={() => setFilterKategori(k)}
+              className={`px-3 py-1.5 rounded-lg border ${filterKategori === k ? 'bg-blue-600 text-white' : ''}`}
+            >
+              {k}
+            </button>
+          ))}
+        </div>
 
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* FILTER BAR */}
+        <div className="bg-white border rounded-2xl p-4 mb-3 grid md:grid-cols-4 gap-3">
           <input
-            type="text"
             placeholder="Cari produk / SN / warna..."
-            className="border p-2"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            className="border p-2.5 rounded-lg"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-          <select
-            className="border p-2"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="">Semua Status</option>
+          <select className="border p-2.5 rounded-lg" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="READY">READY</option>
             <option value="SOLD">SOLD</option>
           </select>
-          <input
-            type="date"
-            className="border p-2"
-            value={filterStartDate}
-            onChange={(e) => setFilterStartDate(e.target.value)}
-          />
-          <input
-            type="date"
-            className="border p-2"
-            value={filterEndDate}
-            onChange={(e) => setFilterEndDate(e.target.value)}
-          />
         </div>
 
-        <h2 className="text-xl font-semibold mb-2">Data Stok Tersimpan</h2>
-        <ul className="space-y-2 text-sm">
-          {filteredStok.map((item) => (
-            <li key={item.id} className="border-b pb-2">
-              <strong>{item.nama_produk}</strong> | SN: {item.sn} | IMEI: {item.imei} | Warna: {item.warna} | Storage: {item.storage} | Garansi: {item.garansi} | Modal: Rp{item.harga_modal?.toLocaleString()} | Status: {item.status} | Asal: {item.asal_produk} | Masuk: {item.tanggal_masuk}
-              <div className="mt-1 space-x-2">
-                <button onClick={() => handleEdit(item)} className="text-blue-600">Edit</button>
-                <button onClick={() => handleDelete(item.id)} className="text-red-600">Hapus</button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {/* TABLE */}
+        <div className="bg-white rounded-2xl border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="px-4 py-3 text-left">Produk</th>
+                <th>SN</th>
+                <th>Status</th>
+                <th>Modal</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageData.map((item) => (
+                <tr key={item.id} className="border-t hover:bg-slate-50">
+                  <td className="px-4 py-2 font-semibold">{item.nama_produk}</td>
+                  <td>{item.sn}</td>
+                  <td>{item.status}</td>
+                  <td>{rupiah(item.harga_modal)}</td>
+                  <td className="flex gap-2 py-2">
+                    <button onClick={() => handleEdit(item)} className="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
+                    <button onClick={() => handleDelete(item.id)} className="bg-red-600 text-white px-3 py-1 rounded">Hapus</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* PAGINATION */}
+          <div className="flex justify-between p-4">
+            <span>Page {page} / {totalPages}</span>
+            <div className="flex gap-2">
+              <button disabled={page === 1} onClick={() => setPage(page - 1)} className="border px-4 py-2 rounded">Prev</button>
+              <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="border px-4 py-2 rounded">Next</button>
+            </div>
+          </div>
+        </div>
       </div>
     </Layout>
   )
