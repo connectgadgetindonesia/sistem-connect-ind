@@ -14,6 +14,11 @@ export default function Home() {
   const [stok, setStok] = useState([])
   const [loading, setLoading] = useState(false)
 
+  // ===== MASTER KATEGORI =====
+  const [kategoriMaster, setKategoriMaster] = useState([])
+  const [showKategoriModal, setShowKategoriModal] = useState(false)
+  const [kategoriBaru, setKategoriBaru] = useState('')
+
   // ===== FILTER =====
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('READY')
@@ -54,6 +59,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchData()
+    fetchKategoriMaster()
   }, [])
 
   async function fetchData() {
@@ -64,15 +70,18 @@ export default function Home() {
     setStok(data || [])
   }
 
-  // ===== OPTIONS =====
+  async function fetchKategoriMaster() {
+    const { data, error } = await supabase
+      .from('kategori_stok')
+      .select('*')
+      .order('nama', { ascending: true })
+    if (!error) setKategoriMaster(data || [])
+  }
+
+  // ===== OPTIONS (MASTER) =====
   const kategoriOptions = useMemo(() => {
-    const set = new Set()
-    ;(stok || []).forEach((x) => {
-      const k = (x.kategori || '').toString().trim().toUpperCase()
-      if (k) set.add(k)
-    })
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [stok])
+    return (kategoriMaster || []).map((x) => x.nama)
+  }, [kategoriMaster])
 
   // ===== FILTERED =====
   const filteredData = useMemo(() => {
@@ -108,7 +117,7 @@ export default function Home() {
 
   useEffect(() => {
     setPage(1)
-    setSelectedIds([]) // reset seleksi saat filter berubah
+    setSelectedIds([])
   }, [searchTerm, filterStatus, filterKategori])
 
   // ===== CRUD =====
@@ -138,7 +147,6 @@ export default function Home() {
       return fetchData()
     }
 
-    // cek SN duplicate
     const { data: existing } = await supabase.from('stok').select('id').eq('sn', payload.sn)
     if (existing && existing.length > 0) {
       alert('❗ SN sudah ada, silakan klik "Edit" untuk ubah data.')
@@ -204,11 +212,8 @@ export default function Home() {
   const toggleSelectAllOnPage = () => {
     const idsOnPage = pageData.map((x) => x.id)
     const allSelected = idsOnPage.length > 0 && idsOnPage.every((id) => selectedIds.includes(id))
-    if (allSelected) {
-      setSelectedIds((prev) => prev.filter((id) => !idsOnPage.includes(id)))
-    } else {
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...idsOnPage])))
-    }
+    if (allSelected) setSelectedIds((prev) => prev.filter((id) => !idsOnPage.includes(id)))
+    else setSelectedIds((prev) => Array.from(new Set([...prev, ...idsOnPage])))
   }
 
   const openMassModal = () => {
@@ -238,6 +243,22 @@ export default function Home() {
     fetchData()
   }
 
+  // ===== TAMBAH KATEGORI =====
+  const handleSaveKategori = async () => {
+    const nama = (kategoriBaru || '').toUpperCase().trim()
+    if (!nama) return alert('Nama kategori wajib diisi')
+
+    const { error } = await supabase.from('kategori_stok').insert({ nama })
+    if (error) return alert('Gagal tambah kategori: ' + error.message)
+
+    setShowKategoriModal(false)
+    setKategoriBaru('')
+    await fetchKategoriMaster()
+
+    // auto select di form
+    setFormData((p) => ({ ...p, kategori: nama }))
+  }
+
   return (
     <Layout>
       <div className="p-4">
@@ -265,12 +286,30 @@ export default function Home() {
 
             <input className="border p-2 rounded" type="date" value={formData.tanggal_masuk} onChange={(e) => setFormData({ ...formData, tanggal_masuk: e.target.value })} />
 
-            <select className="border p-2 rounded" value={formData.kategori || ''} onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}>
-              <option value="">Pilih Kategori</option>
-              {kategoriOptions.map((k) => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
+            {/* KATEGORI + TOMBOL +KATEGORI */}
+            <div className="flex gap-2">
+              <select
+                className="border p-2 rounded flex-1"
+                value={formData.kategori || ''}
+                onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}
+              >
+                <option value="">Pilih Kategori</option>
+                {kategoriOptions.map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                className="bg-blue-600 text-white px-4 rounded-lg"
+                onClick={() => {
+                  setKategoriBaru('')
+                  setShowKategoriModal(true)
+                }}
+              >
+                + Kategori
+              </button>
+            </div>
 
             <button className="bg-green-600 text-white px-4 py-2 rounded col-span-1 md:col-span-2" type="submit">
               {isEditing ? 'Update Data' : 'Simpan ke Database'}
@@ -278,7 +317,7 @@ export default function Home() {
           </form>
         </div>
 
-        {/* FILTER + CATEGORY TABS */}
+        {/* CATEGORY TABS */}
         <div className="mb-3 flex flex-wrap gap-2">
           <button
             className={`px-3 py-1 rounded-lg border ${filterKategori === '' ? 'bg-blue-600 text-white' : 'bg-white'}`}
@@ -315,7 +354,7 @@ export default function Home() {
               </select>
             </div>
 
-            {/* EDIT MASSAL (harus di atas tabel) */}
+            {/* EDIT MASSAL */}
             <div className="flex items-center gap-3">
               <div className="text-sm text-gray-600">
                 Dipilih: <b>{selectedIds.length}</b>
@@ -399,18 +438,10 @@ export default function Home() {
                       <td className="px-3 py-2 text-right">{rupiah(item.harga_modal)}</td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleEdit(item)}
-                            className="px-3 py-1 rounded bg-orange-500 text-white hover:opacity-90"
-                            type="button"
-                          >
+                          <button onClick={() => handleEdit(item)} className="px-3 py-1 rounded bg-orange-500 text-white hover:opacity-90" type="button">
                             Edit
                           </button>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="px-3 py-1 rounded bg-red-600 text-white hover:opacity-90"
-                            type="button"
-                          >
+                          <button onClick={() => handleDelete(item.id)} className="px-3 py-1 rounded bg-red-600 text-white hover:opacity-90" type="button">
                             Hapus
                           </button>
                         </div>
@@ -448,7 +479,16 @@ export default function Home() {
               </div>
 
               <label className="block mb-1 text-sm">Kategori (opsional)</label>
-              <input className="border p-2 rounded w-full mb-3" value={massData.kategori} onChange={(e) => setMassData((p) => ({ ...p, kategori: e.target.value }))} />
+              <select
+                className="border p-2 rounded w-full mb-3"
+                value={massData.kategori}
+                onChange={(e) => setMassData((p) => ({ ...p, kategori: e.target.value }))}
+              >
+                <option value="">(Kosongkan jika tidak diubah)</option>
+                {kategoriOptions.map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
 
               <label className="block mb-1 text-sm">Asal Produk (opsional)</label>
               <input className="border p-2 rounded w-full mb-3" value={massData.asal_produk} onChange={(e) => setMassData((p) => ({ ...p, asal_produk: e.target.value }))} />
@@ -470,6 +510,31 @@ export default function Home() {
                   Simpan
                 </button>
                 <button onClick={() => setShowMassModal(false)} className="text-gray-600" type="button">
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL TAMBAH KATEGORI */}
+        {showKategoriModal && (
+          <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+              <h2 className="text-lg font-bold mb-3">Tambah Kategori</h2>
+
+              <input
+                className="border p-2 rounded w-full mb-4"
+                placeholder="Contoh: AIRPODS / IPHONE / IPAD"
+                value={kategoriBaru}
+                onChange={(e) => setKategoriBaru(e.target.value)}
+              />
+
+              <div className="flex justify-between">
+                <button onClick={handleSaveKategori} className="bg-blue-600 text-white px-4 py-2 rounded-lg" type="button">
+                  Simpan
+                </button>
+                <button onClick={() => setShowKategoriModal(false)} className="text-gray-600" type="button">
                   Batal
                 </button>
               </div>
