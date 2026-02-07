@@ -1,4 +1,5 @@
 // pages/pricelist.js
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
@@ -75,6 +76,7 @@ function buildPlatformPayload({ harga_tokopedia, harga_shopee }) {
 
 
 export default function PricelistPage() {
+  const printRef = useRef(null)
   const [kategoriList, setKategoriList] = useState([])
   const [activeKategori, setActiveKategori] = useState('')
   const [rows, setRows] = useState([])
@@ -106,6 +108,32 @@ export default function PricelistPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
+  async function downloadJpgKategori() {
+  try {
+    // html2canvas aman untuk “screenshot div”
+    const mod = await import('html2canvas')
+    const html2canvas = mod.default
+
+    if (!printRef.current) return alert('Area download belum siap.')
+
+    const canvas = await html2canvas(printRef.current, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+    })
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `Pricelist-${(activeKategori || 'Kategori').replace(/\s+/g, '-')}.jpg`
+    a.click()
+  } catch (e) {
+    console.error('downloadJpgKategori error:', e)
+    alert('Gagal download JPG. Cek console.')
+  }
+}
+
 
   // ===== Bulk Edit =====
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -683,16 +711,26 @@ async function applySettingToKategori(kategori) {
               style={{ ...input, maxWidth: 340 }}
             />
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={openBulkEdit}
-                style={btnPrimary}
-                disabled={loading || selectedIds.size === 0}
-                title="Edit massal produk yang dicentang"
-              >
-                Edit Massal
-              </button>
-            </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+  <button
+    onClick={downloadJpgKategori}
+    style={btnOutline}
+    disabled={loading || filteredRows.length === 0}
+    title="Download JPG (Nama Produk & Harga Offline)"
+  >
+    Download JPG
+  </button>
+
+  <button
+    onClick={openBulkEdit}
+    style={btnPrimary}
+    disabled={loading || selectedIds.size === 0}
+    title="Edit massal produk yang dicentang"
+  >
+    Edit Massal
+  </button>
+</div>
+
           </div>
 
           {/* Table */}
@@ -763,6 +801,49 @@ async function applySettingToKategori(kategori) {
             Setting kategori: harga Tokopedia/Shopee dihitung otomatis dari <b>Harga Offline</b> berdasarkan pajak & biaya
             pada kategori.
           </div>
+          <div
+  ref={printRef}
+  style={{
+    position: 'fixed',
+    left: -99999,
+    top: 0,
+    width: 900,
+    padding: 24,
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+  }}
+>
+  <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
+    PRICE LIST - {activeKategori}
+  </div>
+
+  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <thead>
+      <tr style={{ background: '#f8fafc' }}>
+        <th style={{ textAlign: 'left', padding: 10, fontSize: 12 }}>Nama Produk</th>
+        <th style={{ textAlign: 'right', padding: 10, fontSize: 12 }}>Harga Offline</th>
+      </tr>
+    </thead>
+    <tbody>
+      {(filteredRows || []).map((r) => (
+        <tr key={r.id} style={{ borderTop: '1px solid #e5e7eb' }}>
+          <td style={{ textAlign: 'left', padding: 10, fontSize: 13 }}>
+            {String(r.nama_produk || '').toUpperCase()}
+          </td>
+          <td style={{ textAlign: 'right', padding: 10, fontSize: 13, fontWeight: 900 }}>
+            {formatRp(r.harga_offline)}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+
+  <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>
+    CONNECT.IND
+  </div>
+</div>
+
         </div>
 
         {/* MODAL SETTING */}
