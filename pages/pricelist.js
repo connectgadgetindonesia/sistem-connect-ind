@@ -51,13 +51,12 @@ function mapRowFromDb(r) {
 
 function buildPlatformPayload({ harga_tokopedia, harga_shopee }) {
   return {
-    // ✅ kolom asli DB
+    // ✅ yang benar-benar ada di DB
     harga_tokped: toNumber(harga_tokopedia),
-    // ✅ optional (kalau suatu hari kamu rename kolom, tetap ikut keisi)
-    harga_tokopedia: toNumber(harga_tokopedia),
     harga_shopee: toNumber(harga_shopee),
   }
 }
+
 
 export default function PricelistPage() {
   const [kategoriList, setKategoriList] = useState([])
