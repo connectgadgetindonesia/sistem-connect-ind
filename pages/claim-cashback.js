@@ -1,12 +1,14 @@
-// pages/kinerja.js  ✅ Claim Cashback
 import Layout from '@/components/Layout'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
 
+const PAGE_SIZE = 20
+
 const emptyForm = () => ({
   kategori: '',
+  kategori_baru: '',
   nama_produk: '',
   serial_number: '',
   imei: '',
@@ -18,8 +20,19 @@ const emptyForm = () => ({
 })
 
 const toInt = (v) => {
-  const n = parseInt(String(v || '').replace(/[^\d]/g, ''), 10)
+  const n = parseInt(String(v || '').replace(/[^\d-]/g, ''), 10)
   return Number.isNaN(n) ? 0 : n
+}
+
+const rupiah = (n) => 'Rp ' + (toInt(n) || 0).toLocaleString('id-ID')
+
+function pickFirst(obj, keys = []) {
+  for (const k of keys) {
+    if (obj && obj[k] !== null && obj[k] !== undefined && String(obj[k]).trim() !== '') {
+      return obj[k]
+    }
+  }
+  return ''
 }
 
 export default function KinerjaKaryawan() {
@@ -27,11 +40,23 @@ export default function KinerjaKaryawan() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
+  // UI state
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(emptyForm())
-
   const [editId, setEditId] = useState(null)
   const isEditing = editId !== null
+
+  // tabs & sorting & paging
+  const [activeTab, setActiveTab] = useState('SEMUA') // SEMUA atau kategori
+  const [sortBy, setSortBy] = useState('tanggal_laku_desc') // abjad | tanggal_beli | tanggal_laku
+  const [page, setPage] = useState(1)
+
+  // kategori dropdown
+  const [categories, setCategories] = useState([])
+
+  // SN lookup debounce
+  const snTimerRef = useRef(null)
+  const [snLoading, setSnLoading] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -51,9 +76,88 @@ export default function KinerjaKaryawan() {
       setRows([])
       return
     }
-    setRows(data || [])
+
+    const all = data || []
+    setRows(all)
+
+    // build kategori list dari data
+    const cat = Array.from(
+      new Set(
+        all
+          .map((x) => (x.kategori || '').toString().trim())
+          .filter(Boolean)
+          .map((x) => x.toUpperCase())
+      )
+    ).sort((a, b) => a.localeCompare(b))
+
+    setCategories(cat)
   }
 
+  // ====== SN AUTO DETECT (ambil dari stok) ======
+  // asumsi tabel stok: 'stok'
+  // kolom yang dicoba: sn / serial_number / sn_sku
+  // kolom yang diambil: nama_produk, imei, asal_barang/asal_produk, harga_modal/modal, tanggal_masuk/tanggal_beli
+async function lookupFromStokBySN(sn) {
+  const q = (sn || '').toString().trim()
+  if (!q) return null
+
+  setSnLoading(true)
+  try {
+    const { data, error } = await supabase
+      .from('stok')
+      .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
+      .eq('sn', q)
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error('lookup stok error:', error)
+      return null
+    }
+    return data || null
+  } finally {
+    setSnLoading(false)
+  }
+}
+
+
+  // debounce ketika serial_number berubah
+  useEffect(() => {
+    const sn = (form.serial_number || '').trim()
+    if (!sn) return
+
+    if (snTimerRef.current) clearTimeout(snTimerRef.current)
+
+    snTimerRef.current = setTimeout(async () => {
+      // jangan override kalau lagi edit dan user sengaja ubah manual? tetap auto isi tapi hanya field kosong.
+      const stok = await lookupFromStokBySN(sn)
+      if (!stok) return
+
+      const nama_produk = pickFirst(stok, ['nama_produk', 'produk', 'nama'])
+      const imei = pickFirst(stok, ['imei', 'imei1', 'imei_1'])
+      const asal_barang = pickFirst(stok, ['asal_barang', 'asal_produk', 'asal'])
+      const modal_lama = pickFirst(stok, ['harga_modal', 'modal', 'modal_lama'])
+      const tanggal_beli = pickFirst(stok, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
+
+      setForm((prev) => ({
+        ...prev,
+        nama_produk: prev.nama_produk ? prev.nama_produk : (nama_produk || ''),
+        imei: prev.imei ? prev.imei : (imei || ''),
+        asal_barang: prev.asal_barang ? prev.asal_barang : (asal_barang || ''),
+        modal_lama: prev.modal_lama ? prev.modal_lama : String(modal_lama || ''),
+        tanggal_beli: prev.tanggal_beli
+          ? prev.tanggal_beli
+          : (tanggal_beli ? dayjs(tanggal_beli).format('YYYY-MM-DD') : ''),
+      }))
+    }, 450)
+
+    return () => {
+      if (snTimerRef.current) clearTimeout(snTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.serial_number])
+
+  // ===== FILTER SEARCH =====
   const filtered = useMemo(() => {
     const q = (search || '').toLowerCase().trim()
     if (!q) return rows
@@ -72,19 +176,82 @@ export default function KinerjaKaryawan() {
     })
   }, [rows, search])
 
-  // ✅ group per kategori (tabel per kategori otomatis muncul)
-  const groupedByKategori = useMemo(() => {
-    const map = {}
-    for (const r of filtered) {
-      const key = (r.kategori || 'TANPA KATEGORI').toString().trim().toUpperCase()
-      if (!map[key]) map[key] = []
-      map[key].push(r)
-    }
-    // urut kategori alfabet
-    const keys = Object.keys(map).sort((a, b) => a.localeCompare(b))
-    return keys.map((k) => ({ kategori: k, items: map[k] }))
+  // ===== TABS (SEMUA + kategori dari filtered) =====
+  const tabs = useMemo(() => {
+    const cats = Array.from(
+      new Set(
+        (filtered || [])
+          .map((x) => (x.kategori || '').toString().trim())
+          .filter(Boolean)
+          .map((x) => x.toUpperCase())
+      )
+    ).sort((a, b) => a.localeCompare(b))
+
+    return ['SEMUA', ...cats]
   }, [filtered])
 
+  // keep activeTab valid
+  useEffect(() => {
+    if (!tabs.includes(activeTab)) setActiveTab('SEMUA')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs.join('|')])
+
+  // ===== FILTER BY TAB =====
+  const tabRows = useMemo(() => {
+    if (activeTab === 'SEMUA') return filtered
+    return (filtered || []).filter(
+      (r) => (r.kategori || '').toString().trim().toUpperCase() === activeTab
+    )
+  }, [filtered, activeTab])
+
+  // ===== SORT =====
+  const sortedRows = useMemo(() => {
+    const arr = [...(tabRows || [])]
+
+    const safeDate = (v) => {
+      const s = (v || '').toString()
+      const d = dayjs(s)
+      return d.isValid() ? d.valueOf() : 0
+    }
+
+    arr.sort((a, b) => {
+      if (sortBy === 'abjad_asc') {
+        return (String(a.nama_produk || '')).localeCompare(String(b.nama_produk || ''))
+      }
+      if (sortBy === 'abjad_desc') {
+        return (String(b.nama_produk || '')).localeCompare(String(a.nama_produk || ''))
+      }
+      if (sortBy === 'tanggal_beli_desc') {
+        return safeDate(b.tanggal_beli) - safeDate(a.tanggal_beli)
+      }
+      if (sortBy === 'tanggal_beli_asc') {
+        return safeDate(a.tanggal_beli) - safeDate(b.tanggal_beli)
+      }
+      if (sortBy === 'tanggal_laku_asc') {
+        return safeDate(a.tanggal_laku) - safeDate(b.tanggal_laku)
+      }
+      // default tanggal_laku_desc
+      return safeDate(b.tanggal_laku) - safeDate(a.tanggal_laku)
+    })
+
+    return arr
+  }, [tabRows, sortBy])
+
+  // ===== PAGING =====
+  const totalRows = sortedRows.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+
+  useEffect(() => {
+    setPage(1)
+  }, [activeTab, sortBy, search])
+
+  const pageRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE
+    return sortedRows.slice(start, start + PAGE_SIZE)
+  }, [sortedRows, safePage])
+
+  // ===== SELISIH PREVIEW =====
   const selisihPreview = useMemo(() => {
     const lama = toInt(form.modal_lama)
     const baru = toInt(form.modal_baru)
@@ -99,8 +266,11 @@ export default function KinerjaKaryawan() {
   async function handleSubmit(e) {
     e.preventDefault()
 
+    const kategoriFinal =
+      (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
+
     const payload = {
-      kategori: (form.kategori || '').trim(),
+      kategori: kategoriFinal.trim().toUpperCase(),
       nama_produk: (form.nama_produk || '').trim(),
       serial_number: (form.serial_number || '').trim(),
       imei: (form.imei || '').trim(),
@@ -114,14 +284,15 @@ export default function KinerjaKaryawan() {
 
     if (!payload.kategori) return alert('Kategori wajib diisi')
     if (!payload.nama_produk) return alert('Nama produk wajib diisi')
+    if (!payload.serial_number) return alert('Serial Number wajib diisi')
     if (!payload.tanggal_laku) return alert('Tanggal laku wajib diisi')
+
+    setLoading(true)
 
     // ✅ UPDATE
     if (isEditing) {
-      const { error } = await supabase
-        .from('claim_cashback')
-        .update(payload)
-        .eq('id', editId)
+      const { error } = await supabase.from('claim_cashback').update(payload).eq('id', editId)
+      setLoading(false)
 
       if (error) {
         console.error(error)
@@ -135,6 +306,8 @@ export default function KinerjaKaryawan() {
 
     // ✅ INSERT
     const { error } = await supabase.from('claim_cashback').insert(payload)
+    setLoading(false)
+
     if (error) {
       console.error(error)
       return alert('Gagal simpan data')
@@ -147,7 +320,8 @@ export default function KinerjaKaryawan() {
   function handleEdit(row) {
     setEditId(row.id)
     setForm({
-      kategori: row.kategori || '',
+      kategori: (row.kategori || '').toString().trim().toUpperCase(),
+      kategori_baru: '',
       nama_produk: row.nama_produk || '',
       serial_number: row.serial_number || '',
       imei: row.imei || '',
@@ -164,7 +338,10 @@ export default function KinerjaKaryawan() {
     const ok = confirm('Yakin ingin hapus data ini?')
     if (!ok) return
 
+    setLoading(true)
     const { error } = await supabase.from('claim_cashback').delete().eq('id', id)
+    setLoading(false)
+
     if (error) {
       console.error(error)
       return alert('Gagal hapus data')
@@ -172,11 +349,10 @@ export default function KinerjaKaryawan() {
     fetchData()
   }
 
-  function exportAllToExcel() {
+  // ===== EXPORT EXCEL =====
+  function exportRowsToExcel(filename, dataRows) {
     const wb = XLSX.utils.book_new()
-
-    // Sheet 1: ALL
-    const allSheet = [
+    const sheet = [
       [
         'No',
         'Kategori',
@@ -190,7 +366,7 @@ export default function KinerjaKaryawan() {
         'Selisih Modal',
         'Asal Barang',
       ],
-      ...filtered.map((r, idx) => [
+      ...(dataRows || []).map((r, idx) => [
         idx + 1,
         r.kategori || '',
         r.nama_produk || '',
@@ -204,244 +380,312 @@ export default function KinerjaKaryawan() {
         r.asal_barang || '',
       ]),
     ]
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(allSheet), 'ALL')
-
-    // Sheet per kategori
-    for (const g of groupedByKategori) {
-      const wsData = [
-        [
-          'No',
-          'Nama Produk',
-          'Serial Number',
-          'IMEI',
-          'Tanggal Laku',
-          'Modal Lama',
-          'Tanggal Beli',
-          'Modal Baru',
-          'Selisih Modal',
-          'Asal Barang',
-        ],
-        ...g.items.map((r, idx) => [
-          idx + 1,
-          r.nama_produk || '',
-          r.serial_number || '',
-          r.imei || '',
-          r.tanggal_laku || '',
-          Number(r.modal_lama || 0),
-          r.tanggal_beli || '',
-          Number(r.modal_baru || 0),
-          Number(r.selisih_modal || 0),
-          r.asal_barang || '',
-        ]),
-      ]
-
-      // nama sheet max 31 char
-      const sheetName = g.kategori.slice(0, 31)
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), sheetName)
-    }
-
-    XLSX.writeFile(wb, `Claim_Cashback_${dayjs().format('YYYY-MM-DD')}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheet), 'DATA')
+    XLSX.writeFile(wb, filename)
   }
 
-  function exportKategoriToExcel(kategori, items) {
-    const wb = XLSX.utils.book_new()
-    const wsData = [
-      [
-        'No',
-        'Kategori',
-        'Nama Produk',
-        'Serial Number',
-        'IMEI',
-        'Tanggal Laku',
-        'Modal Lama',
-        'Tanggal Beli',
-        'Modal Baru',
-        'Selisih Modal',
-        'Asal Barang',
-      ],
-      ...items.map((r, idx) => [
-        idx + 1,
-        r.kategori || '',
-        r.nama_produk || '',
-        r.serial_number || '',
-        r.imei || '',
-        r.tanggal_laku || '',
-        Number(r.modal_lama || 0),
-        r.tanggal_beli || '',
-        Number(r.modal_baru || 0),
-        Number(r.selisih_modal || 0),
-        r.asal_barang || '',
-      ]),
-    ]
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), 'DATA')
-    XLSX.writeFile(wb, `Claim_Cashback_${kategori}_${dayjs().format('YYYY-MM-DD')}.xlsx`)
+  function exportAllToExcel() {
+    exportRowsToExcel(`Claim_Cashback_SEMUA_${dayjs().format('YYYY-MM-DD')}.xlsx`, filtered)
+  }
+
+  function exportActiveTabToExcel() {
+    const label = activeTab === 'SEMUA' ? 'SEMUA' : activeTab
+    exportRowsToExcel(
+      `Claim_Cashback_${label}_${dayjs().format('YYYY-MM-DD')}.xlsx`,
+      sortedRows
+    )
   }
 
   return (
     <Layout>
-      <div className="p-4">
-        <h1 className="text-2xl font-bold mb-4">Claim Cashback</h1>
+      <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
+        {/* Header */}
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
+          <div className="text-sm text-gray-600">
+            Input SN auto-detect dari stok • Tabs per kategori • 20 data per halaman
+          </div>
+        </div>
 
-        {/* ===== FORM INPUT ===== */}
-        <form onSubmit={handleSubmit} className="border p-4 rounded mb-6 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              className="border p-2"
-              placeholder="KATEGORI (contoh: IPHONE / IPAD / AKSESORIS / DLL)"
-              value={form.kategori}
-              onChange={(e) => setForm({ ...form, kategori: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              placeholder="NAMA PRODUK"
-              value={form.nama_produk}
-              onChange={(e) => setForm({ ...form, nama_produk: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              placeholder="SERIAL NUMBER"
-              value={form.serial_number}
-              onChange={(e) => setForm({ ...form, serial_number: e.target.value })}
-            />
-
-            <input
-              className="border p-2"
-              placeholder="IMEI"
-              value={form.imei}
-              onChange={(e) => setForm({ ...form, imei: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              type="date"
-              value={form.tanggal_laku}
-              onChange={(e) => setForm({ ...form, tanggal_laku: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              placeholder="ASAL BARANG"
-              value={form.asal_barang}
-              onChange={(e) => setForm({ ...form, asal_barang: e.target.value })}
-            />
-
-            <input
-              className="border p-2"
-              type="number"
-              placeholder="MODAL LAMA"
-              value={form.modal_lama}
-              onChange={(e) => setForm({ ...form, modal_lama: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              type="date"
-              placeholder="TANGGAL BELI"
-              value={form.tanggal_beli}
-              onChange={(e) => setForm({ ...form, tanggal_beli: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              type="number"
-              placeholder="MODAL BARU"
-              value={form.modal_baru}
-              onChange={(e) => setForm({ ...form, modal_baru: e.target.value })}
-            />
+        {/* ===== FORM INPUT (modern card) ===== */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold text-gray-800">
+              {isEditing ? 'Edit Data' : 'Input Data'}
+            </div>
+            {isEditing && (
+              <button
+                type="button"
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
+                onClick={resetForm}
+                disabled={loading}
+              >
+                Batal Edit
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="text-sm text-gray-700">
-              Selisih Modal (Modal Baru - Modal Lama):{' '}
-              <b>
-                Rp {selisihPreview.toLocaleString('id-ID')}
-              </b>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Kategori dropdown + add new */}
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Kategori</div>
+                <select
+                  className="border px-3 py-2 rounded-lg w-full bg-white"
+                  value={form.kategori}
+                  onChange={(e) => setForm({ ...form, kategori: e.target.value })}
+                >
+                  <option value="">Pilih kategori...</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                  <option value="__NEW__">+ Tambah kategori baru</option>
+                </select>
+                {form.kategori === '__NEW__' && (
+                  <input
+                    className="border px-3 py-2 rounded-lg w-full mt-2"
+                    placeholder="Ketik kategori baru (contoh: APPLE WATCH)"
+                    value={form.kategori_baru}
+                    onChange={(e) => setForm({ ...form, kategori_baru: e.target.value })}
+                  />
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Nama Produk</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="Nama produk"
+                  value={form.nama_produk}
+                  onChange={(e) => setForm({ ...form, nama_produk: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">
+                  Serial Number {snLoading ? '• Mendeteksi…' : ''}
+                </div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="Serial Number"
+                  value={form.serial_number}
+                  onChange={(e) => setForm({ ...form, serial_number: e.target.value })}
+                />
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Isi SN → otomatis isi Tanggal Beli, IMEI, Nama Produk, Asal Barang, Modal Lama (dari stok).
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">IMEI</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="IMEI"
+                  value={form.imei}
+                  onChange={(e) => setForm({ ...form, imei: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Tanggal Laku</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="date"
+                  value={form.tanggal_laku}
+                  onChange={(e) => setForm({ ...form, tanggal_laku: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Asal Barang</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="Asal barang"
+                  value={form.asal_barang}
+                  onChange={(e) => setForm({ ...form, asal_barang: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Modal Lama</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="number"
+                  placeholder="Modal lama"
+                  value={form.modal_lama}
+                  onChange={(e) => setForm({ ...form, modal_lama: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Tanggal Beli</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="date"
+                  value={form.tanggal_beli}
+                  onChange={(e) => setForm({ ...form, tanggal_beli: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Modal Baru</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="number"
+                  placeholder="Modal baru"
+                  value={form.modal_baru}
+                  onChange={(e) => setForm({ ...form, modal_baru: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+              <div className="text-sm text-gray-700">
+                Selisih Modal: <b>{rupiah(selisihPreview)}</b>
+              </div>
+
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl disabled:opacity-60"
+                disabled={loading}
+              >
+                {loading ? 'Memproses…' : isEditing ? 'Update Data' : 'Simpan Data'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* ===== TOOLBAR LIST ===== */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5">
+          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
+            <div className="w-full md:w-[360px]">
+              <div className="text-xs text-gray-500 mb-1">Search</div>
+              <input
+                type="text"
+                placeholder="Cari kategori / produk / SN / IMEI / asal..."
+                className="border px-3 py-2 rounded-lg w-full"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="w-full md:w-[260px]">
+              <div className="text-xs text-gray-500 mb-1">Urutkan</div>
+              <select
+                className="border px-3 py-2 rounded-lg w-full bg-white"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="tanggal_laku_desc">Tanggal Laku (Terbaru)</option>
+                <option value="tanggal_laku_asc">Tanggal Laku (Terlama)</option>
+                <option value="tanggal_beli_desc">Tanggal Beli (Terbaru)</option>
+                <option value="tanggal_beli_asc">Tanggal Beli (Terlama)</option>
+                <option value="abjad_asc">Abjad (A-Z)</option>
+                <option value="abjad_desc">Abjad (Z-A)</option>
+              </select>
             </div>
 
             <div className="flex gap-2">
-              <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
-                {isEditing ? 'Update Data' : 'Simpan Data'}
+              <button
+                onClick={fetchData}
+                className="border px-4 py-2 rounded-lg hover:bg-gray-50"
+                disabled={loading}
+              >
+                {loading ? 'Memuat…' : 'Refresh'}
               </button>
-
-              {isEditing && (
-                <button
-                  type="button"
-                  className="border px-4 py-2 rounded"
-                  onClick={resetForm}
-                >
-                  Batal Edit
-                </button>
-              )}
+              <button
+                onClick={exportAllToExcel}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+              >
+                Download Excel (Semua)
+              </button>
+              <button
+                onClick={exportActiveTabToExcel}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg"
+              >
+                Download Excel (Tab)
+              </button>
             </div>
           </div>
-        </form>
 
-        {/* ===== SEARCH + EXPORT ===== */}
-        <div className="flex flex-wrap gap-2 items-center mb-4">
-          <input
-            type="text"
-            placeholder="Cari kategori / produk / SN / IMEI / asal..."
-            className="border p-2 flex-1 min-w-[260px]"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button onClick={fetchData} className="border px-4 py-2 rounded">
-            Refresh
-          </button>
-          <button
-            onClick={exportAllToExcel}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Download Excel (Semua)
-          </button>
-        </div>
-
-        {loading && <div className="text-sm text-gray-500 mb-3">Loading...</div>}
-
-        {/* ===== LIST PER KATEGORI (AUTO) ===== */}
-        {groupedByKategori.map((g) => (
-          <div key={g.kategori} className="border rounded mb-6 overflow-x-auto">
-            <div className="flex items-center justify-between px-3 py-2 bg-gray-100">
-              <div className="font-semibold">Kategori: {g.kategori}</div>
+          {/* ===== Tabs Kategori (model pricelist) ===== */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {tabs.map((t) => (
               <button
-                onClick={() => exportKategoriToExcel(g.kategori, g.items)}
-                className="text-xs bg-green-600 text-white px-3 py-1 rounded"
+                key={t}
+                onClick={() => setActiveTab(t)}
+                className={`border px-3 py-2 rounded-lg text-sm ${
+                  activeTab === t
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white hover:bg-gray-50'
+                }`}
               >
-                Download Excel Kategori
+                {t}
               </button>
-            </div>
+            ))}
+          </div>
 
-            <table className="w-full table-auto border text-sm">
-              <thead>
-                <tr className="bg-gray-200">
-                  <th className="border px-2 py-1">Tanggal Laku</th>
-                  <th className="border px-2 py-1">Nama Produk</th>
-                  <th className="border px-2 py-1">Serial Number</th>
-                  <th className="border px-2 py-1">IMEI</th>
-                  <th className="border px-2 py-1">Modal Lama</th>
-                  <th className="border px-2 py-1">Tanggal Beli</th>
-                  <th className="border px-2 py-1">Modal Baru</th>
-                  <th className="border px-2 py-1">Selisih</th>
-                  <th className="border px-2 py-1">Asal Barang</th>
-                  <th className="border px-2 py-1">Aksi</th>
+          {/* info */}
+          <div className="text-xs text-gray-500 mb-3">
+            Tab: <b className="text-gray-800">{activeTab}</b> • Total:{' '}
+            <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
+            <b className="text-gray-800">
+              {safePage}/{totalPages}
+            </b>{' '}
+            • 20 data per halaman
+          </div>
+
+          {/* ===== TABLE ===== */}
+          <div className="overflow-x-auto border rounded-2xl">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="border-b px-3 py-2 text-left">Tanggal Laku</th>
+                  <th className="border-b px-3 py-2 text-left">Nama Produk</th>
+                  <th className="border-b px-3 py-2 text-left">SN</th>
+                  <th className="border-b px-3 py-2 text-left">IMEI</th>
+                  <th className="border-b px-3 py-2 text-right">Modal Lama</th>
+                  <th className="border-b px-3 py-2 text-left">Tanggal Beli</th>
+                  <th className="border-b px-3 py-2 text-right">Modal Baru</th>
+                  <th className="border-b px-3 py-2 text-right">Selisih</th>
+                  <th className="border-b px-3 py-2 text-left">Asal</th>
+                  <th className="border-b px-3 py-2 text-left">Aksi</th>
                 </tr>
               </thead>
 
               <tbody>
-                {g.items.map((r) => (
-                  <tr key={r.id}>
-                    <td className="border px-2 py-1">{r.tanggal_laku || '-'}</td>
-                    <td className="border px-2 py-1">{r.nama_produk || '-'}</td>
-                    <td className="border px-2 py-1">{r.serial_number || '-'}</td>
-                    <td className="border px-2 py-1">{r.imei || '-'}</td>
-                    <td className="border px-2 py-1">
-                      Rp {Number(r.modal_lama || 0).toLocaleString('id-ID')}
+                {loading && pageRows.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
+                      Memuat…
                     </td>
-                    <td className="border px-2 py-1">{r.tanggal_beli || '-'}</td>
-                    <td className="border px-2 py-1">
-                      Rp {Number(r.modal_baru || 0).toLocaleString('id-ID')}
+                  </tr>
+                )}
+
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
+                      Tidak ada data.
                     </td>
-                    <td className="border px-2 py-1">
-                      Rp {Number(r.selisih_modal || 0).toLocaleString('id-ID')}
+                  </tr>
+                )}
+
+                {pageRows.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="border-b px-3 py-2">{r.tanggal_laku || '-'}</td>
+                    <td className="border-b px-3 py-2 font-semibold">{r.nama_produk || '-'}</td>
+                    <td className="border-b px-3 py-2 font-mono text-xs">{r.serial_number || '-'}</td>
+                    <td className="border-b px-3 py-2">{r.imei || '-'}</td>
+                    <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_lama || 0)}</td>
+                    <td className="border-b px-3 py-2">{r.tanggal_beli || '-'}</td>
+                    <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_baru || 0)}</td>
+                    <td className="border-b px-3 py-2 text-right">
+                      {rupiah(r.selisih_modal || 0)}
                     </td>
-                    <td className="border px-2 py-1">{r.asal_barang || '-'}</td>
-                    <td className="border px-2 py-1 whitespace-nowrap">
+                    <td className="border-b px-3 py-2">{r.asal_barang || '-'}</td>
+                    <td className="border-b px-3 py-2 whitespace-nowrap">
                       <button
                         onClick={() => handleEdit(r)}
                         className="text-blue-600 text-xs mr-3"
@@ -457,22 +701,53 @@ export default function KinerjaKaryawan() {
                     </td>
                   </tr>
                 ))}
-
-                {g.items.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="border px-2 py-3 text-center text-gray-500">
-                      Tidak ada data pada kategori ini.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
-        ))}
 
-        {groupedByKategori.length === 0 && (
-          <div className="text-sm text-gray-500">Belum ada data claim cashback.</div>
-        )}
+          {/* ===== Pagination ===== */}
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
+            <div className="text-xs text-gray-500">
+              Menampilkan{' '}
+              <b className="text-gray-800">
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, totalRows)}
+              </b>{' '}
+              dari <b className="text-gray-800">{totalRows}</b>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(1)}
+                disabled={safePage === 1}
+              >
+                « First
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
+                ‹ Prev
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
+                Next ›
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+              >
+                Last »
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </Layout>
   )
