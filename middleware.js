@@ -8,30 +8,38 @@ export function middleware(request) {
   const loginPath = new URL('/login', request.url)
   const dashboardPath = new URL('/dashboard', request.url)
 
-  // =============================
-  // GUEST ROUTE (BEBAS / READ-ONLY)
-  // =============================
-  const isGuestRoute =
-    pathname === '/guest' ||
-    pathname.startsWith('/pricelist-preview')
+  const guestLoginPath = new URL('/guest-login', request.url)
+  const guestPath = new URL('/guest', request.url)
 
-  // ❗ guest route TIDAK kena guard
-  if (isGuestRoute) {
+  const isMasterLogin = pathname === '/login'
+  const isGuestLogin = pathname === '/guest-login'
+
+  // =========================
+  // GUEST AREA (wajib login guest)
+  // =========================
+  const isGuestArea =
+    pathname === '/guest' ||
+    pathname.startsWith('/pricelist-preview') ||
+    pathname === '/guest-login'
+
+  if (isGuestArea) {
+    // belum login → lempar ke guest-login
+    if (!token && !isGuestLogin) return NextResponse.redirect(guestLoginPath)
+
+    // sudah login tapi buka guest-login → lempar ke /guest
+    if (token && isGuestLogin) return NextResponse.redirect(guestPath)
+
     return NextResponse.next()
   }
 
-  // =============================
-  // MASTER ROUTE
-  // =============================
-  const isLoginPage = pathname === '/login'
-
-  // belum login → lempar ke login master
-  if (!token && !isLoginPage) {
+  // =========================
+  // MASTER AREA (wajib login master)
+  // =========================
+  if (!token && !isMasterLogin) {
     return NextResponse.redirect(loginPath)
   }
 
-  // sudah login tapi buka /login → lempar ke dashboard
-  if (token && isLoginPage) {
+  if (token && isMasterLogin) {
     return NextResponse.redirect(dashboardPath)
   }
 
@@ -39,12 +47,5 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: [
-    /*
-      Lindungi semua halaman kecuali:
-      - API
-      - static files
-    */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 }
