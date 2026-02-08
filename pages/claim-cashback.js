@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
-import CreatableSelect from 'react-select/creatable'
+
+// ✅ Pakai async-creatable (mirip Input Penjualan)
+import AsyncCreatableSelect from 'react-select/async-creatable'
 
 const PAGE_SIZE = 20
 
@@ -65,20 +67,19 @@ export default function KinerjaKaryawan() {
   // kategori dropdown (dari data claim)
   const [categories, setCategories] = useState([])
 
-  // ===== SN Dropdown Options (dari stok READY + SOLD) =====
-  const [snOptions, setSnOptions] = useState([])
-  const [snOptLoading, setSnOptLoading] = useState(false)
+  // ===== SN Dropdown =====
   const [selectedSN, setSelectedSN] = useState(null)
-
-  // status auto-fill
   const [snFound, setSnFound] = useState(false)
+  const [snOptLoading, setSnOptLoading] = useState(false)
 
-  // debounce manual SN (kalau user ketik custom)
+  // cache meta stok biar setelah pilih SN gak query ulang
+  const stokCacheRef = useRef(new Map()) // key: SN uppercase, value: stokRow
+
+  // debounce lookup manual SN
   const snTimerRef = useRef(null)
 
   useEffect(() => {
     fetchData()
-    fetchSNOptions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -112,58 +113,29 @@ export default function KinerjaKaryawan() {
     setCategories(cat)
   }
 
-  // ===== ambil semua SN dari stok (READY + SOLD) untuk dropdown =====
-  async function fetchSNOptions() {
-    setSnOptLoading(true)
-    try {
-      // NOTE: ini sengaja TIDAK pakai filter status supaya SOLD juga masuk
-      const { data, error } = await supabase
-        .from('stok')
-        .select('sn,nama_produk,warna,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status')
-        .order('tanggal_masuk', { ascending: false })
-        .order('created_at', { ascending: false })
-        .range(0, 5000)
+  // ===== Query stok by SN (READY + SOLD) =====
+  async function fetchStokBySN(snUpper) {
+    const sn = cleanText(snUpper).toUpperCase()
+    if (!sn) return null
 
-      if (error) {
-        console.error('Gagal fetch SN options:', error)
-        setSnOptions([])
-        return
-      }
+    // cache hit
+    if (stokCacheRef.current.has(sn)) return stokCacheRef.current.get(sn)
 
-      const opts =
-        (data || [])
-          .filter((r) => cleanText(r.sn))
-          .map((r) => {
-            const sn = cleanText(r.sn).toUpperCase()
-            const nama = cleanText(r.nama_produk)
-            const warna = cleanText(r.warna)
-            const status = cleanText(r.status).toUpperCase()
-            const labelParts = [
-              sn,
-              nama ? nama.toUpperCase() : '',
-              warna ? warna.toUpperCase() : '',
-              status ? status : '',
-            ].filter(Boolean)
+    const { data, error } = await supabase
+      .from('stok')
+      .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status,warna')
+      .eq('sn', sn)
+      .limit(1)
+      .maybeSingle()
 
-            return {
-              value: sn,
-              label: labelParts.join(' | '),
-              meta: r, // simpan row stok agar auto-fill TANPA query lagi
-            }
-          })
-          // hindari duplikat SN kalau ada data dobel
-          .reduce((acc, cur) => {
-            if (!acc.map.has(cur.value)) {
-              acc.map.set(cur.value, true)
-              acc.arr.push(cur)
-            }
-            return acc
-          }, { arr: [], map: new Map() }).arr || []
-
-      setSnOptions(opts)
-    } finally {
-      setSnOptLoading(false)
+    if (error) {
+      console.error('Lookup SN error:', error)
+      return null
     }
+    if (!data) return null
+
+    stokCacheRef.current.set(sn, data)
+    return data
   }
 
   // ===== isi form dari row stok =====
@@ -174,8 +146,8 @@ export default function KinerjaKaryawan() {
     const imei = cleanText(pickFirst(stokRow, ['imei']))
     const asal_produk = cleanText(pickFirst(stokRow, ['asal_produk']))
     const modal_lama = pickFirst(stokRow, ['harga_modal'])
-    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_masuk', 'created_at'])
 
+    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_masuk', 'created_at'])
     const tanggal_beli =
       tanggal_beli_raw && dayjs(tanggal_beli_raw).isValid()
         ? dayjs(tanggal_beli_raw).format('YYYY-MM-DD')
@@ -184,7 +156,7 @@ export default function KinerjaKaryawan() {
     setForm((prev) => ({
       ...prev,
       nama_produk: nama_produk ? nama_produk.toUpperCase() : '',
-      imei: imei ? imei : '',
+      imei: imei || '',
       asal_barang: asal_produk ? asal_produk.toUpperCase() : '',
       modal_lama: String(modal_lama ?? ''),
       tanggal_beli: tanggal_beli || '',
@@ -193,77 +165,125 @@ export default function KinerjaKaryawan() {
     setSnFound(true)
   }
 
+  // ===== Load options async (ini yang bikin dropdown stabil, tidak 400) =====
+  async function loadSNOptions(inputValue) {
+    const q = cleanText(inputValue).toUpperCase()
+    setSnOptLoading(true)
+
+    try {
+      // Ambil sedikit saja (limit 50), seperti Input Penjualan
+      // Tanpa filter status -> READY + SOLD masuk semua
+      let query = supabase
+        .from('stok')
+        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status,warna')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (q) {
+        // cari SN yang mengandung input
+        query = query.ilike('sn', `%${q}%`)
+      }
+
+      const { data, error } = await query
+      if (error) {
+        console.error('Gagal fetch SN options (async):', error)
+        return []
+      }
+
+      const opts =
+        (data || [])
+          .filter((r) => cleanText(r.sn))
+          .map((r) => {
+            const sn = cleanText(r.sn).toUpperCase()
+            stokCacheRef.current.set(sn, r)
+
+            const nama = cleanText(r.nama_produk)
+            const warna = cleanText(r.warna)
+            const status = cleanText(r.status).toUpperCase()
+
+            const labelParts = [
+              sn,
+              nama ? nama.toUpperCase() : '',
+              warna ? warna.toUpperCase() : '',
+              status ? status : '',
+            ].filter(Boolean)
+
+            return {
+              value: sn,
+              label: labelParts.join(' | '),
+              meta: r,
+            }
+          }) || []
+
+      // hilangkan duplikat SN kalau ada
+      const uniq = []
+      const seen = new Set()
+      for (const o of opts) {
+        if (!seen.has(o.value)) {
+          seen.add(o.value)
+          uniq.push(o)
+        }
+      }
+      return uniq
+    } finally {
+      setSnOptLoading(false)
+    }
+  }
+
   // ===== ketika pilih SN dari dropdown =====
-  function onPickSN(option) {
+  async function onPickSN(option) {
     setSelectedSN(option || null)
 
-    const sn = cleanText(option?.value || '')
-    // ✅ inilah fix utama: pastikan nilai SN masuk ke form.serial_number
+    const sn = cleanText(option?.value || '').toUpperCase()
+
+    // ✅ pastikan SN benar-benar masuk ke form
     setForm((prev) => ({
       ...prev,
       serial_number: sn,
     }))
-
-    // kalau ada meta, auto-fill langsung
-    if (option?.meta) {
-      applyStokToForm(option.meta)
-      return
-    }
-
-    // kalau tidak ada meta (custom), reset found → nanti debounce lookup
-    setSnFound(false)
-  }
-
-  // ===== fallback: jika user ketik SN custom (Creatable) =====
-  // kita tetap coba cocokkan ke snOptions, kalau ketemu auto-fill
-  useEffect(() => {
-    const sn = cleanText(form.serial_number).toUpperCase()
 
     if (!sn) {
       setSnFound(false)
       return
     }
 
-    // kalau user memilih dari options, biasanya sudah ke-fill
-    // tapi kita tetap pastikan: jika SN ada di options, auto-fill
-    const foundOpt = (snOptions || []).find((o) => (o.value || '').toUpperCase() === sn)
-    if (foundOpt?.meta) {
-      applyStokToForm(foundOpt.meta)
-      setSelectedSN(foundOpt)
+    // kalau ada meta dari options, langsung apply
+    if (option?.meta) {
+      applyStokToForm(option.meta)
       return
     }
 
-    // debounce lookup by query (kalau SN tidak ada di options)
+    // fallback: lookup by SN
+    const stokRow = await fetchStokBySN(sn)
+    if (stokRow) {
+      applyStokToForm(stokRow)
+    } else {
+      setSnFound(false)
+    }
+  }
+
+  // ===== jika user ketik SN manual (Creatable) =====
+  useEffect(() => {
+    const sn = cleanText(form.serial_number).toUpperCase()
+    if (!sn) {
+      setSnFound(false)
+      return
+    }
+
+    // debounce lookup SN manual
     if (snTimerRef.current) clearTimeout(snTimerRef.current)
 
     snTimerRef.current = setTimeout(async () => {
-      // query langsung ke DB (tanpa filter READY/SOLD)
-      const { data, error } = await supabase
-        .from('stok')
-        .select('sn,nama_produk,warna,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status')
-        .eq('sn', sn)
-        .limit(1)
-        .maybeSingle()
-
-      if (error) {
-        console.error('Lookup SN custom error:', error)
-        setSnFound(false)
-        return
-      }
-
-      if (!data) {
-        setSnFound(false)
-        return
-      }
-
-      applyStokToForm(data)
+      const stokRow = await fetchStokBySN(sn)
+      if (stokRow) applyStokToForm(stokRow)
+      else setSnFound(false)
     }, 250)
 
     return () => {
       if (snTimerRef.current) clearTimeout(snTimerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.serial_number, snOptions])
+  }, [form.serial_number])
 
   // ===== FILTER SEARCH (untuk list claim) =====
   const filtered = useMemo(() => {
@@ -271,13 +291,7 @@ export default function KinerjaKaryawan() {
     if (!q) return rows
 
     return (rows || []).filter((r) => {
-      const hay = [
-        r.kategori,
-        r.nama_produk,
-        r.serial_number,
-        r.imei,
-        r.asal_barang,
-      ]
+      const hay = [r.kategori, r.nama_produk, r.serial_number, r.imei, r.asal_barang]
         .map((x) => (x || '').toString().toLowerCase())
         .join(' ')
       return hay.includes(q)
@@ -314,7 +328,6 @@ export default function KinerjaKaryawan() {
   // ===== SORT =====
   const sortedRows = useMemo(() => {
     const arr = [...(tabRows || [])]
-
     const safeDate = (v) => {
       const s = (v || '').toString()
       const d = dayjs(s)
@@ -385,7 +398,7 @@ export default function KinerjaKaryawan() {
     if (!payload.tanggal_laku) return alert('Tanggal laku wajib diisi')
     if (!payload.modal_baru) return alert('Modal baru wajib diisi')
 
-    // kalau SN ketemu di stok → nama_produk/modal_lama otomatis, tidak wajib manual
+    // kalau SN tidak ketemu di stok, user wajib isi manual
     if (!snFound) {
       if (!payload.nama_produk) return alert('Nama produk wajib diisi (SN tidak ditemukan di stok)')
       if (!payload.modal_lama) return alert('Modal lama wajib diisi (SN tidak ditemukan di stok)')
@@ -420,8 +433,7 @@ export default function KinerjaKaryawan() {
     setEditId(row.id)
 
     const sn = (row.serial_number || '').toString().trim().toUpperCase()
-    const opt = (snOptions || []).find((o) => (o.value || '').toUpperCase() === sn) || null
-    setSelectedSN(opt ? opt : sn ? { value: sn, label: sn } : null)
+    setSelectedSN(sn ? { value: sn, label: sn } : null)
 
     setForm({
       kategori: (row.kategori || '').toString().trim().toUpperCase(),
@@ -436,9 +448,7 @@ export default function KinerjaKaryawan() {
       asal_barang: row.asal_barang || '',
     })
 
-    // saat edit: biar tetap bisa edit jika perlu, tapi kalau SN ada di stok, akan auto-lock lagi
     setSnFound(false)
-
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -519,19 +529,8 @@ export default function KinerjaKaryawan() {
         {/* ===== FORM INPUT ===== */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold text-gray-800">
-              {isEditing ? 'Edit Data' : 'Input Data'}
-            </div>
+            <div className="font-semibold text-gray-800">{isEditing ? 'Edit Data' : 'Input Data'}</div>
             <div className="flex gap-2">
-              <button
-                type="button"
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
-                onClick={fetchSNOptions}
-                disabled={snOptLoading}
-              >
-                {snOptLoading ? 'Memuat SN…' : 'Refresh SN'}
-              </button>
-
               {isEditing && (
                 <button
                   type="button"
@@ -590,22 +589,22 @@ export default function KinerjaKaryawan() {
               {/* SN Dropdown */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">
-                  Serial Number {snOptLoading ? '• Memuat SN…' : snFound ? '• Auto ✅' : ''}
+                  Serial Number {snOptLoading ? '• Memuat…' : snFound ? '• Auto ✅' : ''}
                 </div>
 
-                <CreatableSelect
+                <AsyncCreatableSelect
                   className="text-sm"
                   styles={selectStyles}
                   menuPortalTarget={typeof window !== 'undefined' ? document.body : null}
                   isClearable
                   isSearchable
+                  cacheOptions
+                  defaultOptions
+                  loadOptions={loadSNOptions}
                   placeholder="Cari / pilih SN (READY / SOLD)"
-                  options={snOptions}
                   value={selectedSN}
-                  onChange={(opt) => onPickSN(opt)}
+                  onChange={onPickSN}
                   onInputChange={(val, meta) => {
-                    // saat user ngetik, simpan ke form.serial_number
-                    // meta.action === 'input-change' memastikan bukan event lain
                     if (meta?.action === 'input-change') {
                       const v = cleanText(val).toUpperCase()
                       setForm((prev) => ({ ...prev, serial_number: v }))
@@ -615,11 +614,10 @@ export default function KinerjaKaryawan() {
                       }
                     }
                   }}
-                  formatCreateLabel={(inputValue) => `Gunakan SN manual: "${inputValue}"`
-                  }
+                  formatCreateLabel={(inputValue) => `Gunakan SN manual: "${inputValue}"`}
                 />
 
-                {/* hidden input supaya benar-benar kebaca saat submit */}
+                {/* hidden input supaya submit selalu kebaca */}
                 <input type="hidden" value={form.serial_number} readOnly />
 
                 <div className="text-[11px] text-gray-500 mt-1">
@@ -627,7 +625,7 @@ export default function KinerjaKaryawan() {
                   {!snFound && form.serial_number && (
                     <>
                       {' '}
-                      <b className="text-red-600">SN tidak ditemukan di list</b> (fallback manual).
+                      <b className="text-red-600">SN tidak ditemukan di stok</b> (isi manual).
                     </>
                   )}
                 </div>
@@ -791,9 +789,7 @@ export default function KinerjaKaryawan() {
                 key={t}
                 onClick={() => setActiveTab(t)}
                 className={`border px-3 py-2 rounded-lg text-sm ${
-                  activeTab === t
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white hover:bg-gray-50'
+                  activeTab === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'
                 }`}
               >
                 {t}
