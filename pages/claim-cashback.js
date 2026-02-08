@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
+import Select from 'react-select'
 
 const PAGE_SIZE = 20
 
@@ -55,6 +56,10 @@ export default function KinerjaKaryawan() {
   // kategori dropdown
   const [categories, setCategories] = useState([])
 
+  // ====== SN OPTIONS (Dropdown seperti Input Penjualan) ======
+  const [snOptions, setSnOptions] = useState([])
+  const [snOptionsLoading, setSnOptionsLoading] = useState(false)
+
   // SN lookup debounce
   const snTimerRef = useRef(null)
   const [snLoading, setSnLoading] = useState(false)
@@ -62,6 +67,8 @@ export default function KinerjaKaryawan() {
 
   useEffect(() => {
     fetchData()
+    fetchSNOptions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function fetchData() {
@@ -94,8 +101,53 @@ export default function KinerjaKaryawan() {
     setCategories(cat)
   }
 
-  // ====== SN AUTO DETECT (ambil dari stok) ======
-  // sumber: tabel stok = "stok", kolom SN = "sn"
+  async function fetchSNOptions() {
+    setSnOptionsLoading(true)
+    try {
+      // Ambil daftar SN dari stok (tanpa filter status biar aman untuk cashback)
+      const { data, error } = await supabase
+        .from('stok')
+        .select('sn,nama_produk,warna,status')
+        .not('sn', 'is', null)
+        .order('nama_produk', { ascending: true })
+        .limit(8000)
+
+      if (error) {
+        console.error('Gagal ambil SN options dari stok:', error)
+        setSnOptions([])
+        return
+      }
+
+      const opts =
+        (data || [])
+          .map((it) => {
+            const sn = (it.sn || '').toString().trim()
+            if (!sn) return null
+            const nama = (it.nama_produk || '').toString().trim()
+            const warna = (it.warna || '').toString().trim()
+            const status = (it.status || '').toString().trim()
+            return {
+              value: sn,
+              label: `${sn}${nama ? ` | ${nama}` : ''}${warna ? ` | ${warna}` : ''}${
+                status ? ` | ${status}` : ''
+              }`,
+              meta: it,
+            }
+          })
+          .filter(Boolean) || []
+
+      // unik by SN
+      const map = new Map()
+      for (const o of opts) {
+        if (!map.has(o.value)) map.set(o.value, o)
+      }
+      setSnOptions(Array.from(map.values()))
+    } finally {
+      setSnOptionsLoading(false)
+    }
+  }
+
+  // ====== LOOKUP STOK BY SN (untuk auto-fill) ======
   async function lookupFromStokBySN(sn) {
     const raw = (sn || '').toString()
     const q = raw.trim()
@@ -109,7 +161,7 @@ export default function KinerjaKaryawan() {
       // 1) coba exact match beberapa variasi case
       let res = await supabase
         .from('stok')
-        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at')
+        .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
         .or([`sn.eq.${q}`, `sn.eq.${qUpper}`, `sn.eq.${qLower}`].join(','))
         .limit(1)
         .maybeSingle()
@@ -120,7 +172,7 @@ export default function KinerjaKaryawan() {
       // 2) fallback ilike (tahan banting untuk case/spasi aneh)
       res = await supabase
         .from('stok')
-        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at')
+        .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
         .ilike('sn', qUpper)
         .limit(1)
         .maybeSingle()
@@ -154,13 +206,11 @@ export default function KinerjaKaryawan() {
         return
       }
 
-      // ✅ mapping sesuai kolom stok kamu:
-      // nama_produk, imei, asal_produk, harga_modal, tanggal_masuk
-      const nama_produk = pickFirst(stok, ['nama_produk'])
-      const imei = pickFirst(stok, ['imei'])
-      const asal_produk = pickFirst(stok, ['asal_produk'])
-      const modal_lama = pickFirst(stok, ['harga_modal'])
-      const tanggal_beli_raw = pickFirst(stok, ['tanggal_masuk', 'created_at'])
+      const nama_produk = pickFirst(stok, ['nama_produk', 'produk', 'nama'])
+      const imei = pickFirst(stok, ['imei', 'imei1', 'imei_1'])
+      const asal_barang = pickFirst(stok, ['asal_barang', 'asal_produk', 'asal'])
+      const modal_lama = pickFirst(stok, ['harga_modal', 'modal', 'modal_lama'])
+      const tanggal_beli_raw = pickFirst(stok, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
 
       const tanggal_beli = tanggal_beli_raw
         ? dayjs(tanggal_beli_raw).isValid()
@@ -168,12 +218,12 @@ export default function KinerjaKaryawan() {
           : ''
         : ''
 
-      // ✅ Auto fill (override biar anti miss data)
+      // ✅ Auto fill (override biar pasti keisi)
       setForm((prev) => ({
         ...prev,
         nama_produk: nama_produk || '',
         imei: imei || '',
-        asal_barang: asal_produk || '',
+        asal_barang: asal_barang || '',
         modal_lama: String(modal_lama ?? ''),
         tanggal_beli: tanggal_beli || '',
       }))
@@ -193,13 +243,7 @@ export default function KinerjaKaryawan() {
     if (!q) return rows
 
     return (rows || []).filter((r) => {
-      const hay = [
-        r.kategori,
-        r.nama_produk,
-        r.serial_number,
-        r.imei,
-        r.asal_barang,
-      ]
+      const hay = [r.kategori, r.nama_produk, r.serial_number, r.imei, r.asal_barang]
         .map((x) => (x || '').toString().toLowerCase())
         .join(' ')
       return hay.includes(q)
@@ -296,8 +340,7 @@ export default function KinerjaKaryawan() {
   async function handleSubmit(e) {
     e.preventDefault()
 
-    const kategoriFinal =
-      (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
+    const kategoriFinal = (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
 
     const payload = {
       kategori: kategoriFinal.trim().toUpperCase(),
@@ -328,12 +371,10 @@ export default function KinerjaKaryawan() {
     if (isEditing) {
       const { error } = await supabase.from('claim_cashback').update(payload).eq('id', editId)
       setLoading(false)
-
       if (error) {
         console.error(error)
         return alert('Gagal update data')
       }
-
       resetForm()
       fetchData()
       return
@@ -428,6 +469,12 @@ export default function KinerjaKaryawan() {
     exportRowsToExcel(`Claim_Cashback_${label}_${dayjs().format('YYYY-MM-DD')}.xlsx`, sortedRows)
   }
 
+  const selectedSN = useMemo(() => {
+    const code = (form.serial_number || '').toString().trim()
+    if (!code) return null
+    return snOptions.find((o) => o.value === code) || { value: code, label: code }
+  }, [form.serial_number, snOptions])
+
   return (
     <Layout>
       <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
@@ -435,7 +482,7 @@ export default function KinerjaKaryawan() {
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
           <div className="text-sm text-gray-600">
-            Input SN auto-detect dari stok • Tabs per kategori • 20 data per halaman
+            SN dropdown searchable (seperti Input Penjualan) • Tabs per kategori • 20 data per halaman
           </div>
         </div>
 
@@ -496,18 +543,27 @@ export default function KinerjaKaryawan() {
                 {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
+              {/* ✅ SN dropdown searchable */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">
-                  Serial Number {snLoading ? '• Mendeteksi…' : snFound ? '• Ditemukan ✅' : ''}
+                  Serial Number{' '}
+                  {snOptionsLoading ? '• Memuat list…' : snLoading ? '• Mendeteksi…' : snFound ? '• Ditemukan ✅' : ''}
                 </div>
-                <input
-                  className="border px-3 py-2 rounded-lg w-full"
-                  placeholder="Serial Number"
-                  value={form.serial_number}
-                  onChange={(e) => setForm({ ...form, serial_number: e.target.value })}
+
+                <Select
+                  className="text-sm"
+                  options={snOptions}
+                  placeholder="Cari / pilih Serial Number"
+                  value={selectedSN}
+                  onChange={(selected) => {
+                    setSnFound(false)
+                    setForm((prev) => ({ ...prev, serial_number: selected?.value || '' }))
+                  }}
+                  isClearable
                 />
+
                 <div className="text-[11px] text-gray-500 mt-1">
-                  Isi SN → otomatis isi Tanggal Masuk, IMEI, Nama Produk, Asal Produk, Modal Lama (dari stok).
+                  Pilih SN → otomatis isi Tanggal Beli, IMEI, Nama Produk, Asal Barang, Modal Lama (dari stok).
                   {!snLoading && form.serial_number && !snFound && (
                     <>
                       {' '}
@@ -515,6 +571,17 @@ export default function KinerjaKaryawan() {
                     </>
                   )}
                 </div>
+
+                {/* fallback manual kalau memang butuh */}
+                <input
+                  className="border px-3 py-2 rounded-lg w-full mt-2"
+                  placeholder="(Optional) ketik SN manual bila tidak ada di list"
+                  value={form.serial_number}
+                  onChange={(e) => {
+                    setSnFound(false)
+                    setForm({ ...form, serial_number: e.target.value })
+                  }}
+                />
               </div>
 
               <div>
@@ -645,6 +712,15 @@ export default function KinerjaKaryawan() {
               >
                 {loading ? 'Memuat…' : 'Refresh'}
               </button>
+
+              <button
+                onClick={fetchSNOptions}
+                className="border px-4 py-2 rounded-lg hover:bg-gray-50"
+                disabled={snOptionsLoading}
+              >
+                {snOptionsLoading ? 'Memuat SN…' : 'Refresh SN'}
+              </button>
+
               <button
                 onClick={exportAllToExcel}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
@@ -660,7 +736,7 @@ export default function KinerjaKaryawan() {
             </div>
           </div>
 
-          {/* ===== Tabs Kategori (model pricelist) ===== */}
+          {/* ===== Tabs Kategori ===== */}
           <div className="flex flex-wrap gap-2 mb-4">
             {tabs.map((t) => (
               <button
