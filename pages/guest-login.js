@@ -2,16 +2,41 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
+function setCookie(name, value, days = 1) {
+  const maxAge = days * 24 * 60 * 60
+  const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
+}
+
+function getCookie(name) {
+  if (typeof document === 'undefined') return ''
+  const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+  return m ? decodeURIComponent(m[2]) : ''
+}
+
 export default function GuestLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // kalau sudah login, langsung ke /guest
+    // kalau sudah ada cookie token + role guest, langsung ke /guest
+    const t = getCookie('user_token')
+    const r = getCookie('user_role')
+    if (t && r === 'guest') {
+      window.location.href = '/guest'
+      return
+    }
+
+    // fallback: kalau supabase sudah login (misal masih nyangkut), paksa set cookie role guest
     ;(async () => {
-      const { data } = await supabase.auth.getUser()
-      if (data?.user) window.location.href = '/guest'
+      const { data } = await supabase.auth.getSession()
+      const sess = data?.session
+      if (sess?.access_token) {
+        setCookie('user_token', sess.access_token, 1)
+        setCookie('user_role', 'guest', 1)
+        window.location.href = '/guest'
+      }
     })()
   }, [])
 
@@ -27,11 +52,14 @@ export default function GuestLogin() {
       })
       if (error) return alert(error.message)
 
-      if (data?.user) {
-        window.location.href = '/guest'
-      } else {
-        alert('Login gagal.')
-      }
+      const token = data?.session?.access_token
+      if (!token) return alert('Login berhasil, tapi token tidak ditemukan.')
+
+      // ✅ ini yang bikin middleware kamu bisa guard
+      setCookie('user_token', token, 1)
+      setCookie('user_role', 'guest', 1)
+
+      window.location.href = '/guest'
     } finally {
       setLoading(false)
     }

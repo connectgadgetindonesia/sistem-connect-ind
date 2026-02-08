@@ -3,7 +3,9 @@ import { NextResponse } from 'next/server'
 
 export function middleware(request) {
   const { pathname } = request.nextUrl
+
   const token = request.cookies.get('user_token')?.value
+  const role = request.cookies.get('user_role')?.value || '' // "guest" | "master" | ""
 
   const loginPath = new URL('/login', request.url)
   const dashboardPath = new URL('/dashboard', request.url)
@@ -14,34 +16,30 @@ export function middleware(request) {
   const isMasterLogin = pathname === '/login'
   const isGuestLogin = pathname === '/guest-login'
 
-  // =========================
-  // GUEST AREA (wajib login guest)
-  // =========================
   const isGuestArea =
     pathname === '/guest' ||
     pathname.startsWith('/pricelist-preview') ||
     pathname === '/guest-login'
 
+  // =========================
+  // GUEST AREA
+  // =========================
   if (isGuestArea) {
-    // belum login → lempar ke guest-login
     if (!token && !isGuestLogin) return NextResponse.redirect(guestLoginPath)
-
-    // sudah login tapi buka guest-login → lempar ke /guest
     if (token && isGuestLogin) return NextResponse.redirect(guestPath)
-
     return NextResponse.next()
   }
 
   // =========================
-  // MASTER AREA (wajib login master)
+  // MASTER AREA
+  // - guest tidak boleh masuk master
   // =========================
-  if (!token && !isMasterLogin) {
-    return NextResponse.redirect(loginPath)
+  if (role === 'guest') {
+    return NextResponse.redirect(guestPath)
   }
 
-  if (token && isMasterLogin) {
-    return NextResponse.redirect(dashboardPath)
-  }
+  if (!token && !isMasterLogin) return NextResponse.redirect(loginPath)
+  if (token && isMasterLogin) return NextResponse.redirect(dashboardPath)
 
   return NextResponse.next()
 }
