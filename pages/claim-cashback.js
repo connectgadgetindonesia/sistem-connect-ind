@@ -57,6 +57,7 @@ export default function KinerjaKaryawan() {
   // SN lookup debounce
   const snTimerRef = useRef(null)
   const [snLoading, setSnLoading] = useState(false)
+  const [snFound, setSnFound] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -94,62 +95,74 @@ export default function KinerjaKaryawan() {
   }
 
   // ====== SN AUTO DETECT (ambil dari stok) ======
-  // asumsi tabel stok: 'stok'
-  // kolom yang dicoba: sn / serial_number / sn_sku
-  // kolom yang diambil: nama_produk, imei, asal_barang/asal_produk, harga_modal/modal, tanggal_masuk/tanggal_beli
-async function lookupFromStokBySN(sn) {
-  const q = (sn || '').toString().trim()
-  if (!q) return null
+  // sumber: tabel stok = "stok", kolom SN = "sn"
+  async function lookupFromStokBySN(sn) {
+    const q = (sn || '').toString().trim()
+    if (!q) return null
 
-  setSnLoading(true)
-  try {
-    const { data, error } = await supabase
-      .from('stok')
-      .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
-      .eq('sn', q)
-      .limit(1)
-      .maybeSingle()
+    setSnLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('stok')
+        .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
+        .eq('sn', q)
+        .limit(1)
+        .maybeSingle()
 
-    if (error) {
-      console.error('lookup stok error:', error)
-      return null
+      if (error) {
+        console.error('lookup stok error:', error)
+        return null
+      }
+      return data || null
+    } finally {
+      setSnLoading(false)
     }
-    return data || null
-  } finally {
-    setSnLoading(false)
   }
-}
-
 
   // debounce ketika serial_number berubah
   useEffect(() => {
     const sn = (form.serial_number || '').trim()
-    if (!sn) return
+
+    // kosong → reset status found
+    if (!sn) {
+      setSnFound(false)
+      return
+    }
 
     if (snTimerRef.current) clearTimeout(snTimerRef.current)
 
     snTimerRef.current = setTimeout(async () => {
-      // jangan override kalau lagi edit dan user sengaja ubah manual? tetap auto isi tapi hanya field kosong.
       const stok = await lookupFromStokBySN(sn)
-      if (!stok) return
+
+      if (!stok) {
+        setSnFound(false)
+        return
+      }
 
       const nama_produk = pickFirst(stok, ['nama_produk', 'produk', 'nama'])
       const imei = pickFirst(stok, ['imei', 'imei1', 'imei_1'])
       const asal_barang = pickFirst(stok, ['asal_barang', 'asal_produk', 'asal'])
       const modal_lama = pickFirst(stok, ['harga_modal', 'modal', 'modal_lama'])
-      const tanggal_beli = pickFirst(stok, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
+      const tanggal_beli_raw = pickFirst(stok, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
 
+      const tanggal_beli = tanggal_beli_raw
+        ? dayjs(tanggal_beli_raw).isValid()
+          ? dayjs(tanggal_beli_raw).format('YYYY-MM-DD')
+          : ''
+        : ''
+
+      // ✅ Auto fill + lock
       setForm((prev) => ({
         ...prev,
-        nama_produk: prev.nama_produk ? prev.nama_produk : (nama_produk || ''),
-        imei: prev.imei ? prev.imei : (imei || ''),
-        asal_barang: prev.asal_barang ? prev.asal_barang : (asal_barang || ''),
-        modal_lama: prev.modal_lama ? prev.modal_lama : String(modal_lama || ''),
-        tanggal_beli: prev.tanggal_beli
-          ? prev.tanggal_beli
-          : (tanggal_beli ? dayjs(tanggal_beli).format('YYYY-MM-DD') : ''),
+        nama_produk: nama_produk || prev.nama_produk || '',
+        imei: imei || prev.imei || '',
+        asal_barang: asal_barang || prev.asal_barang || '',
+        modal_lama: String(modal_lama ?? prev.modal_lama ?? ''),
+        tanggal_beli: tanggal_beli || prev.tanggal_beli || '',
       }))
-    }, 450)
+
+      setSnFound(true)
+    }, 350)
 
     return () => {
       if (snTimerRef.current) clearTimeout(snTimerRef.current)
@@ -216,10 +229,10 @@ async function lookupFromStokBySN(sn) {
 
     arr.sort((a, b) => {
       if (sortBy === 'abjad_asc') {
-        return (String(a.nama_produk || '')).localeCompare(String(b.nama_produk || ''))
+        return String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''))
       }
       if (sortBy === 'abjad_desc') {
-        return (String(b.nama_produk || '')).localeCompare(String(a.nama_produk || ''))
+        return String(b.nama_produk || '').localeCompare(String(a.nama_produk || ''))
       }
       if (sortBy === 'tanggal_beli_desc') {
         return safeDate(b.tanggal_beli) - safeDate(a.tanggal_beli)
@@ -261,6 +274,7 @@ async function lookupFromStokBySN(sn) {
   const resetForm = () => {
     setForm(emptyForm())
     setEditId(null)
+    setSnFound(false)
   }
 
   async function handleSubmit(e) {
@@ -282,10 +296,17 @@ async function lookupFromStokBySN(sn) {
       asal_barang: (form.asal_barang || '').trim(),
     }
 
+    // ✅ VALIDASI BARU: kalau SN ditemukan di stok → tidak perlu input manual nama produk dll
     if (!payload.kategori) return alert('Kategori wajib diisi')
-    if (!payload.nama_produk) return alert('Nama produk wajib diisi')
     if (!payload.serial_number) return alert('Serial Number wajib diisi')
     if (!payload.tanggal_laku) return alert('Tanggal laku wajib diisi')
+    if (!payload.modal_baru) return alert('Modal baru wajib diisi')
+
+    // fallback kalau SN tidak ketemu
+    if (!snFound) {
+      if (!payload.nama_produk) return alert('Nama produk wajib diisi (SN tidak ditemukan di stok)')
+      if (!payload.modal_lama) return alert('Modal lama wajib diisi (SN tidak ditemukan di stok)')
+    }
 
     setLoading(true)
 
@@ -331,6 +352,8 @@ async function lookupFromStokBySN(sn) {
       modal_baru: String(row.modal_baru ?? ''),
       asal_barang: row.asal_barang || '',
     })
+    // saat edit → jangan lock otomatis (biar tetap bisa edit), tapi kalau SN ada dan lookup sukses nanti akan lock lagi
+    setSnFound(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -459,13 +482,15 @@ async function lookupFromStokBySN(sn) {
                   className="border px-3 py-2 rounded-lg w-full"
                   placeholder="Nama produk"
                   value={form.nama_produk}
+                  readOnly={snFound}
                   onChange={(e) => setForm({ ...form, nama_produk: e.target.value })}
                 />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
               <div>
                 <div className="text-xs text-gray-500 mb-1">
-                  Serial Number {snLoading ? '• Mendeteksi…' : ''}
+                  Serial Number {snLoading ? '• Mendeteksi…' : snFound ? '• Ditemukan ✅' : ''}
                 </div>
                 <input
                   className="border px-3 py-2 rounded-lg w-full"
@@ -475,6 +500,9 @@ async function lookupFromStokBySN(sn) {
                 />
                 <div className="text-[11px] text-gray-500 mt-1">
                   Isi SN → otomatis isi Tanggal Beli, IMEI, Nama Produk, Asal Barang, Modal Lama (dari stok).
+                  {!snLoading && form.serial_number && !snFound && (
+                    <> <b className="text-red-600">SN tidak ditemukan</b> (fallback manual).</>
+                  )}
                 </div>
               </div>
 
@@ -484,8 +512,10 @@ async function lookupFromStokBySN(sn) {
                   className="border px-3 py-2 rounded-lg w-full"
                   placeholder="IMEI"
                   value={form.imei}
+                  readOnly={snFound}
                   onChange={(e) => setForm({ ...form, imei: e.target.value })}
                 />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
               <div>
@@ -504,8 +534,10 @@ async function lookupFromStokBySN(sn) {
                   className="border px-3 py-2 rounded-lg w-full"
                   placeholder="Asal barang"
                   value={form.asal_barang}
+                  readOnly={snFound}
                   onChange={(e) => setForm({ ...form, asal_barang: e.target.value })}
                 />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
               <div>
@@ -515,8 +547,10 @@ async function lookupFromStokBySN(sn) {
                   type="number"
                   placeholder="Modal lama"
                   value={form.modal_lama}
+                  readOnly={snFound}
                   onChange={(e) => setForm({ ...form, modal_lama: e.target.value })}
                 />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
               <div>
@@ -525,8 +559,10 @@ async function lookupFromStokBySN(sn) {
                   className="border px-3 py-2 rounded-lg w-full"
                   type="date"
                   value={form.tanggal_beli}
+                  readOnly={snFound}
                   onChange={(e) => setForm({ ...form, tanggal_beli: e.target.value })}
                 />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
               <div>
@@ -538,6 +574,9 @@ async function lookupFromStokBySN(sn) {
                   value={form.modal_baru}
                   onChange={(e) => setForm({ ...form, modal_baru: e.target.value })}
                 />
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Yang diinput manual hanya: <b>Tanggal Laku</b> & <b>Modal Baru</b>.
+                </div>
               </div>
             </div>
 
@@ -681,21 +720,13 @@ async function lookupFromStokBySN(sn) {
                     <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_lama || 0)}</td>
                     <td className="border-b px-3 py-2">{r.tanggal_beli || '-'}</td>
                     <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_baru || 0)}</td>
-                    <td className="border-b px-3 py-2 text-right">
-                      {rupiah(r.selisih_modal || 0)}
-                    </td>
+                    <td className="border-b px-3 py-2 text-right">{rupiah(r.selisih_modal || 0)}</td>
                     <td className="border-b px-3 py-2">{r.asal_barang || '-'}</td>
                     <td className="border-b px-3 py-2 whitespace-nowrap">
-                      <button
-                        onClick={() => handleEdit(r)}
-                        className="text-blue-600 text-xs mr-3"
-                      >
+                      <button onClick={() => handleEdit(r)} className="text-blue-600 text-xs mr-3">
                         Edit
                       </button>
-                      <button
-                        onClick={() => handleDelete(r.id)}
-                        className="text-red-600 text-xs"
-                      >
+                      <button onClick={() => handleDelete(r.id)} className="text-red-600 text-xs">
                         Hapus
                       </button>
                     </td>
