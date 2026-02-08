@@ -64,7 +64,7 @@ export default function GuestPage() {
   async function fetchPricelist() {
     // ⚠️ ganti kalau nama tabel pricelist kamu beda
     const { data, error } = await supabase
-      .from('pricelist_produk')
+      .from('pricelist')
       .select('id,nama_produk,kategori,harga_tokped,harga_shopee,harga_offline')
       .order('kategori', { ascending: true })
       .order('nama_produk', { ascending: true })
