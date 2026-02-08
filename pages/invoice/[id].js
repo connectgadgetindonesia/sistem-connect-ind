@@ -6,9 +6,7 @@ const InvoicePDF = dynamic(() => import("../../components/InvoicePDF"), {
 
 export async function getServerSideProps(context) {
   const { id } = context.query;
-  return {
-    props: { id },
-  };
+  return { props: { id: id || "" } };
 }
 
 export default function InvoicePage({ id }) {
