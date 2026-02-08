@@ -81,32 +81,54 @@ export default function GuestPage() {
     setLoading(true)
     const offset = (stokPage - 1) * PAGE_SIZE
 
-    const { data, error } = await supabase.rpc('get_stok_public', {
-      p_limit: PAGE_SIZE,
-      p_offset: offset,
-      p_search: stokSearch || '',
-      p_status: stokStatus || '',
-      p_kategori: '', // optional kalau mau filter kategori stok barang
-    })
+    async function fetchStok() {
+  setLoading(true)
+  const offset = (stokPage - 1) * PAGE_SIZE
+
+  const { data, error } = await supabase
+    .from('stok')
+    .select('id,nama_produk,sn,imei,warna,storage,garansi,asal_produk,status')
+    .ilike('nama_produk', `%${stokSearch || ''}%`)
+    .eq('status', stokStatus || 'READY')
+    .range(offset, offset + PAGE_SIZE - 1)
+
+  setLoading(false)
+
+  if (error) {
+    console.error('fetchStok error:', error)
+    setStok([])
+    return
+  }
+
+  setStok(data || [])
+}
+
 
     setLoading(false)
     if (!error) setStok(data || [])
   }
 
-  async function fetchAks() {
-    setLoading(true)
-    const offset = (aksPage - 1) * PAGE_SIZE
+ async function fetchAks() {
+  setLoading(true)
+  const offset = (aksPage - 1) * PAGE_SIZE
 
-    const { data, error } = await supabase.rpc('get_stok_aksesoris_public', {
-      p_limit: PAGE_SIZE,
-      p_offset: offset,
-      p_search: aksSearch || '',
-      p_kategori: aksKategori || '',
-    })
+  const { data, error } = await supabase
+    .from('stok_aksesoris')
+    .select('id,nama_produk,sku,warna,kategori,stok')
+    .ilike('nama_produk', `%${aksSearch || ''}%`)
+    .range(offset, offset + PAGE_SIZE - 1)
 
-    setLoading(false)
-    if (!error) setAks(data || [])
+  setLoading(false)
+
+  if (error) {
+    console.error('fetchAks error:', error)
+    setAks([])
+    return
   }
+
+  setAks(data || [])
+}
+
 
   // ===== PRICELIST FILTER LOCAL (ringan) =====
   const plKategoriOptions = useMemo(() => {
