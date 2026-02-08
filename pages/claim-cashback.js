@@ -1,6 +1,6 @@
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient' // ✅ FIX: jangan pakai ../lib (rawan beda project)
+import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
 
@@ -20,7 +20,8 @@ const emptyForm = () => ({
 })
 
 const toInt = (v) => {
-  const n = parseInt(String(v || '').replace(/[^\d-]/g, ''), 10)
+  const s = String(v ?? '')
+  const n = parseInt(s.replace(/[^\d-]/g, ''), 10)
   return Number.isNaN(n) ? 0 : n
 }
 
@@ -36,6 +37,7 @@ function pickFirst(obj, keys = []) {
 }
 
 export default function KinerjaKaryawan() {
+  // ✅ tetap nama component biar menu/route aman, tapi isi halaman berubah jadi Claim Cashback
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -93,8 +95,7 @@ export default function KinerjaKaryawan() {
   }
 
   // ====== SN AUTO DETECT (ambil dari stok) ======
-  // ✅ tabel stok: "stok"
-  // ✅ kolom stok sesuai screenshot kamu: nama_produk, sn, imei, asal_produk, harga_modal, tanggal_masuk
+  // sumber: tabel stok = "stok", kolom SN = "sn"
   async function lookupFromStokBySN(sn) {
     const raw = (sn || '').toString()
     const q = raw.trim()
@@ -105,24 +106,21 @@ export default function KinerjaKaryawan() {
 
     setSnLoading(true)
     try {
-      // 1) coba exact match dengan variasi case
+      // 1) coba exact match beberapa variasi case
       let res = await supabase
         .from('stok')
-        .select('nama_produk,sn,imei,asal_produk,harga_modal,tanggal_masuk,created_at')
+        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at')
         .or([`sn.eq.${q}`, `sn.eq.${qUpper}`, `sn.eq.${qLower}`].join(','))
         .limit(1)
         .maybeSingle()
 
-      if (res?.error) {
-        console.error('lookup stok error (exact/or):', res.error)
-        // lanjut fallback
-      }
+      if (res?.error) console.error('lookup stok error (exact/or):', res.error)
       if (res?.data) return res.data
 
-      // 2) fallback ilike (kalau ada spasi/case aneh)
+      // 2) fallback ilike (tahan banting untuk case/spasi aneh)
       res = await supabase
         .from('stok')
-        .select('nama_produk,sn,imei,asal_produk,harga_modal,tanggal_masuk,created_at')
+        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at')
         .ilike('sn', qUpper)
         .limit(1)
         .maybeSingle()
@@ -156,10 +154,11 @@ export default function KinerjaKaryawan() {
         return
       }
 
-      // ✅ mapping sesuai kolom tabel stok kamu
+      // ✅ mapping sesuai kolom stok kamu:
+      // nama_produk, imei, asal_produk, harga_modal, tanggal_masuk
       const nama_produk = pickFirst(stok, ['nama_produk'])
       const imei = pickFirst(stok, ['imei'])
-      const asal_barang = pickFirst(stok, ['asal_produk'])
+      const asal_produk = pickFirst(stok, ['asal_produk'])
       const modal_lama = pickFirst(stok, ['harga_modal'])
       const tanggal_beli_raw = pickFirst(stok, ['tanggal_masuk', 'created_at'])
 
@@ -169,13 +168,14 @@ export default function KinerjaKaryawan() {
           : ''
         : ''
 
+      // ✅ Auto fill (override biar anti miss data)
       setForm((prev) => ({
         ...prev,
-        nama_produk: nama_produk || prev.nama_produk || '',
-        imei: imei || prev.imei || '',
-        asal_barang: asal_barang || prev.asal_barang || '',
-        modal_lama: String(modal_lama ?? prev.modal_lama ?? ''),
-        tanggal_beli: tanggal_beli || prev.tanggal_beli || '',
+        nama_produk: nama_produk || '',
+        imei: imei || '',
+        asal_barang: asal_produk || '',
+        modal_lama: String(modal_lama ?? ''),
+        tanggal_beli: tanggal_beli || '',
       }))
 
       setSnFound(true)
@@ -193,14 +193,20 @@ export default function KinerjaKaryawan() {
     if (!q) return rows
 
     return (rows || []).filter((r) => {
-      const hay = [r.kategori, r.nama_produk, r.serial_number, r.imei, r.asal_barang]
+      const hay = [
+        r.kategori,
+        r.nama_produk,
+        r.serial_number,
+        r.imei,
+        r.asal_barang,
+      ]
         .map((x) => (x || '').toString().toLowerCase())
         .join(' ')
       return hay.includes(q)
     })
   }, [rows, search])
 
-  // ===== TABS =====
+  // ===== TABS (SEMUA + kategori dari filtered) =====
   const tabs = useMemo(() => {
     const cats = Array.from(
       new Set(
@@ -214,11 +220,13 @@ export default function KinerjaKaryawan() {
     return ['SEMUA', ...cats]
   }, [filtered])
 
+  // keep activeTab valid
   useEffect(() => {
     if (!tabs.includes(activeTab)) setActiveTab('SEMUA')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs.join('|')])
 
+  // ===== FILTER BY TAB =====
   const tabRows = useMemo(() => {
     if (activeTab === 'SEMUA') return filtered
     return (filtered || []).filter(
@@ -231,16 +239,27 @@ export default function KinerjaKaryawan() {
     const arr = [...(tabRows || [])]
 
     const safeDate = (v) => {
-      const d = dayjs((v || '').toString())
+      const s = (v || '').toString()
+      const d = dayjs(s)
       return d.isValid() ? d.valueOf() : 0
     }
 
     arr.sort((a, b) => {
-      if (sortBy === 'abjad_asc') return String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''))
-      if (sortBy === 'abjad_desc') return String(b.nama_produk || '').localeCompare(String(a.nama_produk || ''))
-      if (sortBy === 'tanggal_beli_desc') return safeDate(b.tanggal_beli) - safeDate(a.tanggal_beli)
-      if (sortBy === 'tanggal_beli_asc') return safeDate(a.tanggal_beli) - safeDate(b.tanggal_beli)
-      if (sortBy === 'tanggal_laku_asc') return safeDate(a.tanggal_laku) - safeDate(b.tanggal_laku)
+      if (sortBy === 'abjad_asc') {
+        return String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''))
+      }
+      if (sortBy === 'abjad_desc') {
+        return String(b.nama_produk || '').localeCompare(String(a.nama_produk || ''))
+      }
+      if (sortBy === 'tanggal_beli_desc') {
+        return safeDate(b.tanggal_beli) - safeDate(a.tanggal_beli)
+      }
+      if (sortBy === 'tanggal_beli_asc') {
+        return safeDate(a.tanggal_beli) - safeDate(b.tanggal_beli)
+      }
+      if (sortBy === 'tanggal_laku_asc') {
+        return safeDate(a.tanggal_laku) - safeDate(b.tanggal_laku)
+      }
       return safeDate(b.tanggal_laku) - safeDate(a.tanggal_laku)
     })
 
@@ -277,7 +296,8 @@ export default function KinerjaKaryawan() {
   async function handleSubmit(e) {
     e.preventDefault()
 
-    const kategoriFinal = (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
+    const kategoriFinal =
+      (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
 
     const payload = {
       kategori: kategoriFinal.trim().toUpperCase(),
@@ -308,10 +328,12 @@ export default function KinerjaKaryawan() {
     if (isEditing) {
       const { error } = await supabase.from('claim_cashback').update(payload).eq('id', editId)
       setLoading(false)
+
       if (error) {
         console.error(error)
         return alert('Gagal update data')
       }
+
       resetForm()
       fetchData()
       return
@@ -319,6 +341,7 @@ export default function KinerjaKaryawan() {
 
     const { error } = await supabase.from('claim_cashback').insert(payload)
     setLoading(false)
+
     if (error) {
       console.error(error)
       return alert('Gagal simpan data')
@@ -407,11 +430,366 @@ export default function KinerjaKaryawan() {
 
   return (
     <Layout>
-      {/* UI kamu lanjutkan persis seperti yang sudah ada (tidak aku ubah) */}
-      {/* ... (lanjutin JSX kamu yang tadi, tidak perlu diubah) */}
-      {/* PENTING: cuma ganti bagian import + lookup + mapping di atas */}
       <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
-        {/* (JSX sama seperti punyamu) */}
+        {/* Header */}
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
+          <div className="text-sm text-gray-600">
+            Input SN auto-detect dari stok • Tabs per kategori • 20 data per halaman
+          </div>
+        </div>
+
+        {/* ===== FORM INPUT (modern card) ===== */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold text-gray-800">{isEditing ? 'Edit Data' : 'Input Data'}</div>
+            {isEditing && (
+              <button
+                type="button"
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
+                onClick={resetForm}
+                disabled={loading}
+              >
+                Batal Edit
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Kategori dropdown + add new */}
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Kategori</div>
+                <select
+                  className="border px-3 py-2 rounded-lg w-full bg-white"
+                  value={form.kategori}
+                  onChange={(e) => setForm({ ...form, kategori: e.target.value })}
+                >
+                  <option value="">Pilih kategori...</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                  <option value="__NEW__">+ Tambah kategori baru</option>
+                </select>
+
+                {form.kategori === '__NEW__' && (
+                  <input
+                    className="border px-3 py-2 rounded-lg w-full mt-2"
+                    placeholder="Ketik kategori baru (contoh: APPLE WATCH)"
+                    value={form.kategori_baru}
+                    onChange={(e) => setForm({ ...form, kategori_baru: e.target.value })}
+                  />
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Nama Produk</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="Nama produk"
+                  value={form.nama_produk}
+                  readOnly={snFound}
+                  onChange={(e) => setForm({ ...form, nama_produk: e.target.value })}
+                />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">
+                  Serial Number {snLoading ? '• Mendeteksi…' : snFound ? '• Ditemukan ✅' : ''}
+                </div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="Serial Number"
+                  value={form.serial_number}
+                  onChange={(e) => setForm({ ...form, serial_number: e.target.value })}
+                />
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Isi SN → otomatis isi Tanggal Masuk, IMEI, Nama Produk, Asal Produk, Modal Lama (dari stok).
+                  {!snLoading && form.serial_number && !snFound && (
+                    <>
+                      {' '}
+                      <b className="text-red-600">SN tidak ditemukan</b> (fallback manual).
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">IMEI</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="IMEI"
+                  value={form.imei}
+                  readOnly={snFound}
+                  onChange={(e) => setForm({ ...form, imei: e.target.value })}
+                />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Tanggal Laku</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="date"
+                  value={form.tanggal_laku}
+                  onChange={(e) => setForm({ ...form, tanggal_laku: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Asal Barang</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  placeholder="Asal barang"
+                  value={form.asal_barang}
+                  readOnly={snFound}
+                  onChange={(e) => setForm({ ...form, asal_barang: e.target.value })}
+                />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Modal Lama</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="number"
+                  placeholder="Modal lama"
+                  value={form.modal_lama}
+                  readOnly={snFound}
+                  onChange={(e) => setForm({ ...form, modal_lama: e.target.value })}
+                />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Tanggal Beli</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="date"
+                  value={form.tanggal_beli}
+                  readOnly={snFound}
+                  onChange={(e) => setForm({ ...form, tanggal_beli: e.target.value })}
+                />
+                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Modal Baru</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full"
+                  type="number"
+                  placeholder="Modal baru"
+                  value={form.modal_baru}
+                  onChange={(e) => setForm({ ...form, modal_baru: e.target.value })}
+                />
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Yang diinput manual hanya: <b>Tanggal Laku</b> & <b>Modal Baru</b>.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+              <div className="text-sm text-gray-700">
+                Selisih Modal: <b>{rupiah(selisihPreview)}</b>
+              </div>
+
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl disabled:opacity-60"
+                disabled={loading}
+              >
+                {loading ? 'Memproses…' : isEditing ? 'Update Data' : 'Simpan Data'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* ===== TOOLBAR LIST ===== */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5">
+          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
+            <div className="w-full md:w-[360px]">
+              <div className="text-xs text-gray-500 mb-1">Search</div>
+              <input
+                type="text"
+                placeholder="Cari kategori / produk / SN / IMEI / asal..."
+                className="border px-3 py-2 rounded-lg w-full"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="w-full md:w-[260px]">
+              <div className="text-xs text-gray-500 mb-1">Urutkan</div>
+              <select
+                className="border px-3 py-2 rounded-lg w-full bg-white"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="tanggal_laku_desc">Tanggal Laku (Terbaru)</option>
+                <option value="tanggal_laku_asc">Tanggal Laku (Terlama)</option>
+                <option value="tanggal_beli_desc">Tanggal Beli (Terbaru)</option>
+                <option value="tanggal_beli_asc">Tanggal Beli (Terlama)</option>
+                <option value="abjad_asc">Abjad (A-Z)</option>
+                <option value="abjad_desc">Abjad (Z-A)</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={fetchData}
+                className="border px-4 py-2 rounded-lg hover:bg-gray-50"
+                disabled={loading}
+              >
+                {loading ? 'Memuat…' : 'Refresh'}
+              </button>
+              <button
+                onClick={exportAllToExcel}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+              >
+                Download Excel (Semua)
+              </button>
+              <button
+                onClick={exportActiveTabToExcel}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg"
+              >
+                Download Excel (Tab)
+              </button>
+            </div>
+          </div>
+
+          {/* ===== Tabs Kategori (model pricelist) ===== */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {tabs.map((t) => (
+              <button
+                key={t}
+                onClick={() => setActiveTab(t)}
+                className={`border px-3 py-2 rounded-lg text-sm ${
+                  activeTab === t
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white hover:bg-gray-50'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {/* info */}
+          <div className="text-xs text-gray-500 mb-3">
+            Tab: <b className="text-gray-800">{activeTab}</b> • Total:{' '}
+            <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
+            <b className="text-gray-800">
+              {safePage}/{totalPages}
+            </b>{' '}
+            • 20 data per halaman
+          </div>
+
+          {/* ===== TABLE ===== */}
+          <div className="overflow-x-auto border rounded-2xl">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="border-b px-3 py-2 text-left">Tanggal Laku</th>
+                  <th className="border-b px-3 py-2 text-left">Nama Produk</th>
+                  <th className="border-b px-3 py-2 text-left">SN</th>
+                  <th className="border-b px-3 py-2 text-left">IMEI</th>
+                  <th className="border-b px-3 py-2 text-right">Modal Lama</th>
+                  <th className="border-b px-3 py-2 text-left">Tanggal Beli</th>
+                  <th className="border-b px-3 py-2 text-right">Modal Baru</th>
+                  <th className="border-b px-3 py-2 text-right">Selisih</th>
+                  <th className="border-b px-3 py-2 text-left">Asal</th>
+                  <th className="border-b px-3 py-2 text-left">Aksi</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading && pageRows.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
+                      Memuat…
+                    </td>
+                  </tr>
+                )}
+
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
+                      Tidak ada data.
+                    </td>
+                  </tr>
+                )}
+
+                {pageRows.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="border-b px-3 py-2">{r.tanggal_laku || '-'}</td>
+                    <td className="border-b px-3 py-2 font-semibold">{r.nama_produk || '-'}</td>
+                    <td className="border-b px-3 py-2 font-mono text-xs">{r.serial_number || '-'}</td>
+                    <td className="border-b px-3 py-2">{r.imei || '-'}</td>
+                    <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_lama || 0)}</td>
+                    <td className="border-b px-3 py-2">{r.tanggal_beli || '-'}</td>
+                    <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_baru || 0)}</td>
+                    <td className="border-b px-3 py-2 text-right">{rupiah(r.selisih_modal || 0)}</td>
+                    <td className="border-b px-3 py-2">{r.asal_barang || '-'}</td>
+                    <td className="border-b px-3 py-2 whitespace-nowrap">
+                      <button onClick={() => handleEdit(r)} className="text-blue-600 text-xs mr-3">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete(r.id)} className="text-red-600 text-xs">
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ===== Pagination ===== */}
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
+            <div className="text-xs text-gray-500">
+              Menampilkan{' '}
+              <b className="text-gray-800">
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, totalRows)}
+              </b>{' '}
+              dari <b className="text-gray-800">{totalRows}</b>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(1)}
+                disabled={safePage === 1}
+              >
+                « First
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
+                ‹ Prev
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
+                Next ›
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+              >
+                Last »
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </Layout>
   )
