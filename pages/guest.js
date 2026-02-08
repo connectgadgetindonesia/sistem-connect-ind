@@ -1,10 +1,32 @@
 // pages/guest.js
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import GuestLayout from '@/components/GuestLayout'
 import { supabase } from '../lib/supabaseClient'
 
 const PAGE_SIZE = 20
+
 const up = (s) => (s || '').toString().trim().toUpperCase()
+
+const rupiah = (n) => {
+  const x = typeof n === 'number' ? n : parseInt(String(n || '0'), 10) || 0
+  return 'Rp ' + x.toLocaleString('id-ID')
+}
+
+// tombol tab kategori gaya “master”
+function TabButton({ active, children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'px-3 py-1.5 rounded-lg border text-sm font-semibold',
+        active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-slate-50',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  )
+}
 
 export default function GuestPage() {
   // ===== ROLE GUARD =====
@@ -14,19 +36,23 @@ export default function GuestPage() {
   // ===== PRICELIST (READ ONLY) =====
   const [pricelist, setPricelist] = useState([])
   const [plSearch, setPlSearch] = useState('')
-  const [plKategori, setPlKategori] = useState('')
+  const [plActiveKategori, setPlActiveKategori] = useState('') // tab aktif
+  const [plSort, setPlSort] = useState('AZ') // AZ / ZA
+  const pricelistCaptureRef = useRef(null)
 
   // ===== STOK BARANG (READ ONLY) =====
   const [stok, setStok] = useState([])
   const [stokSearch, setStokSearch] = useState('')
-  const [stokStatus, setStokStatus] = useState('READY')
   const [stokPage, setStokPage] = useState(1)
+  const [stokKategoriOptions, setStokKategoriOptions] = useState([]) // dari kolom tipe (kalau ada)
+  const [stokActiveKategori, setStokActiveKategori] = useState('') // tab aktif
 
   // ===== STOK AKSESORIS (READ ONLY) =====
   const [aks, setAks] = useState([])
   const [aksSearch, setAksSearch] = useState('')
-  const [aksKategori, setAksKategori] = useState('')
   const [aksPage, setAksPage] = useState(1)
+  const [aksKategoriOptions, setAksKategoriOptions] = useState([])
+  const [aksActiveKategori, setAksActiveKategori] = useState('') // tab aktif
 
   const [loading, setLoading] = useState(false)
 
@@ -56,49 +82,154 @@ export default function GuestPage() {
     setRole(r)
     setLoadingRole(false)
 
-    // load data guest
-    await Promise.all([fetchPricelist(), fetchStok(), fetchAks()])
+    await Promise.all([
+      fetchPricelist(),
+      fetchStokKategoriOptions(),
+      fetchAksKategoriOptions(),
+    ])
   }
 
-  // ===== PRICELIST =====
+  // =========================
+  // PRICELIST
+  // =========================
   async function fetchPricelist() {
-    // ⚠️ ganti kalau nama tabel pricelist kamu beda
-    const { data, error } = await supabase
+    // beberapa project pakai tabel 'pricelist', sebagian 'pricelist_produk'
+    // kita coba 'pricelist' dulu, kalau error coba 'pricelist_produk'
+    let res = await supabase
       .from('pricelist')
       .select('id,nama_produk,kategori,harga_tokped,harga_shopee,harga_offline')
       .order('kategori', { ascending: true })
       .order('nama_produk', { ascending: true })
 
-    if (error) {
-      console.error('fetchPricelist error:', error)
+    if (res.error) {
+      res = await supabase
+        .from('pricelist_produk')
+        .select('id,nama_produk,kategori,harga_tokped,harga_shopee,harga_offline')
+        .order('kategori', { ascending: true })
+        .order('nama_produk', { ascending: true })
+    }
+
+    if (res.error) {
+      console.error('fetchPricelist error:', res.error)
       setPricelist([])
       return
     }
 
-    setPricelist(data || [])
+    const rows = res.data || []
+    setPricelist(rows)
+
+    // set default tab kategori
+    if (!plActiveKategori) {
+      const first = (rows.find((x) => (x.kategori || '').trim())?.kategori || '').trim()
+      setPlActiveKategori(first) // boleh kosong kalau memang belum ada kategori
+    }
   }
 
-  // ===== STOK BARANG (tanpa harga modal) =====
-  async function fetchStok() {
+  const plKategoriOptions = useMemo(() => {
+    const set = new Set()
+    ;(pricelist || []).forEach((x) => {
+      const k = (x.kategori || '').toString().trim()
+      if (k) set.add(k)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [pricelist])
+
+  const plFiltered = useMemo(() => {
+    const q = (plSearch || '').toLowerCase().trim()
+    const k = (plActiveKategori || '').trim()
+
+    let rows = (pricelist || []).filter((x) => {
+      const okK = !k || (x.kategori || '') === k
+      const okQ =
+        !q ||
+        (x.nama_produk || '').toLowerCase().includes(q) ||
+        (x.kategori || '').toLowerCase().includes(q)
+      return okK && okQ
+    })
+
+    rows = rows.sort((a, b) => {
+      const an = (a.nama_produk || '').toString()
+      const bn = (b.nama_produk || '').toString()
+      return plSort === 'ZA' ? bn.localeCompare(an) : an.localeCompare(bn)
+    })
+
+    return rows
+  }, [pricelist, plSearch, plActiveKategori, plSort])
+
+  async function downloadPricelistJPG() {
+    try {
+      const el = pricelistCaptureRef.current
+      if (!el) return
+
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const image = canvas.toDataURL('image/jpeg', 1.0)
+
+      const fileKategori = (plActiveKategori || 'PRICELIST').replace(/[^\w\- ]+/g, '').trim() || 'PRICELIST'
+      const link = document.createElement('a')
+      link.href = image
+      link.download = `PRICELIST-${fileKategori}.jpg`
+      link.click()
+    } catch (e) {
+      console.error('downloadPricelistJPG error:', e)
+      alert('Gagal download JPG. Coba refresh lalu ulangi.')
+    }
+  }
+
+  // =========================
+  // STOK BARANG (READY SAJA)
+  // tab kategori: pakai kolom "tipe" kalau ada
+  // kolom tampil: nama_produk, warna, garansi, storage
+  // =========================
+  async function fetchStokKategoriOptions() {
+    // ambil tipe untuk tab (kalau tabel stok punya kolom tipe)
+    const { data, error } = await supabase
+      .from('stok')
+      .select('tipe')
+      .eq('status', 'READY')
+      .limit(2000)
+
+    if (error) {
+      // kalau kolom "tipe" tidak ada, biarkan kosong => tab hanya "Semua"
+      console.warn('fetchStokKategoriOptions warning:', error.message)
+      setStokKategoriOptions([])
+      setStokActiveKategori('')
+      // tetap fetch stok
+      await fetchStok(1, '', '')
+      return
+    }
+
+    const set = new Set()
+    ;(data || []).forEach((x) => {
+      const t = (x?.tipe || '').toString().trim()
+      if (t) set.add(t)
+    })
+    const opts = Array.from(set).sort((a, b) => a.localeCompare(b))
+    setStokKategoriOptions(opts)
+
+    if (!stokActiveKategori && opts.length > 0) setStokActiveKategori(opts[0])
+    await fetchStok(1, stokSearch, opts.length > 0 ? (stokActiveKategori || opts[0]) : '')
+  }
+
+  async function fetchStok(page = stokPage, search = stokSearch, tipe = stokActiveKategori) {
     setLoading(true)
-    const offset = (stokPage - 1) * PAGE_SIZE
-    const q = (stokSearch || '').trim()
-    const status = (stokStatus || '').trim()
+    const offset = (page - 1) * PAGE_SIZE
+    const q = (search || '').trim()
+    const t = (tipe || '').trim()
 
     let query = supabase
       .from('stok')
-      .select('id,nama_produk,sn,imei,warna,storage,garansi,asal_produk,status')
+      .select('id,nama_produk,warna,storage,garansi,tipe,status')
+      .eq('status', 'READY')
       .order('nama_produk', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1)
 
-    // status filter
-    if (status) query = query.eq('status', status)
+    if (t) query = query.eq('tipe', t)
 
-    // search multi kolom (nama/sn/imei/warna)
     if (q) {
       const like = `%${q}%`
       query = query.or(
-        `nama_produk.ilike.${like},sn.ilike.${like},imei.ilike.${like},warna.ilike.${like}`
+        `nama_produk.ilike.${like},warna.ilike.${like},storage.ilike.${like},garansi.ilike.${like}`
       )
     }
 
@@ -115,30 +246,57 @@ export default function GuestPage() {
     setStok(data || [])
   }
 
-  // ===== STOK AKSESORIS (tanpa harga modal) =====
-  async function fetchAks() {
+  // =========================
+  // STOK AKSESORIS (stok > 0)
+  // tab kategori: kolom kategori
+  // kolom tampil: nama_produk, warna, stok
+  // =========================
+  async function fetchAksKategoriOptions() {
+    const { data, error } = await supabase
+      .from('stok_aksesoris')
+      .select('kategori')
+      .gt('stok', 0)
+      .limit(4000)
+
+    if (error) {
+      console.error('fetchAksKategoriOptions error:', error)
+      setAksKategoriOptions([])
+      setAksActiveKategori('')
+      await fetchAks(1, '', '')
+      return
+    }
+
+    const set = new Set()
+    ;(data || []).forEach((x) => {
+      const k = (x?.kategori || '').toString().trim()
+      if (k) set.add(k)
+    })
+
+    const opts = Array.from(set).sort((a, b) => a.localeCompare(b))
+    setAksKategoriOptions(opts)
+
+    if (!aksActiveKategori && opts.length > 0) setAksActiveKategori(opts[0])
+    await fetchAks(1, aksSearch, opts.length > 0 ? (aksActiveKategori || opts[0]) : '')
+  }
+
+  async function fetchAks(page = aksPage, search = aksSearch, kategori = aksActiveKategori) {
     setLoading(true)
-    const offset = (aksPage - 1) * PAGE_SIZE
-    const q = (aksSearch || '').trim()
-    const k = (aksKategori || '').trim()
+    const offset = (page - 1) * PAGE_SIZE
+    const q = (search || '').trim()
+    const k = (kategori || '').trim()
 
     let query = supabase
       .from('stok_aksesoris')
-      .select('id,nama_produk,sku,warna,kategori,stok')
+      .select('id,nama_produk,warna,kategori,stok')
+      .gt('stok', 0)
       .order('nama_produk', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1)
 
-    // search multi kolom (nama/sku/warna)
+    if (k) query = query.eq('kategori', k)
+
     if (q) {
       const like = `%${q}%`
-      query = query.or(
-        `nama_produk.ilike.${like},sku.ilike.${like},warna.ilike.${like}`
-      )
-    }
-
-    // filter kategori (optional)
-    if (k) {
-      query = query.ilike('kategori', `%${k}%`)
+      query = query.or(`nama_produk.ilike.${like},warna.ilike.${like}`)
     }
 
     const { data, error } = await query
@@ -154,54 +312,73 @@ export default function GuestPage() {
     setAks(data || [])
   }
 
-  // ===== PRICELIST FILTER LOCAL (ringan) =====
-  const plKategoriOptions = useMemo(() => {
-    const set = new Set()
-    ;(pricelist || []).forEach((x) => {
-      const k = (x.kategori || '').toString().trim()
-      if (k) set.add(k)
-    })
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [pricelist])
-
-  const plFiltered = useMemo(() => {
-    const q = (plSearch || '').toLowerCase().trim()
-    const k = (plKategori || '').toString().trim()
-    return (pricelist || []).filter((x) => {
-      const okK = !k || (x.kategori || '') === k
-      const okQ =
-        !q ||
-        (x.nama_produk || '').toLowerCase().includes(q) ||
-        (x.kategori || '').toLowerCase().includes(q)
-      return okK && okQ
-    })
-  }, [pricelist, plSearch, plKategori])
-
+  // ===== GUARD =====
   if (loadingRole) return <div className="p-6">Loading...</div>
+
+  // optional strict:
+  // if (role !== 'guest') return <div className="p-6">Unauthorized</div>
+
+  // pastikan default kategori pricelist kebentuk walau pertama kali kosong
+  useEffect(() => {
+    if (!plActiveKategori && plKategoriOptions.length > 0) setPlActiveKategori(plKategoriOptions[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plKategoriOptions.join('|')])
 
   return (
     <GuestLayout>
-      {/* ===== SECTION 1: PRICELIST ===== */}
+      {/* =======================
+          SECTION 1: PRICELIST
+      ======================= */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5 mb-6">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-xl font-bold">Pricelist</div>
             <div className="text-sm text-slate-500">Mode Guest • Read-only</div>
           </div>
-          <button
-            className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-            onClick={fetchPricelist}
-            type="button"
-          >
-            Refresh
-          </button>
+
+          <div className="flex gap-2">
+            <button
+              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+              onClick={downloadPricelistJPG}
+              type="button"
+            >
+              Download JPG
+            </button>
+            <button
+              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+              onClick={fetchPricelist}
+              type="button"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs kategori pricelist */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {plKategoriOptions.length === 0 ? (
+            <div className="text-sm text-slate-500">Kategori belum ada.</div>
+          ) : (
+            plKategoriOptions.map((k) => (
+              <TabButton
+                key={k}
+                active={plActiveKategori === k}
+                onClick={() => {
+                  setPlActiveKategori(k)
+                  setPlSearch('')
+                }}
+              >
+                {k}
+              </TabButton>
+            ))
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4">
-          <div className="md:col-span-6">
+          <div className="md:col-span-7">
             <input
               className="border p-2.5 rounded-lg w-full"
-              placeholder="Cari produk..."
+              placeholder={`Cari produk di ${plActiveKategori || 'Semua Kategori'}...`}
               value={plSearch}
               onChange={(e) => setPlSearch(e.target.value)}
             />
@@ -210,95 +387,127 @@ export default function GuestPage() {
           <div className="md:col-span-3">
             <select
               className="border p-2.5 rounded-lg w-full bg-white"
-              value={plKategori}
-              onChange={(e) => setPlKategori(e.target.value)}
+              value={plSort}
+              onChange={(e) => setPlSort(e.target.value)}
             >
-              <option value="">Semua Kategori</option>
-              {plKategoriOptions.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
+              <option value="AZ">Abjad (A–Z)</option>
+              <option value="ZA">Abjad (Z–A)</option>
             </select>
           </div>
 
-          <div className="md:col-span-3 text-sm text-slate-500 flex items-center">
+          <div className="md:col-span-2 text-sm text-slate-500 flex items-center justify-start md:justify-end">
             Total: <b className="ml-1 text-slate-800">{plFiltered.length}</b>
           </div>
         </div>
 
-        <div className="overflow-x-auto border rounded-2xl">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 text-left">Nama Produk</th>
-                <th className="px-4 py-3 text-left">Kategori</th>
-                <th className="px-4 py-3 text-right">Tokopedia</th>
-                <th className="px-4 py-3 text-right">Shopee</th>
-                <th className="px-4 py-3 text-right">Offline</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plFiltered.slice(0, 200).map((x) => (
-                <tr key={x.id} className="border-t">
-                  <td className="px-4 py-3 font-semibold">{x.nama_produk}</td>
-                  <td className="px-4 py-3">{x.kategori}</td>
-                  <td className="px-4 py-3 text-right">{x.harga_tokped}</td>
-                  <td className="px-4 py-3 text-right">{x.harga_shopee}</td>
-                  <td className="px-4 py-3 text-right">{x.harga_offline}</td>
+        {/* Area yang di-capture untuk JPG */}
+        <div ref={pricelistCaptureRef} className="border rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 font-bold text-sm">
+            {plActiveKategori || 'PRICELIST'}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-white">
+                <tr className="border-b">
+                  <th className="px-4 py-3 text-left">Nama Produk</th>
+                  <th className="px-4 py-3 text-right">Tokopedia</th>
+                  <th className="px-4 py-3 text-right">Shopee</th>
+                  <th className="px-4 py-3 text-right">Offline</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {plFiltered.slice(0, 200).map((x) => (
+                  <tr key={x.id} className="border-t">
+                    <td className="px-4 py-3 font-semibold">{x.nama_produk}</td>
+                    <td className="px-4 py-3 text-right">{rupiah(x.harga_tokped)}</td>
+                    <td className="px-4 py-3 text-right">{rupiah(x.harga_shopee)}</td>
+                    <td className="px-4 py-3 text-right">{rupiah(x.harga_offline)}</td>
+                  </tr>
+                ))}
+                {plFiltered.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                      Tidak ada data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="text-xs text-slate-500 mt-2">
-          Catatan: untuk ringan, tampilan ini hanya render max 200 baris pertama (search tetap jalan).
+          Catatan: untuk ringan, tabel ini render max 200 baris pertama (search tetap jalan).
         </div>
       </div>
 
-      {/* ===== SECTION 2: STOK BARANG (tanpa modal) ===== */}
+      {/* =======================
+          SECTION 2: STOK BARANG (READY ONLY)
+      ======================= */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5 mb-6">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-xl font-bold">Stok Barang</div>
-            <div className="text-sm text-slate-500">Tanpa Harga Modal</div>
+            <div className="text-sm text-slate-500">READY saja • Tanpa Harga Modal</div>
           </div>
+
           <button
             className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-            onClick={fetchStok}
+            onClick={() => fetchStok(1, stokSearch, stokActiveKategori)}
             type="button"
           >
             Refresh
           </button>
         </div>
 
+        {/* Tabs kategori stok barang (tipe) */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {stokKategoriOptions.length === 0 ? (
+            <TabButton
+              active={stokActiveKategori === ''}
+              onClick={() => {
+                setStokActiveKategori('')
+                setStokPage(1)
+                fetchStok(1, stokSearch, '')
+              }}
+            >
+              Semua
+            </TabButton>
+          ) : (
+            <>
+              {stokKategoriOptions.map((k) => (
+                <TabButton
+                  key={k}
+                  active={stokActiveKategori === k}
+                  onClick={() => {
+                    setStokActiveKategori(k)
+                    setStokPage(1)
+                    fetchStok(1, stokSearch, k)
+                  }}
+                >
+                  {k}
+                </TabButton>
+              ))}
+            </>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4">
-          <div className="md:col-span-6">
+          <div className="md:col-span-9">
             <input
               className="border p-2.5 rounded-lg w-full"
-              placeholder="Cari nama / SN / IMEI / warna..."
+              placeholder="Cari nama / warna / garansi / storage..."
               value={stokSearch}
               onChange={(e) => setStokSearch(e.target.value)}
             />
           </div>
           <div className="md:col-span-3">
-            <select
-              className="border p-2.5 rounded-lg w-full bg-white"
-              value={stokStatus}
-              onChange={(e) => setStokStatus(e.target.value)}
-            >
-              <option value="">Semua Status</option>
-              <option value="READY">READY</option>
-              <option value="SOLD">SOLD</option>
-            </select>
-          </div>
-          <div className="md:col-span-3 flex gap-2">
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 w-full"
               onClick={() => {
                 setStokPage(1)
-                fetchStok()
+                fetchStok(1, stokSearch, stokActiveKategori)
               }}
               type="button"
             >
@@ -311,32 +520,25 @@ export default function GuestPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left">Nama</th>
-                <th className="px-4 py-3 text-left">SN</th>
-                <th className="px-4 py-3 text-left">IMEI</th>
+                <th className="px-4 py-3 text-left">Nama Produk</th>
                 <th className="px-4 py-3 text-left">Warna</th>
-                <th className="px-4 py-3 text-left">Storage</th>
                 <th className="px-4 py-3 text-left">Garansi</th>
-                <th className="px-4 py-3 text-left">Asal</th>
-                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Storage</th>
               </tr>
             </thead>
             <tbody>
               {(stok || []).map((x) => (
                 <tr key={x.id} className="border-t">
                   <td className="px-4 py-3 font-semibold">{x.nama_produk}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{x.sn}</td>
-                  <td className="px-4 py-3">{x.imei || '-'}</td>
                   <td className="px-4 py-3">{x.warna || '-'}</td>
-                  <td className="px-4 py-3">{x.storage || '-'}</td>
                   <td className="px-4 py-3">{x.garansi || '-'}</td>
-                  <td className="px-4 py-3">{x.asal_produk || '-'}</td>
-                  <td className="px-4 py-3">{x.status || '-'}</td>
+                  <td className="px-4 py-3">{x.storage || '-'}</td>
                 </tr>
               ))}
+
               {stok.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
                     Tidak ada data.
                   </td>
                 </tr>
@@ -352,8 +554,9 @@ export default function GuestPage() {
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
               disabled={stokPage <= 1}
               onClick={() => {
-                setStokPage((p) => Math.max(1, p - 1))
-                setTimeout(fetchStok, 0)
+                const next = Math.max(1, stokPage - 1)
+                setStokPage(next)
+                setTimeout(() => fetchStok(next, stokSearch, stokActiveKategori), 0)
               }}
               type="button"
             >
@@ -362,8 +565,9 @@ export default function GuestPage() {
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
               onClick={() => {
-                setStokPage((p) => p + 1)
-                setTimeout(fetchStok, 0)
+                const next = stokPage + 1
+                setStokPage(next)
+                setTimeout(() => fetchStok(next, stokSearch, stokActiveKategori), 0)
               }}
               type="button"
             >
@@ -373,47 +577,71 @@ export default function GuestPage() {
         </div>
       </div>
 
-      {/* ===== SECTION 3: STOK AKSESORIS (tanpa modal) ===== */}
+      {/* =======================
+          SECTION 3: STOK AKSESORIS (stok > 0)
+      ======================= */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-xl font-bold">Stok Aksesoris</div>
-            <div className="text-sm text-slate-500">Tanpa Harga Modal</div>
+            <div className="text-sm text-slate-500">Stok tersedia saja • Tanpa Harga Modal</div>
           </div>
+
           <button
             className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-            onClick={fetchAks}
+            onClick={() => fetchAks(1, aksSearch, aksActiveKategori)}
             type="button"
           >
             Refresh
           </button>
         </div>
 
+        {/* Tabs kategori aksesoris */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {aksKategoriOptions.length === 0 ? (
+            <TabButton
+              active={aksActiveKategori === ''}
+              onClick={() => {
+                setAksActiveKategori('')
+                setAksPage(1)
+                fetchAks(1, aksSearch, '')
+              }}
+            >
+              Semua
+            </TabButton>
+          ) : (
+            aksKategoriOptions.map((k) => (
+              <TabButton
+                key={k}
+                active={aksActiveKategori === k}
+                onClick={() => {
+                  setAksActiveKategori(k)
+                  setAksPage(1)
+                  fetchAks(1, aksSearch, k)
+                }}
+              >
+                {k}
+              </TabButton>
+            ))
+          )}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4">
-          <div className="md:col-span-6">
+          <div className="md:col-span-9">
             <input
               className="border p-2.5 rounded-lg w-full"
-              placeholder="Cari nama / SKU / warna..."
+              placeholder={`Cari aksesoris di ${aksActiveKategori || 'Semua'}...`}
               value={aksSearch}
               onChange={(e) => setAksSearch(e.target.value)}
             />
           </div>
 
           <div className="md:col-span-3">
-            <input
-              className="border p-2.5 rounded-lg w-full"
-              placeholder="Filter kategori (opsional)"
-              value={aksKategori}
-              onChange={(e) => setAksKategori(up(e.target.value))}
-            />
-          </div>
-
-          <div className="md:col-span-3 flex gap-2">
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 w-full"
               onClick={() => {
                 setAksPage(1)
-                fetchAks()
+                fetchAks(1, aksSearch, aksActiveKategori)
               }}
               type="button"
             >
@@ -427,9 +655,7 @@ export default function GuestPage() {
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-left">Nama</th>
-                <th className="px-4 py-3 text-left">SKU</th>
                 <th className="px-4 py-3 text-left">Warna</th>
-                <th className="px-4 py-3 text-left">Kategori</th>
                 <th className="px-4 py-3 text-right">Stok</th>
               </tr>
             </thead>
@@ -437,15 +663,14 @@ export default function GuestPage() {
               {(aks || []).map((x) => (
                 <tr key={x.id} className="border-t">
                   <td className="px-4 py-3 font-semibold">{x.nama_produk}</td>
-                  <td className="px-4 py-3">{x.sku}</td>
-                  <td className="px-4 py-3">{x.warna}</td>
-                  <td className="px-4 py-3">{x.kategori || '-'}</td>
-                  <td className="px-4 py-3 text-right">{x.stok ?? 0}</td>
+                  <td className="px-4 py-3">{x.warna || '-'}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{x.stok ?? 0}</td>
                 </tr>
               ))}
+
               {aks.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
                     Tidak ada data.
                   </td>
                 </tr>
@@ -461,8 +686,9 @@ export default function GuestPage() {
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
               disabled={aksPage <= 1}
               onClick={() => {
-                setAksPage((p) => Math.max(1, p - 1))
-                setTimeout(fetchAks, 0)
+                const next = Math.max(1, aksPage - 1)
+                setAksPage(next)
+                setTimeout(() => fetchAks(next, aksSearch, aksActiveKategori), 0)
               }}
               type="button"
             >
@@ -471,8 +697,9 @@ export default function GuestPage() {
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
               onClick={() => {
-                setAksPage((p) => p + 1)
-                setTimeout(fetchAks, 0)
+                const next = aksPage + 1
+                setAksPage(next)
+                setTimeout(() => fetchAks(next, aksSearch, aksActiveKategori), 0)
               }}
               type="button"
             >
