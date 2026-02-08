@@ -51,7 +51,8 @@ export default function GuestPage() {
     const { data: auth } = await supabase.auth.getUser()
     const user = auth?.user
     if (!user) {
-      window.location.href = '/login'
+      // ✅ GUEST harus ke login khusus guest
+      window.location.href = '/guest-login'
       return
     }
 
