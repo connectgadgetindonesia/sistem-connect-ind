@@ -3,7 +3,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 
+const PAGE_SIZE = 20
 const todayStr = () => new Date().toISOString().slice(0, 10)
+
+const rupiah = (n) => {
+  const x = parseInt(String(n ?? 0).replace(/[^\d-]/g, ''), 10) || 0
+  return 'Rp ' + x.toLocaleString('id-ID')
+}
 
 const emptyItem = () => ({
   nama_produk: '',
@@ -15,6 +21,9 @@ const emptyItem = () => ({
 })
 
 export default function TransaksiIndent() {
+  // ===== TAB LIST =====
+  const [tab, setTab] = useState('berjalan') // berjalan | diambil
+
   // ===== HEADER FORM (customer + dp) =====
   const [form, setForm] = useState({
     nama: '',
@@ -28,26 +37,31 @@ export default function TransaksiIndent() {
   const [items, setItems] = useState([emptyItem()])
 
   const [list, setList] = useState([])
+  const [loading, setLoading] = useState(false)
+
   const [search, setSearch] = useState('')
   const [editId, setEditId] = useState(null) // UUID
   const isEditing = editId !== null
+
+  // paging
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     fetchList()
   }, [])
 
   const fetchList = async () => {
-    // ✅ jangan pakai created_at (bisa tidak ada kolomnya)
-    // ✅ sorting aman: tanggal desc lalu id desc (seperti style sebelumnya)
+    setLoading(true)
     const { data, error } = await supabase
       .from('transaksi_indent')
       .select('*, items:transaksi_indent_items(*)')
       .order('tanggal', { ascending: false })
       .order('id', { ascending: false })
 
+    setLoading(false)
+
     if (error) {
       console.error('fetchList error:', error)
-      // ❗ jangan setList([]) supaya history tidak tiba-tiba hilang saat error sesaat
       return
     }
     setList(data || [])
@@ -76,15 +90,15 @@ export default function TransaksiIndent() {
   // ===== TOTAL OTOMATIS dari ITEMS =====
   const totalHargaJual = useMemo(() => {
     return (items || []).reduce((sum, it) => {
-      const qty = parseInt(it.qty || 0)
-      const harga = parseInt(it.harga_item || 0)
+      const qty = parseInt(it.qty || 0, 10)
+      const harga = parseInt(it.harga_item || 0, 10)
       if (Number.isNaN(qty) || Number.isNaN(harga)) return sum
       return sum + Math.max(qty, 0) * Math.max(harga, 0)
     }, 0)
   }, [items])
 
   const dpNum = useMemo(() => {
-    const n = parseInt(form.dp || 0)
+    const n = parseInt(form.dp || 0, 10)
     return Number.isNaN(n) ? 0 : n
   }, [form.dp])
 
@@ -97,8 +111,8 @@ export default function TransaksiIndent() {
         warna: (it.warna || '').trim(),
         storage: (it.storage || '').trim(),
         garansi: (it.garansi || '').trim(),
-        qty: parseInt(it.qty || 1),
-        harga_item: parseInt(it.harga_item || 0),
+        qty: parseInt(it.qty || 1, 10),
+        harga_item: parseInt(it.harga_item || 0, 10),
       }))
       .filter((it) => it.nama_produk)
 
@@ -119,6 +133,8 @@ export default function TransaksiIndent() {
       if (Number.isNaN(it.harga_item)) return alert('Harga item harus angka')
     }
 
+    setLoading(true)
+
     // ===== UPDATE =====
     if (isEditing) {
       const { error: upErr } = await supabase
@@ -134,17 +150,25 @@ export default function TransaksiIndent() {
         })
         .eq('id', editId)
 
-      if (upErr) return alert('Gagal update transaksi')
+      if (upErr) {
+        setLoading(false)
+        return alert('Gagal update transaksi')
+      }
 
       const { error: delErr } = await supabase
         .from('transaksi_indent_items')
         .delete()
         .eq('indent_id', editId)
 
-      if (delErr) return alert('Gagal update item (hapus lama)')
+      if (delErr) {
+        setLoading(false)
+        return alert('Gagal update item (hapus lama)')
+      }
 
       const rows = cleanItems.map((it) => ({ indent_id: editId, ...it }))
       const { error: insErr } = await supabase.from('transaksi_indent_items').insert(rows)
+
+      setLoading(false)
       if (insErr) return alert('Gagal update item (insert baru)')
 
       resetForm()
@@ -171,10 +195,15 @@ export default function TransaksiIndent() {
       .select('id')
       .single()
 
-    if (insHeaderErr || !header?.id) return alert('Gagal simpan transaksi')
+    if (insHeaderErr || !header?.id) {
+      setLoading(false)
+      return alert('Gagal simpan transaksi')
+    }
 
     const rows = cleanItems.map((it) => ({ indent_id: header.id, ...it }))
     const { error: insItemsErr } = await supabase.from('transaksi_indent_items').insert(rows)
+
+    setLoading(false)
     if (insItemsErr) return alert('Transaksi tersimpan, tapi item gagal disimpan')
 
     resetForm()
@@ -228,250 +257,457 @@ export default function TransaksiIndent() {
     const konfirmasi = confirm('Yakin ingin hapus transaksi ini?')
     if (!konfirmasi) return
 
+    setLoading(true)
     const { error } = await supabase.from('transaksi_indent').delete().eq('id', id)
+    setLoading(false)
+
     if (!error) fetchList()
     else alert('Gagal hapus')
   }
-
-  const filtered = list.filter((item) =>
-    (item.nama || '').toLowerCase().includes(search.toLowerCase())
-  )
 
   // ===== UI Helpers for items =====
   const updateItem = (idx, key, value) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [key]: value } : it)))
   }
-
   const addItemRow = () => setItems((prev) => [...prev, emptyItem()])
   const removeItemRow = (idx) => {
     setItems((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))
   }
 
+  // ===== FILTER + TAB =====
+  const filtered = useMemo(() => {
+    const q = (search || '').toLowerCase().trim()
+    const bySearch = (list || []).filter((it) =>
+      (it.nama || '').toLowerCase().includes(q)
+    )
+
+    const berjalan = bySearch.filter((it) => it.status !== 'Sudah Diambil')
+    const diambil = bySearch.filter((it) => it.status === 'Sudah Diambil')
+
+    return tab === 'diambil' ? diambil : berjalan
+  }, [list, search, tab])
+
+  // ===== PAGING (20 per page) =====
+  const totalRows = filtered.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+
+  useEffect(() => {
+    setPage(1)
+  }, [tab, search])
+
+  const pageRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [filtered, safePage])
+
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto p-4">
-        <h1 className="text-xl font-bold mb-4">Transaksi Indent (DP)</h1>
+      <div className="max-w-6xl mx-auto p-4 md:p-6">
+        {/* Header */}
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold text-gray-900">Transaksi Indent (DP)</h1>
+          <div className="text-sm text-gray-600">
+            Pisahkan transaksi berjalan & sudah diambil. 20 transaksi per halaman.
+          </div>
+        </div>
 
-        {/* ===== FORM ===== */}
-        <form onSubmit={handleSubmit} className="border p-4 rounded mb-6 space-y-4">
-          {/* Header */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input
-              className="border p-2"
-              placeholder="NAMA"
-              value={form.nama}
-              onChange={(e) => setForm({ ...form, nama: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              placeholder="ALAMAT"
-              value={form.alamat}
-              onChange={(e) => setForm({ ...form, alamat: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              placeholder="NO WA"
-              value={form.no_wa}
-              onChange={(e) => setForm({ ...form, no_wa: e.target.value })}
-            />
-
-            <input
-              className="border p-2"
-              placeholder="DP"
-              type="number"
-              value={form.dp}
-              onChange={(e) => setForm({ ...form, dp: e.target.value })}
-            />
-            <input
-              className="border p-2"
-              type="date"
-              value={form.tanggal}
-              onChange={(e) => setForm({ ...form, tanggal: e.target.value })}
-            />
-
-            <div className="border p-2 bg-gray-50 rounded">
-              <div className="text-xs text-gray-600">TOTAL HARGA JUAL</div>
-              <div className="font-semibold">Rp {totalHargaJual.toLocaleString('id-ID')}</div>
-              <div className="text-xs text-gray-600 mt-1">
-                Sisa: Rp {sisaPembayaran.toLocaleString('id-ID')}
-              </div>
+        {/* ===== FORM (modern card) ===== */}
+        <div className="bg-white border shadow-sm rounded-2xl p-4 md:p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold text-gray-800">
+              {isEditing ? 'Edit Transaksi' : 'Input Transaksi'}
             </div>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50"
+                disabled={loading}
+              >
+                Batal Edit
+              </button>
+            )}
           </div>
 
-     {/* Items */}
-<div className="border rounded p-3">
-  <div className="flex items-center justify-between mb-2">
-    <div className="font-semibold">Produk dalam Transaksi</div>
-    <button
-      type="button"
-      className="border px-3 py-1 rounded text-sm"
-      onClick={addItemRow}
-    >
-      + Tambah Produk
-    </button>
-  </div>
-
-  {/* ✅ Header label: lebarin HARGA/ITEM */}
-  <div className="hidden md:grid grid-cols-12 gap-2 text-[11px] font-semibold text-gray-600 mb-1 px-1">
-    <div className="col-span-4">NAMA PRODUK</div>
-    <div className="col-span-2">WARNA</div>
-    <div className="col-span-2">STORAGE</div>
-    <div className="col-span-1">GARANSI</div>
-    <div className="col-span-1">QTY</div>
-    <div className="col-span-2">HARGA/ITEM</div>
-  </div>
-
-  <div className="space-y-3">
-    {items.map((it, idx) => (
-      <div
-        key={idx}
-        className="grid grid-cols-1 md:grid-cols-12 gap-2 border p-2 rounded items-center"
-      >
-        <input
-          className="border p-2 md:col-span-4"
-          placeholder="NAMA PRODUK"
-          value={it.nama_produk}
-          onChange={(e) => updateItem(idx, 'nama_produk', e.target.value)}
-        />
-        <input
-          className="border p-2 md:col-span-2"
-          placeholder="WARNA"
-          value={it.warna}
-          onChange={(e) => updateItem(idx, 'warna', e.target.value)}
-        />
-        <input
-          className="border p-2 md:col-span-2"
-          placeholder="STORAGE"
-          value={it.storage}
-          onChange={(e) => updateItem(idx, 'storage', e.target.value)}
-        />
-
-        {/* ✅ Garansi jadi 1 kolom */}
-        <input
-          className="border p-2 md:col-span-1"
-          placeholder="GARANSI"
-          value={it.garansi}
-          onChange={(e) => updateItem(idx, 'garansi', e.target.value)}
-        />
-
-        <input
-          className="border p-2 md:col-span-1"
-          placeholder="QTY"
-          type="number"
-          min="1"
-          value={it.qty}
-          onChange={(e) => updateItem(idx, 'qty', e.target.value)}
-        />
-
-        {/* ✅ Harga/Item jadi 2 kolom (lebih lega, tidak kepotong) */}
-        <input
-          className="border p-2 md:col-span-2"
-          placeholder="HARGA/ITEM"
-          inputMode="numeric"
-          value={it.harga_item}
-          onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
-        />
-
-        {/* ✅ tombol hapus kecil, rapi, tidak bikin turun baris */}
-        <div className="md:col-span-12 flex justify-end">
-          <button
-            type="button"
-            className="border px-3 py-2 rounded"
-            onClick={() => removeItemRow(idx)}
-            title="Hapus produk"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    ))}
-  </div>
-
-  <div className="text-xs text-gray-600 mt-2">
-    Total otomatis dihitung dari (qty × harga/item).
-  </div>
-</div>
-
-
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded w-full">
-            {isEditing ? 'Update Transaksi' : 'Simpan Transaksi'}
-          </button>
-
-          {isEditing && (
-            <button type="button" className="border px-4 py-2 rounded w-full" onClick={resetForm}>
-              Batal Edit
-            </button>
-          )}
-        </form>
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Cari Nama..."
-          className="border p-2 mb-4 w-full"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-
-        {/* ✅ History transaksi (dipertahankan, tidak dihilangkan) */}
-        <div className="space-y-4">
-          {filtered.map((item) => {
-            const arr = item.items || []
-            const count = arr.length
-            const first = arr[0]
-
-            return (
-              <div key={item.id} className="border p-4 rounded">
-                <div className="font-semibold text-lg">{item.nama} ({item.tanggal})</div>
-
-                {item.invoice_id && (
-                  <div className="text-xs text-gray-600 mb-1">
-                    Invoice: <span className="font-mono">{item.invoice_id}</span>
-                  </div>
-                )}
-
-                {count > 0 ? (
-                  <div className="text-sm">
-                    {first?.nama_produk}
-                    {first?.warna ? ` - ${first.warna}` : ''}
-                    {first?.storage ? ` - ${first.storage}` : ''}
-                    {count > 1 ? <b> + {count - 1} produk</b> : null}
-                    {first?.garansi ? ` - Garansi: ${first.garansi}` : ''}
-                  </div>
-                ) : (
-                  <div className="text-sm">
-                    {item.nama_produk} - {item.warna} - {item.storage} - Garansi: {item.garansi}
-                  </div>
-                )}
-
-                <div className="text-sm">Alamat: {item.alamat} | WA: {item.no_wa}</div>
-                <div className="text-sm">
-                  DP: Rp {(item.dp || 0).toLocaleString('id-ID')} | Total: Rp {(item.harga_jual || 0).toLocaleString('id-ID')}
-                </div>
-
-                <div className="text-sm font-medium text-green-600">
-                  Status:{' '}
-                  {item.status === 'Sudah Diambil'
-                    ? '✅ Sudah Diambil'
-                    : '🕐 DP Masuk, sisa Rp ' + ((item.harga_jual || 0) - (item.dp || 0)).toLocaleString('id-ID')}
-                </div>
-
-                {item.invoice_id && (
-                  <div className="mt-2 flex gap-2 items-center">
-                    <Link
-                      href={`/invoice/indent/${item.id}`}
-                      target="_blank"
-                      className="inline-block bg-gray-800 text-white text-xs px-3 py-1 rounded hover:bg-black"
-                    >
-                      🧾 Cetak Invoice
-                    </Link>
-                    <button onClick={() => handleEdit(item)} className="text-blue-600 text-xs">Edit</button>
-                    <button onClick={() => handleDelete(item.id)} className="text-red-600 text-xs">Hapus</button>
-                  </div>
-                )}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Header fields */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Nama</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="Nama"
+                  value={form.nama}
+                  onChange={(e) => setForm({ ...form, nama: e.target.value })}
+                />
               </div>
-            )
-          })}
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Alamat</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="Alamat"
+                  value={form.alamat}
+                  onChange={(e) => setForm({ ...form, alamat: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">No WA</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="No WA"
+                  value={form.no_wa}
+                  onChange={(e) => setForm({ ...form, no_wa: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">DP</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="DP"
+                  type="number"
+                  value={form.dp}
+                  onChange={(e) => setForm({ ...form, dp: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Tanggal</div>
+                <input
+                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  type="date"
+                  value={form.tanggal}
+                  onChange={(e) => setForm({ ...form, tanggal: e.target.value })}
+                />
+              </div>
+
+              <div className="border rounded-2xl bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Total Harga Jual</div>
+                <div className="text-lg font-bold text-gray-900">{rupiah(totalHargaJual)}</div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Sisa: <b>{rupiah(sisaPembayaran)}</b>
+                </div>
+              </div>
+            </div>
+
+            {/* Items */}
+            <div className="border rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-semibold text-gray-800">Produk dalam Transaksi</div>
+                <button
+                  type="button"
+                  className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
+                  onClick={addItemRow}
+                  disabled={loading}
+                >
+                  + Tambah Produk
+                </button>
+              </div>
+
+              <div className="hidden md:grid grid-cols-12 gap-2 text-[11px] font-semibold text-gray-500 mb-2">
+                <div className="col-span-4">Nama Produk</div>
+                <div className="col-span-2">Warna</div>
+                <div className="col-span-2">Storage</div>
+                <div className="col-span-1">Garansi</div>
+                <div className="col-span-1">Qty</div>
+                <div className="col-span-2">Harga/Item</div>
+              </div>
+
+              <div className="space-y-3">
+                {items.map((it, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 md:grid-cols-12 gap-2 border rounded-xl p-2.5"
+                  >
+                    <input
+                      className="border px-3 py-2 rounded-lg md:col-span-4"
+                      placeholder="Nama Produk"
+                      value={it.nama_produk}
+                      onChange={(e) => updateItem(idx, 'nama_produk', e.target.value)}
+                    />
+                    <input
+                      className="border px-3 py-2 rounded-lg md:col-span-2"
+                      placeholder="Warna"
+                      value={it.warna}
+                      onChange={(e) => updateItem(idx, 'warna', e.target.value)}
+                    />
+                    <input
+                      className="border px-3 py-2 rounded-lg md:col-span-2"
+                      placeholder="Storage"
+                      value={it.storage}
+                      onChange={(e) => updateItem(idx, 'storage', e.target.value)}
+                    />
+                    <input
+                      className="border px-3 py-2 rounded-lg md:col-span-1"
+                      placeholder="Garansi"
+                      value={it.garansi}
+                      onChange={(e) => updateItem(idx, 'garansi', e.target.value)}
+                    />
+                    <input
+                      className="border px-3 py-2 rounded-lg md:col-span-1"
+                      placeholder="Qty"
+                      type="number"
+                      min="1"
+                      value={it.qty}
+                      onChange={(e) => updateItem(idx, 'qty', e.target.value)}
+                    />
+                    <input
+                      className="border px-3 py-2 rounded-lg md:col-span-2"
+                      placeholder="Harga/Item"
+                      inputMode="numeric"
+                      value={it.harga_item}
+                      onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
+                    />
+
+                    <div className="md:col-span-12 flex justify-end">
+                      <button
+                        type="button"
+                        className="border px-3 py-2 rounded-lg hover:bg-gray-50"
+                        onClick={() => removeItemRow(idx)}
+                        disabled={loading}
+                        title="Hapus produk"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-xs text-gray-500 mt-2">
+                Total otomatis dihitung dari (qty × harga/item).
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl w-full disabled:opacity-60"
+              disabled={loading}
+            >
+              {loading ? 'Memproses…' : isEditing ? 'Update Transaksi' : 'Simpan Transaksi'}
+            </button>
+          </form>
+        </div>
+
+        {/* ===== LIST SECTION (modern) ===== */}
+        <div className="bg-white border shadow-sm rounded-2xl p-4 md:p-5">
+          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTab('berjalan')}
+                className={`px-3 py-2 rounded-lg text-sm border ${
+                  tab === 'berjalan'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white hover:bg-gray-50'
+                }`}
+              >
+                Berjalan
+              </button>
+              <button
+                onClick={() => setTab('diambil')}
+                className={`px-3 py-2 rounded-lg text-sm border ${
+                  tab === 'diambil'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white hover:bg-gray-50'
+                }`}
+              >
+                Sudah Diambil
+              </button>
+            </div>
+
+            <div className="flex-1" />
+
+            <div className="w-full md:w-[320px]">
+              <div className="text-xs text-gray-500 mb-1">Search</div>
+              <input
+                type="text"
+                placeholder="Cari nama..."
+                className="border px-3 py-2 rounded-lg w-full"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <button
+              onClick={fetchList}
+              className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50"
+              disabled={loading}
+            >
+              {loading ? 'Memuat…' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="text-xs text-gray-500 mb-3">
+            Total: <b className="text-gray-800">{totalRows}</b> transaksi • Halaman:{' '}
+            <b className="text-gray-800">
+              {safePage}/{totalPages}
+            </b>
+          </div>
+
+          {/* list cards */}
+          <div className="space-y-3">
+            {loading && pageRows.length === 0 && (
+              <div className="text-center text-gray-500 py-10">Memuat…</div>
+            )}
+
+            {!loading && pageRows.length === 0 && (
+              <div className="text-center text-gray-500 py-10">Tidak ada data.</div>
+            )}
+
+            {pageRows.map((item) => {
+              const arr = item.items || []
+              const count = arr.length
+              const first = arr[0]
+              const sisa = Math.max((item.harga_jual || 0) - (item.dp || 0), 0)
+
+              return (
+                <div key={item.id} className="border rounded-2xl p-4 hover:bg-gray-50">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
+                    <div>
+                      <div className="text-lg font-bold text-gray-900">
+                        {String(item.nama || '').toUpperCase()}{' '}
+                        <span className="text-sm font-semibold text-gray-600">
+                          ({item.tanggal})
+                        </span>
+                      </div>
+
+                      {item.invoice_id && (
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          Invoice: <span className="font-mono">{item.invoice_id}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full border ${
+                          item.status === 'Sudah Diambil'
+                            ? 'bg-green-50 text-green-700 border-green-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 Berjalan'}
+                      </span>
+
+                      {item.invoice_id && (
+                        <Link
+                          href={`/invoice/indent/${item.id}`}
+                          target="_blank"
+                          className="inline-block bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-black"
+                        >
+                          🧾 Cetak Invoice
+                        </Link>
+                      )}
+
+                      <button
+                        onClick={() => handleEdit(item)}
+                        className="border px-3 py-2 rounded-lg text-xs hover:bg-white"
+                        disabled={loading}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="border px-3 py-2 rounded-lg text-xs text-red-600 hover:bg-red-50"
+                        disabled={loading}
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 text-sm text-gray-700">
+                    {count > 0 ? (
+                      <>
+                        <b>{first?.nama_produk}</b>
+                        {first?.warna ? ` - ${first.warna}` : ''}
+                        {first?.storage ? ` - ${first.storage}` : ''}
+                        {first?.garansi ? ` - Garansi: ${first.garansi}` : ''}
+                        {count > 1 ? (
+                          <span className="text-gray-500"> • + {count - 1} produk</span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <b>{item.nama_produk}</b>
+                        {item.warna ? ` - ${item.warna}` : ''}
+                        {item.storage ? ` - ${item.storage}` : ''}
+                        {item.garansi ? ` - Garansi: ${item.garansi}` : ''}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-1 text-sm text-gray-700">
+                    Alamat: {item.alamat || '-'} • WA: {item.no_wa || '-'}
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="border rounded-xl p-3 bg-white">
+                      <div className="text-xs text-gray-500">DP</div>
+                      <div className="font-bold">{rupiah(item.dp || 0)}</div>
+                    </div>
+                    <div className="border rounded-xl p-3 bg-white">
+                      <div className="text-xs text-gray-500">Total</div>
+                      <div className="font-bold">{rupiah(item.harga_jual || 0)}</div>
+                    </div>
+                    <div className="border rounded-xl p-3 bg-white">
+                      <div className="text-xs text-gray-500">Sisa</div>
+                      <div className={`font-bold ${sisa > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                        {rupiah(sisa)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
+            <div className="text-xs text-gray-500">
+              Menampilkan{' '}
+              <b className="text-gray-800">
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, totalRows)}
+              </b>{' '}
+              dari <b className="text-gray-800">{totalRows}</b>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(1)}
+                disabled={safePage === 1}
+              >
+                « First
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
+                ‹ Prev
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
+                Next ›
+              </button>
+              <button
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+              >
+                Last »
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </Layout>
