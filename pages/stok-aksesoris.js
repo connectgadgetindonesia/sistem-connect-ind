@@ -406,72 +406,73 @@ export default function StokAksesoris() {
           </div>
         )}
 
-        {/* TOOLBAR: Search + Filter + Sort (1 menu) + Edit Massal */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-3">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-            <div className="md:col-span-6">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Cari produk di ${filterKategori ? filterKategori : 'semua kategori'}...`}
-                className="border p-2.5 rounded-lg w-full"
-              />
-            </div>
+        {/* TOOLBAR atas tabel: search + filter + sort + tombol edit massal */}
+<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-3">
+  <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+    {/* KIRI: Search */}
+    <div className="w-full md:flex-1">
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder={`Cari produk di ${filterKategori ? filterKategori : 'semua kategori'}...`}
+        className="border p-2.5 rounded-lg w-full"
+      />
+    </div>
 
-            <div className="md:col-span-3">
-              <select
-                className="border p-2.5 rounded-lg w-full bg-white"
-                value={filterKategori}
-                onChange={(e) => setFilterKategori(e.target.value)}
-              >
-                <option value="">Semua Kategori</option>
-                {kategoriOptions.map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ))}
-              </select>
-            </div>
+    {/* TENGAH: Filter kategori */}
+    <div className="w-full md:w-[220px]">
+      <select
+        className="border p-2.5 rounded-lg w-full bg-white"
+        value={filterKategori}
+        onChange={(e) => setFilterKategori(e.target.value)}
+      >
+        <option value="">Semua Kategori</option>
+        {kategoriOptions.map((k) => (
+          <option key={k} value={k}>
+            {k}
+          </option>
+        ))}
+      </select>
+    </div>
 
-            {/* ✅ Sort 1 menu (include arah) */}
-            <div className="md:col-span-2">
-              <select
-                className="border p-2.5 rounded-lg w-full bg-white"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="nama_asc">Abjad (Nama) A–Z</option>
-                <option value="nama_desc">Abjad (Nama) Z–A</option>
+    {/* KANAN: Sort + tombol */}
+    <div className="w-full md:w-auto flex flex-col md:flex-row gap-2 md:items-center">
+      <select
+        className="border p-2.5 rounded-lg bg-white w-full md:w-auto min-w-[220px]"
+        value={sortBy}
+        onChange={(e) => setSortBy(e.target.value)}
+      >
+        <option value="nama_asc">Abjad (Nama) A–Z</option>
+        <option value="nama_desc">Abjad (Nama) Z–A</option>
 
-                <option value="sku_asc">SKU A–Z</option>
-                <option value="sku_desc">SKU Z–A</option>
+        <option value="sku_asc">SKU A–Z</option>
+        <option value="sku_desc">SKU Z–A</option>
 
-                <option value="kategori_asc">Kategori A–Z</option>
-                <option value="kategori_desc">Kategori Z–A</option>
+        <option value="kategori_asc">Kategori A–Z</option>
+        <option value="kategori_desc">Kategori Z–A</option>
 
-                <option value="stok_desc">Stok (Terbanyak)</option>
-                <option value="stok_asc">Stok (Tersedikit)</option>
+        <option value="stok_desc">Stok (Terbanyak)</option>
+        <option value="stok_asc">Stok (Tersedikit)</option>
 
-                <option value="modal_desc">Harga Modal (Terbesar)</option>
-                <option value="modal_asc">Harga Modal (Terkecil)</option>
-              </select>
-            </div>
+        <option value="modal_desc">Harga Modal (Terbesar)</option>
+        <option value="modal_asc">Harga Modal (Terkecil)</option>
+      </select>
 
-            <div className="md:col-span-1 flex justify-end">
-              <button
-                onClick={openMassModal}
-                className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 whitespace-nowrap w-full md:w-auto"
-                type="button"
-              >
-                Edit Massal
-              </button>
-            </div>
-          </div>
+      <button
+        onClick={openMassModal}
+        className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 whitespace-nowrap w-full md:w-auto"
+        type="button"
+      >
+        Edit Massal
+      </button>
+    </div>
+  </div>
 
-          <div className="text-xs text-slate-500 mt-3">
-            Dipilih: <b>{selectedIds.length}</b> item
-          </div>
-        </div>
+  <div className="text-xs text-slate-500 mt-3">
+    Dipilih: <b>{selectedIds.length}</b> item
+  </div>
+</div>
+
 
         {/* TABLE */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
