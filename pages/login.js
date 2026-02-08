@@ -3,6 +3,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
+function setCookie(name, value, days = 1) {
+  const maxAge = days * 24 * 60 * 60
+  const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -12,7 +18,7 @@ export default function LoginPage() {
   // 👉 DAFTAR EMAIL TIM TAMBAHAN (GUEST)
   const GUEST_EMAILS = [
     'guest1@connectind.com',
-    'guest2@connectind.com',
+    'shidqi@connect.ind',
     // tambahkan di sini kalau ada tim baru
   ]
 
@@ -20,9 +26,11 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
 
+    const emailLower = String(email || '').trim().toLowerCase()
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
+      email: emailLower,
+      password,
     })
 
     if (error) {
@@ -30,31 +38,33 @@ export default function LoginPage() {
       return
     }
 
-    // Simpan token ke cookie (tetap seperti sistem lama)
-    document.cookie = `user_token=${data.session.access_token}; path=/;`
+    const token = data?.session?.access_token
+    if (!token) {
+      setError('Login berhasil, tapi token tidak ditemukan.')
+      return
+    }
 
-    // 👉 LOGIC REDIRECT BERDASARKAN ROLE
-    const emailLower = email.toLowerCase()
+    // ✅ Simpan token ke cookie (tetap seperti sistem lama, tapi dibuat lebih stabil)
+    setCookie('user_token', token, 1)
 
-    if (GUEST_EMAILS.includes(emailLower)) {
-      router.push('/guest')        // halaman khusus tim tambahan
+    // ✅ Set role cookie untuk middleware
+    const isGuest = GUEST_EMAILS.includes(emailLower)
+    setCookie('user_role', isGuest ? 'guest' : 'master', 1)
+
+    // 👉 LOGIC REDIRECT BERDASARKAN ROLE (tetap)
+    if (isGuest) {
+      router.push('/guest')
     } else {
-      router.push('/dashboard')    // admin / staff lama
+      router.push('/dashboard')
     }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <form onSubmit={handleLogin} className="bg-white p-6 rounded shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-4 text-center">
-          Login CONNECT.IND
-        </h1>
+        <h1 className="text-2xl font-bold mb-4 text-center">Login CONNECT.IND</h1>
 
-        {error && (
-          <p className="text-red-500 text-sm mb-2">
-            {error}
-          </p>
-        )}
+        {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
 
         <input
           type="email"
