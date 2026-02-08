@@ -38,7 +38,7 @@ function pickFirst(obj, keys = []) {
 }
 
 export default function KinerjaKaryawan() {
-  // ✅ tetap nama component biar menu/route aman, tapi isi halaman berubah jadi Claim Cashback
+  // ✅ tetap nama component biar menu/route aman, tapi isi halaman = Claim Cashback
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -56,11 +56,11 @@ export default function KinerjaKaryawan() {
   // kategori dropdown
   const [categories, setCategories] = useState([])
 
-  // ====== SN OPTIONS (Dropdown seperti Input Penjualan) ======
+  // SN dropdown options (react-select)
   const [snOptions, setSnOptions] = useState([])
   const [snOptionsLoading, setSnOptionsLoading] = useState(false)
 
-  // SN lookup status
+  // SN lookup debounce (fallback kalau user ketik manual)
   const snTimerRef = useRef(null)
   const [snLoading, setSnLoading] = useState(false)
   const [snFound, setSnFound] = useState(false)
@@ -101,86 +101,62 @@ export default function KinerjaKaryawan() {
     setCategories(cat)
   }
 
+  // ====== SN OPTIONS: ambil SEMUA SN (READY + SOLD) ======
   async function fetchSNOptions() {
     setSnOptionsLoading(true)
     try {
-      // ✅ ambil daftar SN dari stok (tanpa filter READY/SOLD biar cashback bisa semua)
+      // Ambil kolom yang dibutuhkan untuk autofill
+      // NOTE: tidak filter status -> semua SN tampil
       const { data, error } = await supabase
         .from('stok')
-        .select('sn,nama_produk,warna,status')
-        .not('sn', 'is', null)
-        .order('nama_produk', { ascending: true })
-        .limit(8000)
+        .select('sn,nama_produk,warna,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at,status')
+        .order('created_at', { ascending: false })
+        .limit(5000)
 
       if (error) {
-        console.error('Gagal ambil SN options dari stok:', error)
+        console.error('Gagal ambil options SN:', error)
         setSnOptions([])
         return
       }
 
-      const map = new Map()
-      ;(data || []).forEach((it) => {
-        const sn = (it.sn || '').toString().trim()
-        if (!sn) return
-        const nama = (it.nama_produk || '').toString().trim()
-        const warna = (it.warna || '').toString().trim()
-        const status = (it.status || '').toString().trim()
-        const label = `${sn}${nama ? ` | ${nama}` : ''}${warna ? ` | ${warna}` : ''}${
-          status ? ` | ${status}` : ''
-        }`
-        if (!map.has(sn)) {
-          map.set(sn, { value: sn, label })
-        }
-      })
+      const opts =
+        (data || [])
+          .filter((x) => x?.sn)
+          .map((x) => {
+            const sn = String(x.sn).trim()
+            const nama = String(x.nama_produk || '').trim()
+            const warna = String(x.warna || '').trim()
+            const status = String(x.status || '').trim().toUpperCase()
 
-      setSnOptions(Array.from(map.values()))
+            const labelParts = [
+              sn,
+              nama ? nama : '',
+              warna ? warna : '',
+              status ? status : '',
+            ].filter(Boolean)
+
+            return {
+              value: sn,
+              label: labelParts.join(' | '),
+              meta: x,
+            }
+          }) || []
+
+      setSnOptions(opts)
     } finally {
       setSnOptionsLoading(false)
     }
   }
 
-  // ====== LOOKUP STOK BY SN (untuk auto-fill) ======
-  async function lookupFromStokBySN(sn) {
-    const q = (sn || '').toString().trim()
-    if (!q) return null
+  // ====== helper: isi form dari data stok ======
+  function fillFormFromStok(stokRow) {
+    if (!stokRow) return
 
-    setSnLoading(true)
-    try {
-      // ✅ query simple + kuat
-      // NOTE: kolom stok yang dipakai: sn, nama_produk, imei, asal_produk/asal_barang, harga_modal, tanggal_masuk/tanggal_beli
-      let res = await supabase
-        .from('stok')
-        .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
-        .eq('sn', q)
-        .limit(1)
-        .maybeSingle()
-
-      if (res?.data) return res.data
-
-      // fallback ilike (antisipasi beda case/spasi)
-      res = await supabase
-        .from('stok')
-        .select('sn,nama_produk,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at')
-        .ilike('sn', q)
-        .limit(1)
-        .maybeSingle()
-
-      return res?.data || null
-    } catch (e) {
-      console.error('lookupFromStokBySN fatal:', e)
-      return null
-    } finally {
-      setSnLoading(false)
-    }
-  }
-
-  function applyStokToForm(stok) {
-    if (!stok) return
-    const nama_produk = pickFirst(stok, ['nama_produk', 'produk', 'nama'])
-    const imei = pickFirst(stok, ['imei', 'imei1', 'imei_1'])
-    const asal_barang = pickFirst(stok, ['asal_barang', 'asal_produk', 'asal'])
-    const modal_lama = pickFirst(stok, ['harga_modal', 'modal', 'modal_lama'])
-    const tanggal_beli_raw = pickFirst(stok, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
+    const nama_produk = pickFirst(stokRow, ['nama_produk', 'produk', 'nama'])
+    const imei = pickFirst(stokRow, ['imei', 'imei1', 'imei_1'])
+    const asal_barang = pickFirst(stokRow, ['asal_barang', 'asal_produk', 'asal'])
+    const modal_lama = pickFirst(stokRow, ['harga_modal', 'modal', 'modal_lama'])
+    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
 
     const tanggal_beli =
       tanggal_beli_raw && dayjs(tanggal_beli_raw).isValid()
@@ -189,6 +165,7 @@ export default function KinerjaKaryawan() {
 
     setForm((prev) => ({
       ...prev,
+      // jangan ganggu tanggal_laku & modal_baru (tetap manual)
       nama_produk: nama_produk || '',
       imei: imei || '',
       asal_barang: asal_barang || '',
@@ -197,41 +174,43 @@ export default function KinerjaKaryawan() {
     }))
   }
 
-  // ✅ INI KUNCI: pilih dari dropdown harus langsung isi (tanpa debounce)
-  async function handlePickSN(selected) {
-    const value = selected?.value || ''
-    // clear timer debounce kalau ada
-    if (snTimerRef.current) clearTimeout(snTimerRef.current)
+  // ====== lookup manual SN (fallback kalau ketik) ======
+  async function lookupFromStokBySN(sn) {
+    const q = (sn || '').toString().trim()
+    if (!q) return null
 
-    // set SN dulu
-    setForm((prev) => ({ ...prev, serial_number: value }))
+    setSnLoading(true)
+    try {
+      // cari SN apa adanya (tanpa filter status)
+      const { data, error } = await supabase
+        .from('stok')
+        .select('sn,nama_produk,warna,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at,status')
+        .eq('sn', q)
+        .limit(1)
+        .maybeSingle()
 
-    if (!value) {
-      setSnFound(false)
-      return
+      if (error) {
+        console.error('lookup stok error:', error)
+        return null
+      }
+      return data || null
+    } finally {
+      setSnLoading(false)
     }
-
-    const stok = await lookupFromStokBySN(value)
-    if (!stok) {
-      setSnFound(false)
-      // biar user bisa isi manual
-      return
-    }
-
-    applyStokToForm(stok)
-    setSnFound(true)
   }
 
-  // ✅ fallback: kalau user ketik manual SN, baru pakai debounce
+  // ====== kalau user KETIK manual di input SN ======
   useEffect(() => {
     const sn = (form.serial_number || '').trim()
+
+    // kosong -> reset status
     if (!sn) {
       setSnFound(false)
       return
     }
 
-    // kalau SN dipilih via dropdown, handlePickSN sudah ngisi → ga usah debounce lagi
-    // tapi ini tetap aman karena dia akan cari lagi (kalau mau super bersih, bisa di-skip dengan flag)
+    // kalau SN berasal dari dropdown, dia sudah autofill langsung.
+    // Tapi tetap aman kalau ada perubahan manual (user edit SN)
     if (snTimerRef.current) clearTimeout(snTimerRef.current)
 
     snTimerRef.current = setTimeout(async () => {
@@ -240,9 +219,10 @@ export default function KinerjaKaryawan() {
         setSnFound(false)
         return
       }
-      applyStokToForm(stok)
+
+      fillFormFromStok(stok)
       setSnFound(true)
-    }, 350)
+    }, 300)
 
     return () => {
       if (snTimerRef.current) clearTimeout(snTimerRef.current)
@@ -273,6 +253,7 @@ export default function KinerjaKaryawan() {
           .map((x) => x.toUpperCase())
       )
     ).sort((a, b) => a.localeCompare(b))
+
     return ['SEMUA', ...cats]
   }, [filtered])
 
@@ -288,12 +269,16 @@ export default function KinerjaKaryawan() {
     )
   }, [filtered, activeTab])
 
+  // ===== SORT =====
   const sortedRows = useMemo(() => {
     const arr = [...(tabRows || [])]
+
     const safeDate = (v) => {
-      const d = dayjs((v || '').toString())
+      const s = (v || '').toString()
+      const d = dayjs(s)
       return d.isValid() ? d.valueOf() : 0
     }
+
     arr.sort((a, b) => {
       if (sortBy === 'abjad_asc') return String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''))
       if (sortBy === 'abjad_desc') return String(b.nama_produk || '').localeCompare(String(a.nama_produk || ''))
@@ -302,9 +287,11 @@ export default function KinerjaKaryawan() {
       if (sortBy === 'tanggal_laku_asc') return safeDate(a.tanggal_laku) - safeDate(b.tanggal_laku)
       return safeDate(b.tanggal_laku) - safeDate(a.tanggal_laku)
     })
+
     return arr
   }, [tabRows, sortBy])
 
+  // ===== PAGING =====
   const totalRows = sortedRows.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
   const safePage = Math.min(Math.max(1, page), totalPages)
@@ -318,6 +305,7 @@ export default function KinerjaKaryawan() {
     return sortedRows.slice(start, start + PAGE_SIZE)
   }, [sortedRows, safePage])
 
+  // ===== SELISIH PREVIEW =====
   const selisihPreview = useMemo(() => {
     const lama = toInt(form.modal_lama)
     const baru = toInt(form.modal_baru)
@@ -333,7 +321,8 @@ export default function KinerjaKaryawan() {
   async function handleSubmit(e) {
     e.preventDefault()
 
-    const kategoriFinal = (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
+    const kategoriFinal =
+      (form.kategori === '__NEW__' ? form.kategori_baru : form.kategori) || ''
 
     const payload = {
       kategori: kategoriFinal.trim().toUpperCase(),
@@ -353,6 +342,7 @@ export default function KinerjaKaryawan() {
     if (!payload.tanggal_laku) return alert('Tanggal laku wajib diisi')
     if (!payload.modal_baru) return alert('Modal baru wajib diisi')
 
+    // fallback kalau SN tidak ketemu
     if (!snFound) {
       if (!payload.nama_produk) return alert('Nama produk wajib diisi (SN tidak ditemukan di stok)')
       if (!payload.modal_lama) return alert('Modal lama wajib diisi (SN tidak ditemukan di stok)')
@@ -363,10 +353,12 @@ export default function KinerjaKaryawan() {
     if (isEditing) {
       const { error } = await supabase.from('claim_cashback').update(payload).eq('id', editId)
       setLoading(false)
+
       if (error) {
         console.error(error)
         return alert('Gagal update data')
       }
+
       resetForm()
       fetchData()
       return
@@ -398,7 +390,7 @@ export default function KinerjaKaryawan() {
       modal_baru: String(row.modal_baru ?? ''),
       asal_barang: row.asal_barang || '',
     })
-    setSnFound(false)
+    setSnFound(true) // karena data sudah ada
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -417,10 +409,23 @@ export default function KinerjaKaryawan() {
     fetchData()
   }
 
+  // ===== EXPORT EXCEL =====
   function exportRowsToExcel(filename, dataRows) {
     const wb = XLSX.utils.book_new()
     const sheet = [
-      ['No', 'Kategori', 'Nama Produk', 'Serial Number', 'IMEI', 'Tanggal Laku', 'Modal Lama', 'Tanggal Beli', 'Modal Baru', 'Selisih Modal', 'Asal Barang'],
+      [
+        'No',
+        'Kategori',
+        'Nama Produk',
+        'Serial Number',
+        'IMEI',
+        'Tanggal Laku',
+        'Modal Lama',
+        'Tanggal Beli',
+        'Modal Baru',
+        'Selisih Modal',
+        'Asal Barang',
+      ],
       ...(dataRows || []).map((r, idx) => [
         idx + 1,
         r.kategori || '',
@@ -448,15 +453,14 @@ export default function KinerjaKaryawan() {
     exportRowsToExcel(`Claim_Cashback_${label}_${dayjs().format('YYYY-MM-DD')}.xlsx`, sortedRows)
   }
 
-  const selectedSN = useMemo(() => {
-    const code = (form.serial_number || '').toString().trim()
-    if (!code) return null
-    return snOptions.find((o) => o.value === code) || { value: code, label: code }
-  }, [form.serial_number, snOptions])
+  // react-select value dari form.serial_number
+  const selectedSNOption =
+    snOptions.find((o) => String(o.value).trim() === String(form.serial_number || '').trim()) || null
 
   return (
     <Layout>
       <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
+        {/* Header */}
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
           <div className="text-sm text-gray-600">
@@ -464,6 +468,7 @@ export default function KinerjaKaryawan() {
           </div>
         </div>
 
+        {/* ===== FORM INPUT ===== */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold text-gray-800">{isEditing ? 'Edit Data' : 'Input Data'}</div>
@@ -481,6 +486,7 @@ export default function KinerjaKaryawan() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Kategori */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Kategori</div>
                 <select
@@ -507,67 +513,94 @@ export default function KinerjaKaryawan() {
                 )}
               </div>
 
+              {/* Nama Produk */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Nama Produk</div>
                 <input
                   className="border px-3 py-2 rounded-lg w-full"
                   placeholder="Nama produk"
                   value={form.nama_produk}
-                  readOnly={snFound}
-                  onChange={(e) => setForm({ ...form, nama_produk: e.target.value })}
+                  readOnly={true} // ✅ selalu auto dari stok
+                  onChange={() => {}}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+                <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
+              {/* Serial Number (react-select + fallback input) */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">
-                  Serial Number{' '}
-                  {snOptionsLoading ? '• Memuat list…' : snLoading ? '• Mengisi data…' : snFound ? '• Ditemukan ✅' : ''}
+                  Serial Number {snOptionsLoading ? '• Memuat…' : snLoading ? '• Mendeteksi…' : snFound ? '• Ditemukan ✅' : ''}
                 </div>
 
                 <Select
                   className="text-sm"
                   options={snOptions}
-                  placeholder="Cari / pilih Serial Number"
-                  value={selectedSN}
-                  onChange={handlePickSN}
+                  isLoading={snOptionsLoading}
+                  placeholder="Cari / pilih SN (READY / SOLD)"
+                  value={selectedSNOption}
+                  onChange={(selected) => {
+                    if (!selected) {
+                      setForm((prev) => ({
+                        ...prev,
+                        serial_number: '',
+                        nama_produk: '',
+                        imei: '',
+                        asal_barang: '',
+                        modal_lama: '',
+                        tanggal_beli: '',
+                      }))
+                      setSnFound(false)
+                      return
+                    }
+
+                    // ✅ set serial_number + langsung autofill dari meta
+                    setForm((prev) => ({
+                      ...prev,
+                      serial_number: selected.value || '',
+                    }))
+
+                    fillFormFromStok(selected.meta)
+                    setSnFound(true)
+                  }}
                   isClearable
                 />
 
+                {/* fallback manual typing (kalau ada SN yang belum masuk list) */}
+                <input
+                  className="border px-3 py-2 rounded-lg w-full mt-2"
+                  placeholder="Atau ketik SN manual di sini"
+                  value={form.serial_number}
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, serial_number: e.target.value }))
+                    // snFound akan di-set dari lookup effect
+                  }}
+                />
+
                 <div className="text-[11px] text-gray-500 mt-1">
-                  Pilih SN → otomatis isi IMEI, Nama Produk, Asal Barang, Modal Lama, Tanggal Beli (dari stok).
+                  Pilih SN → otomatis isi: Nama Produk, IMEI, Asal Barang, Modal Lama, Tanggal Beli.
                   {!snLoading && form.serial_number && !snFound && (
                     <>
                       {' '}
-                      <b className="text-red-600">SN tidak ditemukan</b> (fallback manual).
+                      <b className="text-red-600">SN tidak ditemukan</b> (kalau ketik manual).
                     </>
                   )}
                 </div>
-
-                {/* fallback manual (kalau memang SN tidak ada di list) */}
-                <input
-                  className="border px-3 py-2 rounded-lg w-full mt-2"
-                  placeholder="Ketik SN manual bila tidak ada di dropdown"
-                  value={form.serial_number}
-                  onChange={(e) => {
-                    setSnFound(false)
-                    setForm({ ...form, serial_number: e.target.value })
-                  }}
-                />
               </div>
 
+              {/* IMEI */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">IMEI</div>
                 <input
                   className="border px-3 py-2 rounded-lg w-full"
                   placeholder="IMEI"
                   value={form.imei}
-                  readOnly={snFound}
-                  onChange={(e) => setForm({ ...form, imei: e.target.value })}
+                  readOnly={true}
+                  onChange={() => {}}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+                <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
+              {/* Tanggal Laku */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Tanggal Laku</div>
                 <input
@@ -578,18 +611,20 @@ export default function KinerjaKaryawan() {
                 />
               </div>
 
+              {/* Asal Barang */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Asal Barang</div>
                 <input
                   className="border px-3 py-2 rounded-lg w-full"
                   placeholder="Asal barang"
                   value={form.asal_barang}
-                  readOnly={snFound}
-                  onChange={(e) => setForm({ ...form, asal_barang: e.target.value })}
+                  readOnly={true}
+                  onChange={() => {}}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+                <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
+              {/* Modal Lama */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Modal Lama</div>
                 <input
@@ -597,24 +632,26 @@ export default function KinerjaKaryawan() {
                   type="number"
                   placeholder="Modal lama"
                   value={form.modal_lama}
-                  readOnly={snFound}
-                  onChange={(e) => setForm({ ...form, modal_lama: e.target.value })}
+                  readOnly={true}
+                  onChange={() => {}}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+                <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
+              {/* Tanggal Beli */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Tanggal Beli</div>
                 <input
                   className="border px-3 py-2 rounded-lg w-full"
                   type="date"
                   value={form.tanggal_beli}
-                  readOnly={snFound}
-                  onChange={(e) => setForm({ ...form, tanggal_beli: e.target.value })}
+                  readOnly={true}
+                  onChange={() => {}}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
+                <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
+              {/* Modal Baru */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Modal Baru</div>
                 <input
@@ -646,6 +683,7 @@ export default function KinerjaKaryawan() {
           </form>
         </div>
 
+        {/* ===== TOOLBAR LIST ===== */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5">
           <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
             <div className="w-full md:w-[360px]">
@@ -675,7 +713,7 @@ export default function KinerjaKaryawan() {
               </select>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={fetchData}
                 className="border px-4 py-2 rounded-lg hover:bg-gray-50"
@@ -707,15 +745,14 @@ export default function KinerjaKaryawan() {
             </div>
           </div>
 
+          {/* Tabs */}
           <div className="flex flex-wrap gap-2 mb-4">
             {tabs.map((t) => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
                 className={`border px-3 py-2 rounded-lg text-sm ${
-                  activeTab === t
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white hover:bg-gray-50'
+                  activeTab === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'
                 }`}
               >
                 {t}
@@ -723,6 +760,7 @@ export default function KinerjaKaryawan() {
             ))}
           </div>
 
+          {/* info */}
           <div className="text-xs text-gray-500 mb-3">
             Tab: <b className="text-gray-800">{activeTab}</b> • Total:{' '}
             <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
@@ -732,6 +770,7 @@ export default function KinerjaKaryawan() {
             • 20 data per halaman
           </div>
 
+          {/* TABLE */}
           <div className="overflow-x-auto border rounded-2xl">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
@@ -791,6 +830,7 @@ export default function KinerjaKaryawan() {
             </table>
           </div>
 
+          {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
             <div className="text-xs text-gray-500">
               Menampilkan{' '}
