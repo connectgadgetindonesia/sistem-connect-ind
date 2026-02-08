@@ -33,6 +33,7 @@ export default function PricelistPreview() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
 
+  // ✅ capture sekarang adalah STAGE 9:16 (bukan card langsung)
   const captureRef = useRef(null)
 
   useEffect(() => {
@@ -160,6 +161,31 @@ export default function PricelistPreview() {
       marginLeft: 'auto',
       marginRight: 'auto',
     },
+
+    // ✅ STAGE 9:16 (1080x1920) => hasil download konsisten 9:16
+    captureStage: {
+      width: 1080,
+      height: 1920,
+      background: '#ffffff',
+      overflow: 'hidden',
+      position: 'relative',
+      margin: '0 auto',
+    },
+
+    // ✅ konten lama ditaruh di tengah stage (tanpa ubah desain)
+    stageInner: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+      paddingTop: 120, // aman (tidak mengubah card), hanya posisi di stage
+      boxSizing: 'border-box',
+    },
+
     card: {
       width: 980,
       margin: '0 auto',
@@ -232,8 +258,6 @@ export default function PricelistPreview() {
       color: '#0f172a',
       textTransform: 'uppercase',
     },
-
-    // ✅ harga plain text: kanan & sejajar
     tdRight: {
       padding: '14px 16px',
       textAlign: 'right',
@@ -274,53 +298,69 @@ export default function PricelistPreview() {
       </div>
 
       <div style={S.captureWrap}>
-        <div id="capture-root" ref={captureRef} style={S.card}>
-          <div style={S.header}>
-            <div style={S.headerRow}>
-              <div>
-                <div style={S.smallCaps}>CONNECT.IND • PRICELIST</div>
-                <div style={S.title}>{kategoriNice || '-'}</div>
-                <div style={S.sub}>Update: {updateDate}</div>
-              </div>
-              <div style={S.rightBox}>
-                <div style={S.rightSmall}>Harga Offline</div>
-                <div style={S.rightBold}>Semarang</div>
-              </div>
-            </div>
-          </div>
-
-          <div style={S.body}>
-            <div style={S.table}>
-              <div style={S.thead}>
-                <div style={S.th(false)}>Nama Produk</div>
-                <div style={S.th(true)}>Harga</div>
-              </div>
-
-              {loading ? (
-                <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>Memuat data...</div>
-              ) : rows.length === 0 ? (
-                <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>
-                  Belum ada data pada kategori ini.
-                </div>
-              ) : (
-                rows.map((r, idx) => (
-                  <div key={idx} style={S.row(idx % 2 === 0)}>
-                    <div style={S.tdLeft}>{(r.nama_produk || '').toUpperCase()}</div>
-                    <div style={S.tdRight}>{formatRp(r.harga_offline)}</div>
+        {/* ✅ yang dicapture sekarang stage 9:16 */}
+        <div id="capture-root" ref={captureRef} style={S.captureStage}>
+          <div style={S.stageInner}>
+            {/* ✅ CARD LAMA: tidak diubah sama sekali */}
+            <div style={S.card}>
+              <div style={S.header}>
+                <div style={S.headerRow}>
+                  <div>
+                    <div style={S.smallCaps}>CONNECT.IND • PRICELIST</div>
+                    <div style={S.title}>{kategoriNice || '-'}</div>
+                    <div style={S.sub}>Update: {updateDate}</div>
                   </div>
-                ))
-              )}
-            </div>
+                  <div style={S.rightBox}>
+                    <div style={S.rightSmall}>Harga Offline</div>
+                    <div style={S.rightBold}>Semarang</div>
+                  </div>
+                </div>
+              </div>
 
-            <div style={S.footer}>
-              <div>Harga dapat berubah sewaktu-waktu.</div>
-              <div style={S.brand}>CONNECT.IND</div>
+              <div style={S.body}>
+                <div style={S.table}>
+                  <div style={S.thead}>
+                    <div style={S.th(false)}>Nama Produk</div>
+                    <div style={S.th(true)}>Harga</div>
+                  </div>
+
+                  {loading ? (
+                    <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>
+                      Memuat data...
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div style={{ padding: 16, fontSize: 13, color: '#64748b' }}>
+                      Belum ada data pada kategori ini.
+                    </div>
+                  ) : (
+                    rows.map((r, idx) => (
+                      <div key={idx} style={S.row(idx % 2 === 0)}>
+                        <div style={S.tdLeft}>{(r.nama_produk || '').toUpperCase()}</div>
+                        <div style={S.tdRight}>{formatRp(r.harga_offline)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div style={S.footer}>
+                  <div>Harga dapat berubah sewaktu-waktu.</div>
+                  <div style={S.brand}>CONNECT.IND</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div style={{ maxWidth: 1100, margin: '12px auto 0', fontSize: 11, color: '#94a3b8' }}>
-          Kalau masih terasa beda, itu bukan cache—itu memang html2canvas baseline. Versi ini paling stabil karena tanpa badge.
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: '12px auto 0',
+            fontSize: 11,
+            color: '#94a3b8',
+          }}
+        >
+          Kalau masih terasa beda, itu bukan cache—itu memang html2canvas baseline. Versi ini paling
+          stabil karena tanpa badge.
         </div>
       </div>
     </div>
