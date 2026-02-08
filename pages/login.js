@@ -1,61 +1,105 @@
 // pages/login.js
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
 function setCookie(name, value, days = 1) {
   const maxAge = days * 24 * 60 * 60
-  const secure = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : ''
-  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
+  const secure =
+    typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `${name}=${encodeURIComponent(
+    value
+  )}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
 }
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  // 👉 DAFTAR EMAIL TIM TAMBAHAN (GUEST)
-  const GUEST_EMAILS = [
-    'guest1@connectind.com',
-    'shidqi@connect.ind',
-    // tambahkan di sini kalau ada tim baru
-  ]
+  // ✅ MASTER yang boleh akses dashboard
+  const MASTER_EMAILS = ['alvin@connect.ind', 'erick@connect.ind', 'satria@connect.ind']
+
+  // ✅ GUEST yang hanya boleh akses /guest
+  const GUEST_EMAILS = ['shidqi@connect.ind', 'guest1@connectind.com']
+
+  const ALL_ALLOWED = new Set([...MASTER_EMAILS, ...GUEST_EMAILS])
+
+  // ✅ Kalau user sudah login, arahkan sesuai role cookie (biar tidak nyasar)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { data } = await supabase.auth.getUser()
+        if (!data?.user) return
+
+        const emailLower = String(data.user.email || '').toLowerCase()
+        if (GUEST_EMAILS.includes(emailLower)) {
+          router.replace('/guest')
+        } else {
+          router.replace('/dashboard')
+        }
+      } catch {
+        // abaikan
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleLogin = async (e) => {
     e.preventDefault()
-    setError('')
+    setErrorMsg('')
+    setLoading(true)
 
-    const emailLower = String(email || '').trim().toLowerCase()
+    try {
+      const emailLower = String(email || '').trim().toLowerCase()
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailLower,
-      password,
-    })
+      // ✅ Hard guard: hanya email yang diizinkan yang boleh login
+      if (!ALL_ALLOWED.has(emailLower)) {
+        setErrorMsg('Akun tidak punya akses.')
+        return
+      }
 
-    if (error) {
-      setError(error.message)
-      return
-    }
+      // ✅ Jika email guest dipaksa login dari /login, tetap boleh,
+      // tapi hasilnya akan diarahkan ke /guest (bukan dashboard).
+      const isGuest = GUEST_EMAILS.includes(emailLower)
+      const isMaster = MASTER_EMAILS.includes(emailLower)
 
-    const token = data?.session?.access_token
-    if (!token) {
-      setError('Login berhasil, tapi token tidak ditemukan.')
-      return
-    }
+      // (double safety)
+      if (!isGuest && !isMaster) {
+        setErrorMsg('Akun tidak punya akses.')
+        return
+      }
 
-    // ✅ Simpan token ke cookie (tetap seperti sistem lama, tapi dibuat lebih stabil)
-    setCookie('user_token', token, 1)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailLower,
+        password,
+      })
 
-    // ✅ Set role cookie untuk middleware
-    const isGuest = GUEST_EMAILS.includes(emailLower)
-    setCookie('user_role', isGuest ? 'guest' : 'master', 1)
+      if (error) {
+        setErrorMsg(error.message)
+        return
+      }
 
-    // 👉 LOGIC REDIRECT BERDASARKAN ROLE (tetap)
-    if (isGuest) {
-      router.push('/guest')
-    } else {
-      router.push('/dashboard')
+      const token = data?.session?.access_token
+      if (!token) {
+        setErrorMsg('Login berhasil, tapi token tidak ditemukan.')
+        return
+      }
+
+      // ✅ cookie untuk middleware
+      setCookie('user_token', token, 1)
+      setCookie('user_role', isGuest ? 'guest' : 'master', 1)
+
+      // ✅ redirect sesuai role
+      if (isGuest) {
+        router.push('/guest')
+      } else {
+        router.push('/dashboard')
+      }
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -64,7 +108,7 @@ export default function LoginPage() {
       <form onSubmit={handleLogin} className="bg-white p-6 rounded shadow-md w-96">
         <h1 className="text-2xl font-bold mb-4 text-center">Login CONNECT.IND</h1>
 
-        {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+        {errorMsg && <p className="text-red-500 text-sm mb-2">{errorMsg}</p>}
 
         <input
           type="email"
@@ -73,6 +117,7 @@ export default function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          autoComplete="email"
         />
 
         <input
@@ -82,13 +127,15 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          autoComplete="current-password"
         />
 
         <button
           type="submit"
-          className="bg-blue-600 hover:bg-blue-700 text-white w-full p-2 rounded font-semibold"
+          disabled={loading}
+          className="bg-blue-600 hover:bg-blue-700 text-white w-full p-2 rounded font-semibold disabled:opacity-60"
         >
-          Login
+          {loading ? 'Memproses…' : 'Login'}
         </button>
       </form>
     </div>

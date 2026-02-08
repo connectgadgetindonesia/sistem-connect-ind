@@ -1,49 +1,48 @@
-// middleware.js
 import { NextResponse } from 'next/server'
 
-export function middleware(request) {
-  const { pathname } = request.nextUrl
+export function middleware(req) {
+  const { pathname } = req.nextUrl
 
-  const token = request.cookies.get('user_token')?.value
-  const role = request.cookies.get('user_role')?.value || '' // "guest" | "master" | ""
+  const token = req.cookies.get('user_token')?.value
+  const role = req.cookies.get('user_role')?.value // 'master' | 'guest'
 
-  const loginPath = new URL('/login', request.url)
-  const dashboardPath = new URL('/dashboard', request.url)
+  const login = new URL('/login', req.url)
+  const guestLogin = new URL('/guest-login', req.url)
+  const dashboard = new URL('/dashboard', req.url)
+  const guest = new URL('/guest', req.url)
 
-  const guestLoginPath = new URL('/guest-login', request.url)
-  const guestPath = new URL('/guest', request.url)
-
-  const isMasterLogin = pathname === '/login'
-  const isGuestLogin = pathname === '/guest-login'
-
-  const isGuestArea =
-    pathname === '/guest' ||
-    pathname.startsWith('/pricelist-preview') ||
+  // =======================
+  // PUBLIC PAGES
+  // =======================
+  if (
+    pathname === '/login' ||
     pathname === '/guest-login'
-
-  // =========================
-  // GUEST AREA
-  // =========================
-  if (isGuestArea) {
-    if (!token && !isGuestLogin) return NextResponse.redirect(guestLoginPath)
-    if (token && isGuestLogin) return NextResponse.redirect(guestPath)
+  ) {
     return NextResponse.next()
   }
 
-  // =========================
-  // MASTER AREA
-  // - guest tidak boleh masuk master
-  // =========================
-  if (role === 'guest') {
-    return NextResponse.redirect(guestPath)
+  // =======================
+  // GUEST AREA
+  // =======================
+  if (pathname.startsWith('/guest')) {
+    if (!token || role !== 'guest') {
+      return NextResponse.redirect(guestLogin)
+    }
+    return NextResponse.next()
   }
 
-  if (!token && !isMasterLogin) return NextResponse.redirect(loginPath)
-  if (token && isMasterLogin) return NextResponse.redirect(dashboardPath)
+  // =======================
+  // MASTER AREA
+  // =======================
+  if (!token || role !== 'master') {
+    return NextResponse.redirect(login)
+  }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 }
