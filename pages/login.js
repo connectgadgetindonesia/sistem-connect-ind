@@ -9,6 +9,13 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const router = useRouter()
 
+  // 👉 DAFTAR EMAIL TIM TAMBAHAN (GUEST)
+  const GUEST_EMAILS = [
+    'guest1@connectind.com',
+    'guest2@connectind.com',
+    // tambahkan di sini kalau ada tim baru
+  ]
+
   const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
@@ -23,18 +30,31 @@ export default function LoginPage() {
       return
     }
 
-    // Simpan token ke cookie
+    // Simpan token ke cookie (tetap seperti sistem lama)
     document.cookie = `user_token=${data.session.access_token}; path=/;`
 
-    router.push('/dashboard')
+    // 👉 LOGIC REDIRECT BERDASARKAN ROLE
+    const emailLower = email.toLowerCase()
+
+    if (GUEST_EMAILS.includes(emailLower)) {
+      router.push('/guest')        // halaman khusus tim tambahan
+    } else {
+      router.push('/dashboard')    // admin / staff lama
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <form onSubmit={handleLogin} className="bg-white p-6 rounded shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-4 text-center">Login CONNECT.IND</h1>
+        <h1 className="text-2xl font-bold mb-4 text-center">
+          Login CONNECT.IND
+        </h1>
 
-        {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+        {error && (
+          <p className="text-red-500 text-sm mb-2">
+            {error}
+          </p>
+        )}
 
         <input
           type="email"
