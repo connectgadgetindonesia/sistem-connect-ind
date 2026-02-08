@@ -3,17 +3,15 @@ import { useEffect, useMemo, useState } from 'react'
 import GuestLayout from '@/components/GuestLayout'
 import { supabase } from '../lib/supabaseClient'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
-const up = (s) => (s || '').toString().trim().toUpperCase()
 const uniqSorted = (arr) =>
-  Array.from(new Set((arr || []).map((x) => (x || '').toString().trim()).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b)
-  )
+  Array.from(
+    new Set((arr || []).map((x) => (x || '').toString().trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b))
 
 export default function GuestPage() {
   // ===== ROLE GUARD =====
-  const [role, setRole] = useState('')
   const [loadingRole, setLoadingRole] = useState(true)
 
   // ===== PRICELIST (READ ONLY) =====
@@ -22,22 +20,23 @@ export default function GuestPage() {
   const [plKategori, setPlKategori] = useState('')
   const [plSort, setPlSort] = useState('AZ')
 
-  // ===== STOK BARANG (READ ONLY) =====
+  // ===== STOK BARANG (READY ONLY) =====
   const [stok, setStok] = useState([])
   const [stokSearch, setStokSearch] = useState('')
   const [stokPage, setStokPage] = useState(1)
-  const [stokKategori, setStokKategori] = useState('') // tab kategori
-  const [stokKategoriOptions, setStokKategoriOptions] = useState([]) // ✅ GLOBAL options (tidak ikut filter/page)
+  const [stokKategori, setStokKategori] = useState('')
+  const [stokKategoriOptions, setStokKategoriOptions] = useState([])
 
-  // ===== STOK AKSESORIS (READ ONLY) =====
+  // ===== STOK AKSESORIS (stok > 0) =====
   const [aks, setAks] = useState([])
   const [aksSearch, setAksSearch] = useState('')
   const [aksPage, setAksPage] = useState(1)
-  const [aksKategori, setAksKategori] = useState('') // tab kategori
-  const [aksKategoriOptions, setAksKategoriOptions] = useState([]) // ✅ GLOBAL options (tidak ikut filter/page)
+  const [aksKategori, setAksKategori] = useState('')
+  const [aksKategoriOptions, setAksKategoriOptions] = useState([])
 
   const [loading, setLoading] = useState(false)
 
+  // ========= BOOT =========
   useEffect(() => {
     boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,27 +52,18 @@ export default function GuestPage() {
       return
     }
 
-    const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
-    const r = (prof?.role || 'guest').toLowerCase()
-    setRole(r)
     setLoadingRole(false)
 
-    // load semua data + kategori global
+    // load kategori global dulu, lalu list
     await Promise.all([
       fetchPricelist(),
       fetchStokKategoriOptions(),
       fetchAksKategoriOptions(),
     ])
-
-    // setelah kategori options siap, load list
-    await Promise.all([fetchStok(), fetchAks()])
   }
 
-  // ======================
-  // PRICELIST
-  // ======================
+  // ========= PRICELIST =========
   async function fetchPricelist() {
-    // ⚠️ pastikan nama tabel pricelist kamu benar
     const { data, error } = await supabase
       .from('pricelist')
       .select('id,nama_produk,kategori,harga_tokped,harga_shopee,harga_offline')
@@ -88,7 +78,10 @@ export default function GuestPage() {
     setPricelist(data || [])
   }
 
-  const plKategoriOptions = useMemo(() => uniqSorted((pricelist || []).map((x) => x.kategori)), [pricelist])
+  const plKategoriOptions = useMemo(
+    () => uniqSorted((pricelist || []).map((x) => x.kategori)),
+    [pricelist]
+  )
 
   const plFiltered = useMemo(() => {
     const q = (plSearch || '').toLowerCase().trim()
@@ -97,7 +90,6 @@ export default function GuestPage() {
     let rows = (pricelist || []).filter((x) => {
       const okK = !k || (x.kategori || '') === k
       if (!okK) return false
-
       if (!q) return true
       return (
         (x.nama_produk || '').toLowerCase().includes(q) ||
@@ -105,27 +97,22 @@ export default function GuestPage() {
       )
     })
 
-    // sort sederhana
-    if (plSort === 'ZA') {
-      rows = rows.sort((a, b) => (b.nama_produk || '').localeCompare(a.nama_produk || ''))
-    } else {
-      rows = rows.sort((a, b) => (a.nama_produk || '').localeCompare(b.nama_produk || ''))
-    }
+    rows =
+      plSort === 'ZA'
+        ? rows.sort((a, b) => (b.nama_produk || '').localeCompare(a.nama_produk || ''))
+        : rows.sort((a, b) => (a.nama_produk || '').localeCompare(b.nama_produk || ''))
 
     return rows
   }, [pricelist, plSearch, plKategori, plSort])
 
-  // ======================
-  // ✅ GLOBAL OPTIONS (BIAR TAB TIDAK HILANG)
-  // ======================
+  // ========= GLOBAL KATEGORI OPTIONS (STABIL) =========
   async function fetchStokKategoriOptions() {
-    // Ambil kategori dari stok READY saja (tanpa ambil semua kolom)
     const { data, error } = await supabase
       .from('stok')
       .select('kategori')
       .eq('status', 'READY')
       .not('kategori', 'is', null)
-      .limit(2000)
+      .limit(5000)
 
     if (error) {
       console.error('fetchStokKategoriOptions error:', error)
@@ -133,18 +120,16 @@ export default function GuestPage() {
       return
     }
 
-    const opts = uniqSorted((data || []).map((x) => x.kategori))
-    setStokKategoriOptions(opts)
+    setStokKategoriOptions(uniqSorted((data || []).map((x) => x.kategori)))
   }
 
   async function fetchAksKategoriOptions() {
-    // Ambil kategori dari aksesoris yang stok > 0
     const { data, error } = await supabase
       .from('stok_aksesoris')
       .select('kategori')
       .gt('stok', 0)
       .not('kategori', 'is', null)
-      .limit(2000)
+      .limit(5000)
 
     if (error) {
       console.error('fetchAksKategoriOptions error:', error)
@@ -152,15 +137,10 @@ export default function GuestPage() {
       return
     }
 
-    const opts = uniqSorted((data || []).map((x) => x.kategori))
-    setAksKategoriOptions(opts)
+    setAksKategoriOptions(uniqSorted((data || []).map((x) => x.kategori)))
   }
 
-  // ======================
-  // STOK BARANG (READY ONLY)
-  // kolom: nama_produk, warna, garansi, storage
-  // filter kategori pakai tab
-  // ======================
+  // ========= FETCH STOK (READY ONLY) =========
   async function fetchStok() {
     setLoading(true)
     const offset = (stokPage - 1) * PAGE_SIZE
@@ -191,15 +171,10 @@ export default function GuestPage() {
       setStok([])
       return
     }
-
     setStok(data || [])
   }
 
-  // ======================
-  // STOK AKSESORIS (stok > 0)
-  // kolom: nama_produk, warna, stok
-  // filter kategori pakai tab
-  // ======================
+  // ========= FETCH AKSESORIS (stok > 0) =========
   async function fetchAks() {
     setLoading(true)
     const offset = (aksPage - 1) * PAGE_SIZE
@@ -228,13 +203,21 @@ export default function GuestPage() {
       setAks([])
       return
     }
-
     setAks(data || [])
   }
 
-  // ======================
-  // UI HELPERS
-  // ======================
+  // ✅ AUTO FETCH: klik tab langsung berubah (tanpa refresh)
+  useEffect(() => {
+    if (!loadingRole) fetchStok()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRole, stokKategori, stokPage])
+
+  useEffect(() => {
+    if (!loadingRole) fetchAks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRole, aksKategori, aksPage])
+
+  // ===== UI =====
   const TabBtn = ({ active, children, onClick }) => (
     <button
       type="button"
@@ -249,6 +232,12 @@ export default function GuestPage() {
 
   if (loadingRole) return <div className="p-6">Loading...</div>
 
+  // ✅ FIX: tombol download harus ke preview guest, bukan ke master
+  // akan buka halaman: /guest-pricelist-preview/[kategori]
+  const guestDownloadLink = () => {
+    return `/guest-pricelist-preview/${plKategori ? encodeURIComponent(plKategori) : 'all'}`
+  }
+
   return (
     <GuestLayout>
       {/* ===================== PRICELIST ===================== */}
@@ -260,10 +249,9 @@ export default function GuestPage() {
           </div>
 
           <div className="flex gap-2">
-            {/* kalau mau simpel: link ke master download JPG */}
             <a
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-              href="/pricelist"
+              href={guestDownloadLink()}
               target="_blank"
               rel="noreferrer"
             >
@@ -280,11 +268,12 @@ export default function GuestPage() {
           </div>
         </div>
 
-        {/* Tabs kategori ala master */}
         <div className="flex flex-wrap gap-2 mb-3">
           <TabBtn
             active={!plKategori}
-            onClick={() => setPlKategori('')}
+            onClick={() => {
+              setPlKategori('')
+            }}
           >
             Semua
           </TabBtn>
@@ -356,7 +345,7 @@ export default function GuestPage() {
         </div>
       </div>
 
-      {/* ===================== STOK BARANG (READY ONLY) ===================== */}
+      {/* ===================== STOK BARANG ===================== */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5 mb-6">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
@@ -375,14 +364,12 @@ export default function GuestPage() {
           </button>
         </div>
 
-        {/* ✅ Tabs kategori stabil (tidak hilang) */}
         <div className="flex flex-wrap gap-2 mb-3">
           <TabBtn
             active={!stokKategori}
             onClick={() => {
               setStokKategori('')
               setStokPage(1)
-              setTimeout(fetchStok, 0)
             }}
           >
             Semua
@@ -394,7 +381,6 @@ export default function GuestPage() {
               onClick={() => {
                 setStokKategori(k)
                 setStokPage(1)
-                setTimeout(fetchStok, 0)
               }}
             >
               {k}
@@ -461,20 +447,14 @@ export default function GuestPage() {
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
               disabled={stokPage <= 1}
-              onClick={() => {
-                setStokPage((p) => Math.max(1, p - 1))
-                setTimeout(fetchStok, 0)
-              }}
+              onClick={() => setStokPage((p) => Math.max(1, p - 1))}
               type="button"
             >
               Prev
             </button>
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-              onClick={() => {
-                setStokPage((p) => p + 1)
-                setTimeout(fetchStok, 0)
-              }}
+              onClick={() => setStokPage((p) => p + 1)}
               type="button"
             >
               Next
@@ -483,7 +463,7 @@ export default function GuestPage() {
         </div>
       </div>
 
-      {/* ===================== STOK AKSESORIS (stok > 0) ===================== */}
+      {/* ===================== STOK AKSESORIS ===================== */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
@@ -502,14 +482,12 @@ export default function GuestPage() {
           </button>
         </div>
 
-        {/* ✅ Tabs kategori stabil (tidak hilang) */}
         <div className="flex flex-wrap gap-2 mb-3">
           <TabBtn
             active={!aksKategori}
             onClick={() => {
               setAksKategori('')
               setAksPage(1)
-              setTimeout(fetchAks, 0)
             }}
           >
             Semua
@@ -521,7 +499,6 @@ export default function GuestPage() {
               onClick={() => {
                 setAksKategori(k)
                 setAksPage(1)
-                setTimeout(fetchAks, 0)
               }}
             >
               {k}
@@ -587,20 +564,14 @@ export default function GuestPage() {
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
               disabled={aksPage <= 1}
-              onClick={() => {
-                setAksPage((p) => Math.max(1, p - 1))
-                setTimeout(fetchAks, 0)
-              }}
+              onClick={() => setAksPage((p) => Math.max(1, p - 1))}
               type="button"
             >
               Prev
             </button>
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-              onClick={() => {
-                setAksPage((p) => p + 1)
-                setTimeout(fetchAks, 0)
-              }}
+              onClick={() => setAksPage((p) => p + 1)}
               type="button"
             >
               Next
