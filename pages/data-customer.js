@@ -20,10 +20,9 @@ async function fetchAllPenjualanByRange({ start, end }) {
   while (keepGoing) {
     const { data, error } = await supabase
       .from('penjualan_baru')
-      .select(
-        'tanggal,nama_pembeli,alamat,no_wa,harga_jual,laba,nama_produk,sn_sku,is_bonus',
-        { count: 'exact' }
-      )
+      .select('tanggal,nama_pembeli,alamat,no_wa,harga_jual,laba,nama_produk,sn_sku,is_bonus', {
+        count: 'exact',
+      })
       .gte('tanggal', start)
       .lte('tanggal', end)
       .order('tanggal', { ascending: false })
@@ -399,14 +398,14 @@ export default function DataCustomer() {
     return arr
   }, [cleaned, search, productMetric])
 
-  // ========== Summary ==========
+  // ========== Summary (tanpa omset & laba ditampilkan) ==========
   const summary = useMemo(() => {
     const rows = cleaned.filter((r) => !r.is_bonus)
     const totalTransaksi = rows.length
-    const totalOmset = rows.reduce((s, r) => s + r.harga_jual, 0)
-    const totalLaba = rows.reduce((s, r) => s + r.laba, 0)
     const totalCustomer = customers.length
-    return { totalTransaksi, totalOmset, totalLaba, totalCustomer }
+    const rataTransaksiPerCustomer =
+      totalCustomer > 0 ? totalTransaksi / totalCustomer : 0
+    return { totalTransaksi, totalCustomer, rataTransaksiPerCustomer }
   }, [cleaned, customers])
 
   // ========== Data for charts ==========
@@ -432,7 +431,7 @@ export default function DataCustomer() {
     return { labels, values, fmt }
   }, [products, limitTop, productMetric])
 
-  // ========== Export Excel ==========
+  // ========== Export Excel (tanpa laba) ==========
   function exportCustomersExcel() {
     const rows = customers.map((c, idx) => ({
       No: idx + 1,
@@ -441,11 +440,10 @@ export default function DataCustomer() {
       No_WA: c.no_wa,
       Jumlah_Transaksi: c.jumlah,
       Nominal: c.nominal,
-      Laba: c.laba,
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Customer Terbaik')
+    XLSX.utils.book_append_sheet(wb, ws, 'Customer')
     XLSX.writeFile(wb, `Customer_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
   }
 
@@ -455,11 +453,10 @@ export default function DataCustomer() {
       Produk: p.nama_produk,
       Qty: p.qty,
       Nominal: p.nominal,
-      Laba: p.laba,
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Produk Terlaris')
+    XLSX.utils.book_append_sheet(wb, ws, 'Produk')
     XLSX.writeFile(wb, `Produk_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
   }
 
@@ -471,7 +468,7 @@ export default function DataCustomer() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Data Customer (POS Dashboard)</h1>
             <div className="text-sm text-gray-600">
-              Customer terbaik + produk terlaris (bonus tidak dihitung).
+              Analisis customer + produk terlaris (transaksi bonus tidak dihitung).
             </div>
           </div>
 
@@ -615,8 +612,8 @@ export default function DataCustomer() {
           </div>
         </div>
 
-        {/* KPI */}
-        <div className="grid gap-4 md:grid-cols-4 mb-6">
+        {/* KPI (tanpa omset & laba) */}
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
           <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="text-xs text-gray-500">Total Customer</div>
             <div className="text-2xl font-bold">{summary.totalCustomer}</div>
@@ -626,12 +623,10 @@ export default function DataCustomer() {
             <div className="text-2xl font-bold">{summary.totalTransaksi}</div>
           </div>
           <div className="bg-white rounded-2xl border shadow-sm p-4">
-            <div className="text-xs text-gray-500">Total Omset</div>
-            <div className="text-2xl font-bold">{formatRp(summary.totalOmset)}</div>
-          </div>
-          <div className="bg-white rounded-2xl border shadow-sm p-4">
-            <div className="text-xs text-gray-500">Total Laba</div>
-            <div className="text-2xl font-bold">{formatRp(summary.totalLaba)}</div>
+            <div className="text-xs text-gray-500">Rata-rata Transaksi / Customer</div>
+            <div className="text-2xl font-bold">
+              {summary.rataTransaksiPerCustomer.toFixed(1)}
+            </div>
           </div>
         </div>
 
@@ -759,7 +754,7 @@ export default function DataCustomer() {
             </div>
           </div>
 
-          {/* Produk Terlaris */}
+          {/* Produk Terlaris (tanpa laba) */}
           <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-gray-800">Produk Terlaris</div>
@@ -773,7 +768,6 @@ export default function DataCustomer() {
                     <th className="border-b px-3 py-2 text-left">Produk</th>
                     <th className="border-b px-3 py-2 text-center">Qty</th>
                     <th className="border-b px-3 py-2 text-right">Nominal</th>
-                    <th className="border-b px-3 py-2 text-right">Laba</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -782,12 +776,11 @@ export default function DataCustomer() {
                       <td className="border-b px-3 py-2 font-semibold">{p.nama_produk}</td>
                       <td className="border-b px-3 py-2 text-center">{p.qty}</td>
                       <td className="border-b px-3 py-2 text-right">{formatRp(p.nominal)}</td>
-                      <td className="border-b px-3 py-2 text-right">{formatRp(p.laba)}</td>
                     </tr>
                   ))}
                   {products.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-3 py-6 text-center text-gray-500">
+                      <td colSpan={3} className="px-3 py-6 text-center text-gray-500">
                         Tidak ada data.
                       </td>
                     </tr>
