@@ -19,6 +19,7 @@ export default function GuestPage() {
   const [plSearch, setPlSearch] = useState('')
   const [plKategori, setPlKategori] = useState('')
   const [plSort, setPlSort] = useState('AZ')
+  const [plPage, setPlPage] = useState(1)
 
   // ===== STOK BARANG (READY ONLY) =====
   const [stok, setStok] = useState([])
@@ -26,6 +27,7 @@ export default function GuestPage() {
   const [stokPage, setStokPage] = useState(1)
   const [stokKategori, setStokKategori] = useState('')
   const [stokKategoriOptions, setStokKategoriOptions] = useState([])
+  const [stokHasNext, setStokHasNext] = useState(false)
 
   // ===== STOK AKSESORIS (stok > 0) =====
   const [aks, setAks] = useState([])
@@ -33,6 +35,7 @@ export default function GuestPage() {
   const [aksPage, setAksPage] = useState(1)
   const [aksKategori, setAksKategori] = useState('')
   const [aksKategoriOptions, setAksKategoriOptions] = useState([])
+  const [aksHasNext, setAksHasNext] = useState(false)
 
   const [loading, setLoading] = useState(false)
 
@@ -99,11 +102,27 @@ export default function GuestPage() {
 
     rows =
       plSort === 'ZA'
-        ? rows.sort((a, b) => (b.nama_produk || '').localeCompare(a.nama_produk || ''))
-        : rows.sort((a, b) => (a.nama_produk || '').localeCompare(b.nama_produk || ''))
+        ? rows.sort((a, b) =>
+            (b.nama_produk || '').localeCompare(a.nama_produk || '')
+          )
+        : rows.sort((a, b) =>
+            (a.nama_produk || '').localeCompare(b.nama_produk || '')
+          )
 
     return rows
   }, [pricelist, plSearch, plKategori, plSort])
+
+  // ===== PRICELIST PAGING (10/item) + STOPPER =====
+  const plTotal = plFiltered.length
+  const plStart = (plPage - 1) * PAGE_SIZE
+  const plEnd = plStart + PAGE_SIZE
+  const plRows = plFiltered.slice(plStart, plEnd)
+  const plHasNext = plTotal > plEnd
+
+  useEffect(() => {
+    // kalau filter berubah, reset page supaya tidak “nyasar” ke page tinggi
+    setPlPage(1)
+  }, [plKategori, plSort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ========= GLOBAL KATEGORI OPTIONS (STABIL) =========
   async function fetchStokKategoriOptions() {
@@ -152,7 +171,8 @@ export default function GuestPage() {
       .select('id,nama_produk,warna,garansi,storage,kategori')
       .eq('status', 'READY')
       .order('nama_produk', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1)
+      // ambil 1 ekstra untuk cek ada next atau tidak
+      .range(offset, offset + PAGE_SIZE) // <= 11 item (0..10) untuk PAGE_SIZE=10
 
     if (k) query = query.eq('kategori', k)
 
@@ -169,9 +189,13 @@ export default function GuestPage() {
     if (error) {
       console.error('fetchStok error:', error)
       setStok([])
+      setStokHasNext(false)
       return
     }
-    setStok(data || [])
+
+    const rows = data || []
+    setStokHasNext(rows.length > PAGE_SIZE)
+    setStok(rows.slice(0, PAGE_SIZE))
   }
 
   // ========= FETCH AKSESORIS (stok > 0) =========
@@ -186,7 +210,8 @@ export default function GuestPage() {
       .select('id,nama_produk,warna,stok,kategori')
       .gt('stok', 0)
       .order('nama_produk', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1)
+      // ambil 1 ekstra untuk cek ada next atau tidak
+      .range(offset, offset + PAGE_SIZE)
 
     if (k) query = query.eq('kategori', k)
 
@@ -201,12 +226,16 @@ export default function GuestPage() {
     if (error) {
       console.error('fetchAks error:', error)
       setAks([])
+      setAksHasNext(false)
       return
     }
-    setAks(data || [])
+
+    const rows = data || []
+    setAksHasNext(rows.length > PAGE_SIZE)
+    setAks(rows.slice(0, PAGE_SIZE))
   }
 
-  // ✅ AUTO FETCH: klik tab langsung berubah (tanpa refresh)
+  // ✅ AUTO FETCH: klik tab langsung ganti (tanpa refresh)
   useEffect(() => {
     if (!loadingRole) fetchStok()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,7 +252,9 @@ export default function GuestPage() {
       type="button"
       onClick={onClick}
       className={`px-3 py-1.5 rounded-lg border text-sm ${
-        active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-slate-50'
+        active
+          ? 'bg-blue-600 text-white border-blue-600'
+          : 'bg-white hover:bg-slate-50'
       }`}
     >
       {children}
@@ -232,11 +263,10 @@ export default function GuestPage() {
 
   if (loadingRole) return <div className="p-6">Loading...</div>
 
-  // ✅ FIX: tombol download harus ke preview guest, bukan ke master
-  // akan buka halaman: /guest-pricelist-preview/[kategori]
-  const guestDownloadLink = () => {
-    return `/guest-pricelist-preview/${plKategori ? encodeURIComponent(plKategori) : 'all'}`
-  }
+  // ===== DOWNLOAD LINK: langsung ke pricelist-preview/[kategori] =====
+  const downloadHref = plKategori
+    ? `/pricelist-preview/${encodeURIComponent(plKategori)}`
+    : null
 
   return (
     <GuestLayout>
@@ -249,14 +279,26 @@ export default function GuestPage() {
           </div>
 
           <div className="flex gap-2">
-            <a
-              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
-              href={guestDownloadLink()}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Download JPG
-            </a>
+            {downloadHref ? (
+              <a
+                className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+                href={downloadHref}
+                target="_blank"
+                rel="noreferrer"
+                title="Download dari halaman preview kategori"
+              >
+                Download JPG
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
+                disabled
+                title="Pilih kategori dulu untuk download"
+              >
+                Download JPG
+              </button>
+            )}
 
             <button
               className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
@@ -273,12 +315,20 @@ export default function GuestPage() {
             active={!plKategori}
             onClick={() => {
               setPlKategori('')
+              setPlPage(1)
             }}
           >
             Semua
           </TabBtn>
           {plKategoriOptions.map((k) => (
-            <TabBtn key={k} active={plKategori === k} onClick={() => setPlKategori(k)}>
+            <TabBtn
+              key={k}
+              active={plKategori === k}
+              onClick={() => {
+                setPlKategori(k)
+                setPlPage(1)
+              }}
+            >
               {k}
             </TabBtn>
           ))}
@@ -290,7 +340,10 @@ export default function GuestPage() {
               className="border p-2.5 rounded-lg w-full"
               placeholder={`Cari produk di ${plKategori || 'semua kategori'}...`}
               value={plSearch}
-              onChange={(e) => setPlSearch(e.target.value)}
+              onChange={(e) => {
+                setPlSearch(e.target.value)
+                setPlPage(1)
+              }}
             />
           </div>
 
@@ -298,7 +351,10 @@ export default function GuestPage() {
             <select
               className="border p-2.5 rounded-lg w-full bg-white"
               value={plSort}
-              onChange={(e) => setPlSort(e.target.value)}
+              onChange={(e) => {
+                setPlSort(e.target.value)
+                setPlPage(1)
+              }}
             >
               <option value="AZ">Abjad (A–Z)</option>
               <option value="ZA">Abjad (Z–A)</option>
@@ -306,7 +362,7 @@ export default function GuestPage() {
           </div>
 
           <div className="md:col-span-2 text-sm text-slate-500 flex items-center justify-end">
-            Total: <b className="ml-1 text-slate-800">{plFiltered.length}</b>
+            Total: <b className="ml-1 text-slate-800">{plTotal}</b>
           </div>
         </div>
 
@@ -321,7 +377,7 @@ export default function GuestPage() {
               </tr>
             </thead>
             <tbody>
-              {plFiltered.slice(0, 200).map((x) => (
+              {plRows.map((x) => (
                 <tr key={x.id} className="border-t">
                   <td className="px-4 py-3 font-semibold">{x.nama_produk}</td>
                   <td className="px-4 py-3 text-right">{x.harga_tokped}</td>
@@ -329,7 +385,7 @@ export default function GuestPage() {
                   <td className="px-4 py-3 text-right">{x.harga_offline}</td>
                 </tr>
               ))}
-              {plFiltered.length === 0 && (
+              {plRows.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
                     Tidak ada data.
@@ -340,8 +396,27 @@ export default function GuestPage() {
           </table>
         </div>
 
-        <div className="text-xs text-slate-500 mt-2">
-          Catatan: untuk ringan, tabel ini render max 200 baris pertama (search tetap jalan).
+        {/* PRICELIST PAGER (STOPPER) */}
+        <div className="flex items-center justify-between mt-3">
+          <div className="text-sm text-slate-500">Page: {plPage}</div>
+          <div className="flex gap-2">
+            <button
+              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
+              disabled={plPage <= 1}
+              onClick={() => setPlPage((p) => Math.max(1, p - 1))}
+              type="button"
+            >
+              Prev
+            </button>
+            <button
+              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
+              disabled={!plHasNext}
+              onClick={() => setPlPage((p) => p + 1)}
+              type="button"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 
@@ -453,7 +528,8 @@ export default function GuestPage() {
               Prev
             </button>
             <button
-              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
+              disabled={!stokHasNext}
               onClick={() => setStokPage((p) => p + 1)}
               type="button"
             >
@@ -570,7 +646,8 @@ export default function GuestPage() {
               Prev
             </button>
             <button
-              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+              className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-50"
+              disabled={!aksHasNext}
               onClick={() => setAksPage((p) => p + 1)}
               type="button"
             >
