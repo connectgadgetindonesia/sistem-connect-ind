@@ -1,6 +1,6 @@
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { supabase } from '../@lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
 import Select from 'react-select'
