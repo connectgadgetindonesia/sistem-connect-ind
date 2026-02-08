@@ -3,8 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
-
-// ✅ Pakai async-creatable (mirip Input Penjualan)
 import AsyncCreatableSelect from 'react-select/async-creatable'
 
 const PAGE_SIZE = 20
@@ -39,7 +37,6 @@ function pickFirst(obj, keys = []) {
   return ''
 }
 
-// helper normalisasi value “EMPTY” dll dari DB
 const cleanText = (v) => {
   const s = (v ?? '').toString().trim()
   if (!s) return ''
@@ -49,33 +46,26 @@ const cleanText = (v) => {
 }
 
 export default function KinerjaKaryawan() {
-  // ✅ tetap nama component biar menu/route aman, tapi isi halaman = Claim Cashback
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // UI state
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(emptyForm())
   const [editId, setEditId] = useState(null)
   const isEditing = editId !== null
 
-  // tabs & sorting & paging
   const [activeTab, setActiveTab] = useState('SEMUA')
   const [sortBy, setSortBy] = useState('tanggal_laku_desc')
   const [page, setPage] = useState(1)
 
-  // kategori dropdown (dari data claim)
   const [categories, setCategories] = useState([])
 
-  // ===== SN Dropdown =====
+  // SN dropdown
   const [selectedSN, setSelectedSN] = useState(null)
   const [snFound, setSnFound] = useState(false)
   const [snOptLoading, setSnOptLoading] = useState(false)
 
-  // cache meta stok biar setelah pilih SN gak query ulang
-  const stokCacheRef = useRef(new Map()) // key: SN uppercase, value: stokRow
-
-  // debounce lookup manual SN
+  const stokCacheRef = useRef(new Map()) // SN -> stokRow
   const snTimerRef = useRef(null)
 
   useEffect(() => {
@@ -89,7 +79,7 @@ export default function KinerjaKaryawan() {
       .from('claim_cashback')
       .select('*')
       .order('tanggal_laku', { ascending: false })
-      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
 
     setLoading(false)
     if (error) {
@@ -113,17 +103,16 @@ export default function KinerjaKaryawan() {
     setCategories(cat)
   }
 
-  // ===== Query stok by SN (READY + SOLD) =====
+  // ✅ Lookup stok by SN (tanpa created_at)
   async function fetchStokBySN(snUpper) {
     const sn = cleanText(snUpper).toUpperCase()
     if (!sn) return null
 
-    // cache hit
     if (stokCacheRef.current.has(sn)) return stokCacheRef.current.get(sn)
 
     const { data, error } = await supabase
       .from('stok')
-      .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status,warna')
+      .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,status,warna')
       .eq('sn', sn)
       .limit(1)
       .maybeSingle()
@@ -138,7 +127,6 @@ export default function KinerjaKaryawan() {
     return data
   }
 
-  // ===== isi form dari row stok =====
   function applyStokToForm(stokRow) {
     if (!stokRow) return
 
@@ -147,7 +135,7 @@ export default function KinerjaKaryawan() {
     const asal_produk = cleanText(pickFirst(stokRow, ['asal_produk']))
     const modal_lama = pickFirst(stokRow, ['harga_modal'])
 
-    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_masuk', 'created_at'])
+    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_masuk'])
     const tanggal_beli =
       tanggal_beli_raw && dayjs(tanggal_beli_raw).isValid()
         ? dayjs(tanggal_beli_raw).format('YYYY-MM-DD')
@@ -165,24 +153,19 @@ export default function KinerjaKaryawan() {
     setSnFound(true)
   }
 
-  // ===== Load options async (ini yang bikin dropdown stabil, tidak 400) =====
+  // ✅ Async options (tanpa created_at)
   async function loadSNOptions(inputValue) {
     const q = cleanText(inputValue).toUpperCase()
     setSnOptLoading(true)
 
     try {
-      // Ambil sedikit saja (limit 50), seperti Input Penjualan
-      // Tanpa filter status -> READY + SOLD masuk semua
       let query = supabase
         .from('stok')
-        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status,warna')
-        .order('created_at', { ascending: false })
+        .select('sn,nama_produk,imei,asal_produk,harga_modal,tanggal_masuk,status,warna')
+        .order('tanggal_masuk', { ascending: false })
         .limit(50)
 
-      if (q) {
-        // cari SN yang mengandung input
-        query = query.ilike('sn', `%${q}%`)
-      }
+      if (q) query = query.ilike('sn', `%${q}%`)
 
       const { data, error } = await query
       if (error) {
@@ -215,7 +198,6 @@ export default function KinerjaKaryawan() {
             }
           }) || []
 
-      // hilangkan duplikat SN kalau ada
       const uniq = []
       const seen = new Set()
       for (const o of opts) {
@@ -230,13 +212,10 @@ export default function KinerjaKaryawan() {
     }
   }
 
-  // ===== ketika pilih SN dari dropdown =====
   async function onPickSN(option) {
     setSelectedSN(option || null)
-
     const sn = cleanText(option?.value || '').toUpperCase()
 
-    // ✅ pastikan SN benar-benar masuk ke form
     setForm((prev) => ({
       ...prev,
       serial_number: sn,
@@ -247,22 +226,17 @@ export default function KinerjaKaryawan() {
       return
     }
 
-    // kalau ada meta dari options, langsung apply
     if (option?.meta) {
       applyStokToForm(option.meta)
       return
     }
 
-    // fallback: lookup by SN
     const stokRow = await fetchStokBySN(sn)
-    if (stokRow) {
-      applyStokToForm(stokRow)
-    } else {
-      setSnFound(false)
-    }
+    if (stokRow) applyStokToForm(stokRow)
+    else setSnFound(false)
   }
 
-  // ===== jika user ketik SN manual (Creatable) =====
+  // fallback jika ketik SN manual
   useEffect(() => {
     const sn = cleanText(form.serial_number).toUpperCase()
     if (!sn) {
@@ -270,7 +244,6 @@ export default function KinerjaKaryawan() {
       return
     }
 
-    // debounce lookup SN manual
     if (snTimerRef.current) clearTimeout(snTimerRef.current)
 
     snTimerRef.current = setTimeout(async () => {
@@ -285,7 +258,6 @@ export default function KinerjaKaryawan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.serial_number])
 
-  // ===== FILTER SEARCH (untuk list claim) =====
   const filtered = useMemo(() => {
     const q = (search || '').toLowerCase().trim()
     if (!q) return rows
@@ -298,7 +270,6 @@ export default function KinerjaKaryawan() {
     })
   }, [rows, search])
 
-  // ===== TABS (SEMUA + kategori dari filtered) =====
   const tabs = useMemo(() => {
     const cats = Array.from(
       new Set(
@@ -317,7 +288,6 @@ export default function KinerjaKaryawan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs.join('|')])
 
-  // ===== FILTER BY TAB =====
   const tabRows = useMemo(() => {
     if (activeTab === 'SEMUA') return filtered
     return (filtered || []).filter(
@@ -325,7 +295,6 @@ export default function KinerjaKaryawan() {
     )
   }, [filtered, activeTab])
 
-  // ===== SORT =====
   const sortedRows = useMemo(() => {
     const arr = [...(tabRows || [])]
     const safeDate = (v) => {
@@ -335,8 +304,10 @@ export default function KinerjaKaryawan() {
     }
 
     arr.sort((a, b) => {
-      if (sortBy === 'abjad_asc') return String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''))
-      if (sortBy === 'abjad_desc') return String(b.nama_produk || '').localeCompare(String(a.nama_produk || ''))
+      if (sortBy === 'abjad_asc')
+        return String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''))
+      if (sortBy === 'abjad_desc')
+        return String(b.nama_produk || '').localeCompare(String(a.nama_produk || ''))
       if (sortBy === 'tanggal_beli_desc') return safeDate(b.tanggal_beli) - safeDate(a.tanggal_beli)
       if (sortBy === 'tanggal_beli_asc') return safeDate(a.tanggal_beli) - safeDate(b.tanggal_beli)
       if (sortBy === 'tanggal_laku_asc') return safeDate(a.tanggal_laku) - safeDate(b.tanggal_laku)
@@ -346,7 +317,6 @@ export default function KinerjaKaryawan() {
     return arr
   }, [tabRows, sortBy])
 
-  // ===== PAGING =====
   const totalRows = sortedRows.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
   const safePage = Math.min(Math.max(1, page), totalPages)
@@ -360,7 +330,6 @@ export default function KinerjaKaryawan() {
     return sortedRows.slice(start, start + PAGE_SIZE)
   }, [sortedRows, safePage])
 
-  // ===== SELISIH PREVIEW =====
   const selisihPreview = useMemo(() => {
     const lama = toInt(form.modal_lama)
     const baru = toInt(form.modal_baru)
@@ -398,7 +367,6 @@ export default function KinerjaKaryawan() {
     if (!payload.tanggal_laku) return alert('Tanggal laku wajib diisi')
     if (!payload.modal_baru) return alert('Modal baru wajib diisi')
 
-    // kalau SN tidak ketemu di stok, user wajib isi manual
     if (!snFound) {
       if (!payload.nama_produk) return alert('Nama produk wajib diisi (SN tidak ditemukan di stok)')
       if (!payload.modal_lama) return alert('Modal lama wajib diisi (SN tidak ditemukan di stok)')
@@ -409,10 +377,7 @@ export default function KinerjaKaryawan() {
     if (isEditing) {
       const { error } = await supabase.from('claim_cashback').update(payload).eq('id', editId)
       setLoading(false)
-      if (error) {
-        console.error(error)
-        return alert('Gagal update data')
-      }
+      if (error) return alert('Gagal update data')
       resetForm()
       fetchData()
       return
@@ -420,10 +385,7 @@ export default function KinerjaKaryawan() {
 
     const { error } = await supabase.from('claim_cashback').insert(payload)
     setLoading(false)
-    if (error) {
-      console.error(error)
-      return alert('Gagal simpan data')
-    }
+    if (error) return alert('Gagal simpan data')
 
     resetForm()
     fetchData()
@@ -431,7 +393,6 @@ export default function KinerjaKaryawan() {
 
   function handleEdit(row) {
     setEditId(row.id)
-
     const sn = (row.serial_number || '').toString().trim().toUpperCase()
     setSelectedSN(sn ? { value: sn, label: sn } : null)
 
@@ -459,31 +420,15 @@ export default function KinerjaKaryawan() {
     setLoading(true)
     const { error } = await supabase.from('claim_cashback').delete().eq('id', id)
     setLoading(false)
+    if (error) return alert('Gagal hapus data')
 
-    if (error) {
-      console.error(error)
-      return alert('Gagal hapus data')
-    }
     fetchData()
   }
 
-  // ===== EXPORT EXCEL =====
   function exportRowsToExcel(filename, dataRows) {
     const wb = XLSX.utils.book_new()
     const sheet = [
-      [
-        'No',
-        'Kategori',
-        'Nama Produk',
-        'Serial Number',
-        'IMEI',
-        'Tanggal Laku',
-        'Modal Lama',
-        'Tanggal Beli',
-        'Modal Baru',
-        'Selisih Modal',
-        'Asal Barang',
-      ],
+      ['No', 'Kategori', 'Nama Produk', 'Serial Number', 'IMEI', 'Tanggal Laku', 'Modal Lama', 'Tanggal Beli', 'Modal Baru', 'Selisih Modal', 'Asal Barang'],
       ...(dataRows || []).map((r, idx) => [
         idx + 1,
         r.kategori || '',
@@ -518,7 +463,6 @@ export default function KinerjaKaryawan() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
-        {/* Header */}
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
           <div className="text-sm text-gray-600">
@@ -526,27 +470,23 @@ export default function KinerjaKaryawan() {
           </div>
         </div>
 
-        {/* ===== FORM INPUT ===== */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold text-gray-800">{isEditing ? 'Edit Data' : 'Input Data'}</div>
-            <div className="flex gap-2">
-              {isEditing && (
-                <button
-                  type="button"
-                  className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
-                  onClick={resetForm}
-                  disabled={loading}
-                >
-                  Batal Edit
-                </button>
-              )}
-            </div>
+            {isEditing && (
+              <button
+                type="button"
+                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
+                onClick={resetForm}
+                disabled={loading}
+              >
+                Batal Edit
+              </button>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Kategori */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Kategori</div>
                 <select
@@ -566,14 +506,13 @@ export default function KinerjaKaryawan() {
                 {form.kategori === '__NEW__' && (
                   <input
                     className="border px-3 py-2 rounded-lg w-full mt-2"
-                    placeholder="Ketik kategori baru (contoh: APPLE WATCH)"
+                    placeholder="Ketik kategori baru"
                     value={form.kategori_baru}
                     onChange={(e) => setForm({ ...form, kategori_baru: e.target.value })}
                   />
                 )}
               </div>
 
-              {/* Nama Produk */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Nama Produk</div>
                 <input
@@ -586,7 +525,6 @@ export default function KinerjaKaryawan() {
                 {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
-              {/* SN Dropdown */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">
                   Serial Number {snOptLoading ? '• Memuat…' : snFound ? '• Auto ✅' : ''}
@@ -617,7 +555,6 @@ export default function KinerjaKaryawan() {
                   formatCreateLabel={(inputValue) => `Gunakan SN manual: "${inputValue}"`}
                 />
 
-                {/* hidden input supaya submit selalu kebaca */}
                 <input type="hidden" value={form.serial_number} readOnly />
 
                 <div className="text-[11px] text-gray-500 mt-1">
@@ -631,7 +568,6 @@ export default function KinerjaKaryawan() {
                 </div>
               </div>
 
-              {/* IMEI */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">IMEI</div>
                 <input
@@ -641,10 +577,8 @@ export default function KinerjaKaryawan() {
                   readOnly={snFound}
                   onChange={(e) => setForm({ ...form, imei: e.target.value })}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
-              {/* Tanggal Laku */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Tanggal Laku</div>
                 <input
@@ -655,7 +589,6 @@ export default function KinerjaKaryawan() {
                 />
               </div>
 
-              {/* Asal Barang */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Asal Barang</div>
                 <input
@@ -665,10 +598,8 @@ export default function KinerjaKaryawan() {
                   readOnly={snFound}
                   onChange={(e) => setForm({ ...form, asal_barang: e.target.value })}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
-              {/* Modal Lama */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Modal Lama</div>
                 <input
@@ -679,10 +610,8 @@ export default function KinerjaKaryawan() {
                   readOnly={snFound}
                   onChange={(e) => setForm({ ...form, modal_lama: e.target.value })}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
-              {/* Tanggal Beli */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Tanggal Beli</div>
                 <input
@@ -692,10 +621,8 @@ export default function KinerjaKaryawan() {
                   readOnly={snFound}
                   onChange={(e) => setForm({ ...form, tanggal_beli: e.target.value })}
                 />
-                {snFound && <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>}
               </div>
 
-              {/* Modal Baru */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Modal Baru</div>
                 <input
@@ -727,7 +654,6 @@ export default function KinerjaKaryawan() {
           </form>
         </div>
 
-        {/* ===== TOOLBAR LIST ===== */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5">
           <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
             <div className="w-full md:w-[360px]">
@@ -758,31 +684,20 @@ export default function KinerjaKaryawan() {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={fetchData}
-                className="border px-4 py-2 rounded-lg hover:bg-gray-50"
-                disabled={loading}
-              >
+              <button onClick={fetchData} className="border px-4 py-2 rounded-lg hover:bg-gray-50" disabled={loading}>
                 {loading ? 'Memuat…' : 'Refresh'}
               </button>
 
-              <button
-                onClick={exportAllToExcel}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-              >
+              <button onClick={exportAllToExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
                 Download Excel (Semua)
               </button>
 
-              <button
-                onClick={exportActiveTabToExcel}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg"
-              >
+              <button onClick={exportActiveTabToExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg">
                 Download Excel (Tab)
               </button>
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="flex flex-wrap gap-2 mb-4">
             {tabs.map((t) => (
               <button
@@ -797,17 +712,11 @@ export default function KinerjaKaryawan() {
             ))}
           </div>
 
-          {/* info */}
           <div className="text-xs text-gray-500 mb-3">
-            Tab: <b className="text-gray-800">{activeTab}</b> • Total:{' '}
-            <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
-            <b className="text-gray-800">
-              {safePage}/{totalPages}
-            </b>{' '}
-            • 20 data per halaman
+            Tab: <b className="text-gray-800">{activeTab}</b> • Total: <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
+            <b className="text-gray-800">{safePage}/{totalPages}</b> • 20 data per halaman
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto border rounded-2xl">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
@@ -824,16 +733,7 @@ export default function KinerjaKaryawan() {
                   <th className="border-b px-3 py-2 text-left">Aksi</th>
                 </tr>
               </thead>
-
               <tbody>
-                {loading && pageRows.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
-                      Memuat…
-                    </td>
-                  </tr>
-                )}
-
                 {!loading && pageRows.length === 0 && (
                   <tr>
                     <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
@@ -867,44 +767,23 @@ export default function KinerjaKaryawan() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
             <div className="text-xs text-gray-500">
-              Menampilkan{' '}
-              <b className="text-gray-800">
-                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-                {Math.min(safePage * PAGE_SIZE, totalRows)}
-              </b>{' '}
-              dari <b className="text-gray-800">{totalRows}</b>
+              Menampilkan <b className="text-gray-800">{totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}</b> dari{' '}
+              <b className="text-gray-800">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage(1)}
-                disabled={safePage === 1}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage(1)} disabled={safePage === 1}>
                 « First
               </button>
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
                 ‹ Prev
               </button>
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
                 Next ›
               </button>
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>
                 Last »
               </button>
             </div>
