@@ -1,6 +1,6 @@
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '../@lib/supabaseClient'
+import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
 import Select from 'react-select'
@@ -38,29 +38,25 @@ function pickFirst(obj, keys = []) {
 }
 
 export default function KinerjaKaryawan() {
-  // ✅ tetap nama component biar menu/route aman, tapi isi halaman = Claim Cashback
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // UI state
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(emptyForm())
   const [editId, setEditId] = useState(null)
   const isEditing = editId !== null
 
-  // tabs & sorting & paging
   const [activeTab, setActiveTab] = useState('SEMUA')
   const [sortBy, setSortBy] = useState('tanggal_laku_desc')
   const [page, setPage] = useState(1)
 
-  // kategori dropdown
   const [categories, setCategories] = useState([])
 
-  // SN dropdown options (react-select)
+  // SN dropdown options
   const [snOptions, setSnOptions] = useState([])
   const [snOptionsLoading, setSnOptionsLoading] = useState(false)
 
-  // SN lookup debounce (fallback kalau user ketik manual)
+  // SN manual lookup
   const snTimerRef = useRef(null)
   const [snLoading, setSnLoading] = useState(false)
   const [snFound, setSnFound] = useState(false)
@@ -101,15 +97,14 @@ export default function KinerjaKaryawan() {
     setCategories(cat)
   }
 
-  // ====== SN OPTIONS: ambil SEMUA SN (READY + SOLD) ======
+  // ✅ SN OPTIONS: ambil SEMUA SN (READY + SOLD)
   async function fetchSNOptions() {
     setSnOptionsLoading(true)
     try {
-      // Ambil kolom yang dibutuhkan untuk autofill
-      // NOTE: tidak filter status -> semua SN tampil
+      // ⚠️ SELECT kolom yang "AMAN" (pasti ada)
       const { data, error } = await supabase
         .from('stok')
-        .select('sn,nama_produk,warna,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at,status')
+        .select('sn,nama_produk,warna,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status')
         .order('created_at', { ascending: false })
         .limit(5000)
 
@@ -128,18 +123,8 @@ export default function KinerjaKaryawan() {
             const warna = String(x.warna || '').trim()
             const status = String(x.status || '').trim().toUpperCase()
 
-            const labelParts = [
-              sn,
-              nama ? nama : '',
-              warna ? warna : '',
-              status ? status : '',
-            ].filter(Boolean)
-
-            return {
-              value: sn,
-              label: labelParts.join(' | '),
-              meta: x,
-            }
+            const labelParts = [sn, nama, warna, status].filter(Boolean)
+            return { value: sn, label: labelParts.join(' | '), meta: x }
           }) || []
 
       setSnOptions(opts)
@@ -148,16 +133,16 @@ export default function KinerjaKaryawan() {
     }
   }
 
-  // ====== helper: isi form dari data stok ======
+  // ✅ isi form dari stok (kecuali tanggal_laku & modal_baru)
   function fillFormFromStok(stokRow) {
     if (!stokRow) return
 
-    const nama_produk = pickFirst(stokRow, ['nama_produk', 'produk', 'nama'])
-    const imei = pickFirst(stokRow, ['imei', 'imei1', 'imei_1'])
-    const asal_barang = pickFirst(stokRow, ['asal_barang', 'asal_produk', 'asal'])
-    const modal_lama = pickFirst(stokRow, ['harga_modal', 'modal', 'modal_lama'])
-    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_beli', 'tanggal_masuk', 'created_at'])
+    const nama_produk = pickFirst(stokRow, ['nama_produk'])
+    const imei = pickFirst(stokRow, ['imei'])
+    const asal_barang = pickFirst(stokRow, ['asal_produk'])
+    const modal_lama = pickFirst(stokRow, ['harga_modal'])
 
+    const tanggal_beli_raw = pickFirst(stokRow, ['tanggal_masuk', 'created_at'])
     const tanggal_beli =
       tanggal_beli_raw && dayjs(tanggal_beli_raw).isValid()
         ? dayjs(tanggal_beli_raw).format('YYYY-MM-DD')
@@ -165,7 +150,6 @@ export default function KinerjaKaryawan() {
 
     setForm((prev) => ({
       ...prev,
-      // jangan ganggu tanggal_laku & modal_baru (tetap manual)
       nama_produk: nama_produk || '',
       imei: imei || '',
       asal_barang: asal_barang || '',
@@ -174,17 +158,16 @@ export default function KinerjaKaryawan() {
     }))
   }
 
-  // ====== lookup manual SN (fallback kalau ketik) ======
+  // ✅ lookup manual kalau user ketik SN
   async function lookupFromStokBySN(sn) {
     const q = (sn || '').toString().trim()
     if (!q) return null
 
     setSnLoading(true)
     try {
-      // cari SN apa adanya (tanpa filter status)
       const { data, error } = await supabase
         .from('stok')
-        .select('sn,nama_produk,warna,imei,asal_produk,asal_barang,harga_modal,tanggal_masuk,tanggal_beli,created_at,status')
+        .select('sn,nama_produk,warna,imei,asal_produk,harga_modal,tanggal_masuk,created_at,status')
         .eq('sn', q)
         .limit(1)
         .maybeSingle()
@@ -199,18 +182,15 @@ export default function KinerjaKaryawan() {
     }
   }
 
-  // ====== kalau user KETIK manual di input SN ======
+  // debounce saat serial_number berubah (manual typing)
   useEffect(() => {
     const sn = (form.serial_number || '').trim()
 
-    // kosong -> reset status
     if (!sn) {
       setSnFound(false)
       return
     }
 
-    // kalau SN berasal dari dropdown, dia sudah autofill langsung.
-    // Tapi tetap aman kalau ada perubahan manual (user edit SN)
     if (snTimerRef.current) clearTimeout(snTimerRef.current)
 
     snTimerRef.current = setTimeout(async () => {
@@ -219,7 +199,6 @@ export default function KinerjaKaryawan() {
         setSnFound(false)
         return
       }
-
       fillFormFromStok(stok)
       setSnFound(true)
     }, 300)
@@ -272,10 +251,8 @@ export default function KinerjaKaryawan() {
   // ===== SORT =====
   const sortedRows = useMemo(() => {
     const arr = [...(tabRows || [])]
-
     const safeDate = (v) => {
-      const s = (v || '').toString()
-      const d = dayjs(s)
+      const d = dayjs((v || '').toString())
       return d.isValid() ? d.valueOf() : 0
     }
 
@@ -342,7 +319,7 @@ export default function KinerjaKaryawan() {
     if (!payload.tanggal_laku) return alert('Tanggal laku wajib diisi')
     if (!payload.modal_baru) return alert('Modal baru wajib diisi')
 
-    // fallback kalau SN tidak ketemu
+    // kalau SN belum ketemu di stok (manual), wajib isi minimum
     if (!snFound) {
       if (!payload.nama_produk) return alert('Nama produk wajib diisi (SN tidak ditemukan di stok)')
       if (!payload.modal_lama) return alert('Modal lama wajib diisi (SN tidak ditemukan di stok)')
@@ -353,12 +330,10 @@ export default function KinerjaKaryawan() {
     if (isEditing) {
       const { error } = await supabase.from('claim_cashback').update(payload).eq('id', editId)
       setLoading(false)
-
       if (error) {
         console.error(error)
         return alert('Gagal update data')
       }
-
       resetForm()
       fetchData()
       return
@@ -366,7 +341,6 @@ export default function KinerjaKaryawan() {
 
     const { error } = await supabase.from('claim_cashback').insert(payload)
     setLoading(false)
-
     if (error) {
       console.error(error)
       return alert('Gagal simpan data')
@@ -390,7 +364,7 @@ export default function KinerjaKaryawan() {
       modal_baru: String(row.modal_baru ?? ''),
       asal_barang: row.asal_barang || '',
     })
-    setSnFound(true) // karena data sudah ada
+    setSnFound(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -409,7 +383,6 @@ export default function KinerjaKaryawan() {
     fetchData()
   }
 
-  // ===== EXPORT EXCEL =====
   function exportRowsToExcel(filename, dataRows) {
     const wb = XLSX.utils.book_new()
     const sheet = [
@@ -453,14 +426,12 @@ export default function KinerjaKaryawan() {
     exportRowsToExcel(`Claim_Cashback_${label}_${dayjs().format('YYYY-MM-DD')}.xlsx`, sortedRows)
   }
 
-  // react-select value dari form.serial_number
   const selectedSNOption =
     snOptions.find((o) => String(o.value).trim() === String(form.serial_number || '').trim()) || null
 
   return (
     <Layout>
       <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
-        {/* Header */}
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
           <div className="text-sm text-gray-600">
@@ -468,7 +439,7 @@ export default function KinerjaKaryawan() {
           </div>
         </div>
 
-        {/* ===== FORM INPUT ===== */}
+        {/* FORM */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold text-gray-800">{isEditing ? 'Edit Data' : 'Input Data'}</div>
@@ -486,7 +457,6 @@ export default function KinerjaKaryawan() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Kategori */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Kategori</div>
                 <select
@@ -513,20 +483,12 @@ export default function KinerjaKaryawan() {
                 )}
               </div>
 
-              {/* Nama Produk */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Nama Produk</div>
-                <input
-                  className="border px-3 py-2 rounded-lg w-full"
-                  placeholder="Nama produk"
-                  value={form.nama_produk}
-                  readOnly={true} // ✅ selalu auto dari stok
-                  onChange={() => {}}
-                />
+                <input className="border px-3 py-2 rounded-lg w-full" value={form.nama_produk} readOnly />
                 <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
-              {/* Serial Number (react-select + fallback input) */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">
                   Serial Number {snOptionsLoading ? '• Memuat…' : snLoading ? '• Mendeteksi…' : snFound ? '• Ditemukan ✅' : ''}
@@ -553,54 +515,24 @@ export default function KinerjaKaryawan() {
                       return
                     }
 
-                    // ✅ set serial_number + langsung autofill dari meta
-                    setForm((prev) => ({
-                      ...prev,
-                      serial_number: selected.value || '',
-                    }))
-
+                    setForm((prev) => ({ ...prev, serial_number: selected.value || '' }))
                     fillFormFromStok(selected.meta)
                     setSnFound(true)
                   }}
                   isClearable
                 />
 
-                {/* fallback manual typing (kalau ada SN yang belum masuk list) */}
-                <input
-                  className="border px-3 py-2 rounded-lg w-full mt-2"
-                  placeholder="Atau ketik SN manual di sini"
-                  value={form.serial_number}
-                  onChange={(e) => {
-                    setForm((prev) => ({ ...prev, serial_number: e.target.value }))
-                    // snFound akan di-set dari lookup effect
-                  }}
-                />
-
-                <div className="text-[11px] text-gray-500 mt-1">
-                  Pilih SN → otomatis isi: Nama Produk, IMEI, Asal Barang, Modal Lama, Tanggal Beli.
-                  {!snLoading && form.serial_number && !snFound && (
-                    <>
-                      {' '}
-                      <b className="text-red-600">SN tidak ditemukan</b> (kalau ketik manual).
-                    </>
-                  )}
+                <div className="text-[11px] text-gray-500 mt-2">
+                  Pilih SN → otomatis isi kolom lain. Manual hanya: <b>Tanggal Laku</b> & <b>Modal Baru</b>.
                 </div>
               </div>
 
-              {/* IMEI */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">IMEI</div>
-                <input
-                  className="border px-3 py-2 rounded-lg w-full"
-                  placeholder="IMEI"
-                  value={form.imei}
-                  readOnly={true}
-                  onChange={() => {}}
-                />
+                <input className="border px-3 py-2 rounded-lg w-full" value={form.imei} readOnly />
                 <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
-              {/* Tanggal Laku */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Tanggal Laku</div>
                 <input
@@ -611,59 +543,32 @@ export default function KinerjaKaryawan() {
                 />
               </div>
 
-              {/* Asal Barang */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Asal Barang</div>
-                <input
-                  className="border px-3 py-2 rounded-lg w-full"
-                  placeholder="Asal barang"
-                  value={form.asal_barang}
-                  readOnly={true}
-                  onChange={() => {}}
-                />
+                <input className="border px-3 py-2 rounded-lg w-full" value={form.asal_barang} readOnly />
                 <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
-              {/* Modal Lama */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Modal Lama</div>
-                <input
-                  className="border px-3 py-2 rounded-lg w-full"
-                  type="number"
-                  placeholder="Modal lama"
-                  value={form.modal_lama}
-                  readOnly={true}
-                  onChange={() => {}}
-                />
+                <input className="border px-3 py-2 rounded-lg w-full" type="number" value={form.modal_lama} readOnly />
                 <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
-              {/* Tanggal Beli */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Tanggal Beli</div>
-                <input
-                  className="border px-3 py-2 rounded-lg w-full"
-                  type="date"
-                  value={form.tanggal_beli}
-                  readOnly={true}
-                  onChange={() => {}}
-                />
+                <input className="border px-3 py-2 rounded-lg w-full" type="date" value={form.tanggal_beli} readOnly />
                 <div className="text-[11px] text-gray-500 mt-1">Auto dari stok ✅</div>
               </div>
 
-              {/* Modal Baru */}
               <div>
                 <div className="text-xs text-gray-500 mb-1">Modal Baru</div>
                 <input
                   className="border px-3 py-2 rounded-lg w-full"
                   type="number"
-                  placeholder="Modal baru"
                   value={form.modal_baru}
                   onChange={(e) => setForm({ ...form, modal_baru: e.target.value })}
                 />
-                <div className="text-[11px] text-gray-500 mt-1">
-                  Yang diinput manual hanya: <b>Tanggal Laku</b> & <b>Modal Baru</b>.
-                </div>
               </div>
             </div>
 
@@ -683,7 +588,7 @@ export default function KinerjaKaryawan() {
           </form>
         </div>
 
-        {/* ===== TOOLBAR LIST ===== */}
+        {/* LIST */}
         <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5">
           <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
             <div className="w-full md:w-[360px]">
@@ -714,11 +619,7 @@ export default function KinerjaKaryawan() {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={fetchData}
-                className="border px-4 py-2 rounded-lg hover:bg-gray-50"
-                disabled={loading}
-              >
+              <button onClick={fetchData} className="border px-4 py-2 rounded-lg hover:bg-gray-50" disabled={loading}>
                 {loading ? 'Memuat…' : 'Refresh'}
               </button>
 
@@ -730,22 +631,15 @@ export default function KinerjaKaryawan() {
                 {snOptionsLoading ? 'Memuat SN…' : 'Refresh SN'}
               </button>
 
-              <button
-                onClick={exportAllToExcel}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-              >
+              <button onClick={exportAllToExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
                 Download Excel (Semua)
               </button>
-              <button
-                onClick={exportActiveTabToExcel}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg"
-              >
+              <button onClick={exportActiveTabToExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg">
                 Download Excel (Tab)
               </button>
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="flex flex-wrap gap-2 mb-4">
             {tabs.map((t) => (
               <button
@@ -760,17 +654,12 @@ export default function KinerjaKaryawan() {
             ))}
           </div>
 
-          {/* info */}
           <div className="text-xs text-gray-500 mb-3">
             Tab: <b className="text-gray-800">{activeTab}</b> • Total:{' '}
             <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
-            <b className="text-gray-800">
-              {safePage}/{totalPages}
-            </b>{' '}
-            • 20 data per halaman
+            <b className="text-gray-800">{safePage}/{totalPages}</b> • 20 data per halaman
           </div>
 
-          {/* TABLE */}
           <div className="overflow-x-auto border rounded-2xl">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
@@ -789,19 +678,9 @@ export default function KinerjaKaryawan() {
               </thead>
 
               <tbody>
-                {loading && pageRows.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
-                      Memuat…
-                    </td>
-                  </tr>
-                )}
-
                 {!loading && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
-                      Tidak ada data.
-                    </td>
+                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">Tidak ada data.</td>
                   </tr>
                 )}
 
@@ -817,12 +696,8 @@ export default function KinerjaKaryawan() {
                     <td className="border-b px-3 py-2 text-right">{rupiah(r.selisih_modal || 0)}</td>
                     <td className="border-b px-3 py-2">{r.asal_barang || '-'}</td>
                     <td className="border-b px-3 py-2 whitespace-nowrap">
-                      <button onClick={() => handleEdit(r)} className="text-blue-600 text-xs mr-3">
-                        Edit
-                      </button>
-                      <button onClick={() => handleDelete(r.id)} className="text-red-600 text-xs">
-                        Hapus
-                      </button>
+                      <button onClick={() => handleEdit(r)} className="text-blue-600 text-xs mr-3">Edit</button>
+                      <button onClick={() => handleDelete(r.id)} className="text-red-600 text-xs">Hapus</button>
                     </td>
                   </tr>
                 ))}
@@ -830,44 +705,24 @@ export default function KinerjaKaryawan() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
             <div className="text-xs text-gray-500">
-              Menampilkan{' '}
-              <b className="text-gray-800">
-                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-                {Math.min(safePage * PAGE_SIZE, totalRows)}
-              </b>{' '}
-              dari <b className="text-gray-800">{totalRows}</b>
+              Menampilkan <b className="text-gray-800">
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}
+              </b> dari <b className="text-gray-800">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage(1)}
-                disabled={safePage === 1}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage(1)} disabled={safePage === 1}>
                 « First
               </button>
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
                 ‹ Prev
               </button>
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
                 Next ›
               </button>
-              <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages}
-              >
+              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>
                 Last »
               </button>
             </div>
