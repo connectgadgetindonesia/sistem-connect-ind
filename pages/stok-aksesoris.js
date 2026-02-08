@@ -29,8 +29,8 @@ export default function StokAksesoris() {
   const [filterKategori, setFilterKategori] = useState('') // untuk chip/tab + dropdown filter
 
   // Sort + Paging
-  const [sortBy, setSortBy] = useState('nama_produk')
-  const [sortDir, setSortDir] = useState('asc')
+  // ✅ Sort cukup 1 dropdown saja (tidak ada ASC/DESC terpisah)
+  const [sortBy, setSortBy] = useState('nama_asc')
   const [page, setPage] = useState(1)
 
   // Modal update stok
@@ -100,24 +100,40 @@ export default function StokAksesoris() {
       return matchSearch && matchKategori
     })
 
-    const dir = sortDir === 'desc' ? -1 : 1
+    const cmpText = (a, b) => {
+      const as = (a || '').toString().toUpperCase()
+      const bs = (b || '').toString().toUpperCase()
+      return as.localeCompare(bs)
+    }
+
+    const cmpNum = (a, b) => {
+      const an = parseInt(a || 0, 10) || 0
+      const bn = parseInt(b || 0, 10) || 0
+      return an - bn
+    }
+
     rows.sort((a, b) => {
-      const av = a?.[sortBy]
-      const bv = b?.[sortBy]
+      // ✅ 1 dropdown sort sudah include arah (asc/desc)
+      if (sortBy === 'nama_asc') return cmpText(a.nama_produk, b.nama_produk)
+      if (sortBy === 'nama_desc') return cmpText(b.nama_produk, a.nama_produk)
 
-      if (sortBy === 'stok' || sortBy === 'harga_modal') {
-        const an = parseInt(av || 0, 10)
-        const bn = parseInt(bv || 0, 10)
-        return (an - bn) * dir
-      }
+      if (sortBy === 'sku_asc') return cmpText(a.sku, b.sku)
+      if (sortBy === 'sku_desc') return cmpText(b.sku, a.sku)
 
-      const as = (av || '').toString().toUpperCase()
-      const bs = (bv || '').toString().toUpperCase()
-      return as.localeCompare(bs) * dir
+      if (sortBy === 'kategori_asc') return cmpText(a.kategori, b.kategori)
+      if (sortBy === 'kategori_desc') return cmpText(b.kategori, a.kategori)
+
+      if (sortBy === 'stok_asc') return cmpNum(a.stok, b.stok)
+      if (sortBy === 'stok_desc') return cmpNum(b.stok, a.stok)
+
+      if (sortBy === 'modal_asc') return cmpNum(a.harga_modal, b.harga_modal)
+      if (sortBy === 'modal_desc') return cmpNum(b.harga_modal, a.harga_modal)
+
+      return 0
     })
 
     return rows
-  }, [data, search, filterKategori, sortBy, sortDir])
+  }, [data, search, filterKategori, sortBy])
 
   const totalPages = Math.max(1, Math.ceil(filteredSortedData.length / PAGE_SIZE))
 
@@ -129,7 +145,7 @@ export default function StokAksesoris() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, filterKategori, sortBy, sortDir])
+  }, [search, filterKategori, sortBy])
 
   // ===== CRUD ADD =====
   async function handleSubmit(e) {
@@ -187,7 +203,10 @@ export default function StokAksesoris() {
     const stokAkhir = (selectedData.stok || 0) + t - k
     if (stokAkhir < 0) return alert('Stok tidak boleh negatif!')
 
-    const { error } = await supabase.from('stok_aksesoris').update({ stok: stokAkhir }).eq('id', selectedData.id)
+    const { error } = await supabase
+      .from('stok_aksesoris')
+      .update({ stok: stokAkhir })
+      .eq('id', selectedData.id)
     if (error) return alert('Gagal update stok: ' + error.message)
 
     setShowUpdateModal(false)
@@ -269,7 +288,7 @@ export default function StokAksesoris() {
     await fetchData()
   }
 
-  // ===== KATEGORI: tambah manual via modal (tanpa tabel kategori) =====
+  // ===== KATEGORI: tambah manual via modal =====
   const openKategoriModal = () => {
     setNewKategoriName('')
     setShowKategoriModal(true)
@@ -278,15 +297,14 @@ export default function StokAksesoris() {
   const saveNewKategori = () => {
     const k = up(newKategoriName)
     if (!k) return alert('Nama kategori wajib diisi.')
-    // kita tidak bikin tabel kategori baru agar sederhana:
-    // kategori akan langsung dipakai sebagai value dropdown (disimpan ketika tambah item / edit / mass edit)
     setKategori(k)
     setFilterKategori(k)
     setShowKategoriModal(false)
   }
 
-  const showingFrom = filteredSortedData.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
-  const showingTo = Math.min(page * PAGE_SIZE, filteredSortedData.length)
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+  const showingFrom = filteredSortedData.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
+  const showingTo = Math.min(safePage * PAGE_SIZE, filteredSortedData.length)
 
   return (
     <Layout>
@@ -311,7 +329,7 @@ export default function StokAksesoris() {
           </div>
         </div>
 
-        {/* FORM TAMBAH (mirip Pricelist) */}
+        {/* FORM TAMBAH */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-5">
           <div className="font-semibold mb-3">Tambah Produk</div>
 
@@ -320,7 +338,6 @@ export default function StokAksesoris() {
             <input className="border p-2.5 rounded-lg" placeholder="Nama Produk" value={namaProduk} onChange={(e) => setNamaProduk(e.target.value)} />
             <input className="border p-2.5 rounded-lg" placeholder="Warna" value={warna} onChange={(e) => setWarna(e.target.value)} />
 
-            {/* KATEGORI: dropdown + tombol +Kategori (persis Pricelist feel) */}
             <div className="flex gap-2">
               <select
                 className="border p-2.5 rounded-lg flex-1 bg-white"
@@ -355,7 +372,7 @@ export default function StokAksesoris() {
           </form>
         </div>
 
-        {/* TAB KATEGORI di atas tabel (kayak Pricelist) */}
+        {/* TAB KATEGORI */}
         {kategoriOptions.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-4">
             <div className="flex flex-wrap gap-2">
@@ -389,10 +406,10 @@ export default function StokAksesoris() {
           </div>
         )}
 
-        {/* TOOLBAR atas tabel: search + sort + tombol edit massal persis di sini */}
+        {/* TOOLBAR: Search + Filter + Sort (1 menu) + Edit Massal */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5 mb-3">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-            <div className="md:col-span-5">
+            <div className="md:col-span-6">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -416,25 +433,34 @@ export default function StokAksesoris() {
               </select>
             </div>
 
+            {/* ✅ Sort 1 menu (include arah) */}
             <div className="md:col-span-2">
-              <select className="border p-2.5 rounded-lg w-full bg-white" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                <option value="nama_produk">Abjad (Nama)</option>
-                <option value="sku">SKU</option>
-                <option value="kategori">Kategori</option>
-                <option value="stok">Stok</option>
-                <option value="harga_modal">Harga Modal</option>
+              <select
+                className="border p-2.5 rounded-lg w-full bg-white"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="nama_asc">Abjad (Nama) A–Z</option>
+                <option value="nama_desc">Abjad (Nama) Z–A</option>
+
+                <option value="sku_asc">SKU A–Z</option>
+                <option value="sku_desc">SKU Z–A</option>
+
+                <option value="kategori_asc">Kategori A–Z</option>
+                <option value="kategori_desc">Kategori Z–A</option>
+
+                <option value="stok_desc">Stok (Terbanyak)</option>
+                <option value="stok_asc">Stok (Tersedikit)</option>
+
+                <option value="modal_desc">Harga Modal (Terbesar)</option>
+                <option value="modal_asc">Harga Modal (Terkecil)</option>
               </select>
             </div>
 
-            <div className="md:col-span-2 flex gap-2">
-              <select className="border p-2.5 rounded-lg w-full bg-white" value={sortDir} onChange={(e) => setSortDir(e.target.value)}>
-                <option value="asc">ASC</option>
-                <option value="desc">DESC</option>
-              </select>
-
+            <div className="md:col-span-1 flex justify-end">
               <button
                 onClick={openMassModal}
-                className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 whitespace-nowrap"
+                className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 whitespace-nowrap w-full md:w-auto"
                 type="button"
               >
                 Edit Massal
@@ -481,7 +507,11 @@ export default function StokAksesoris() {
                   pageData.map((item) => (
                     <tr key={item.id} className="border-t hover:bg-slate-50">
                       <td className="px-4 py-3">
-                        <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} />
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => toggleSelect(item.id)}
+                        />
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-800">{item.nama_produk}</td>
                       <td className="px-4 py-3">{item.sku}</td>
@@ -490,10 +520,8 @@ export default function StokAksesoris() {
                       <td className="px-4 py-3 text-right">{item.stok ?? 0}</td>
                       <td className="px-4 py-3 text-right">{rupiah(item.harga_modal)}</td>
 
-                      {/* AKSI: warna seperti Pricelist */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {/* Edit = kuning */}
                           <button
                             onClick={() => handleOpenEditModal(item)}
                             className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md text-xs"
@@ -502,7 +530,6 @@ export default function StokAksesoris() {
                             Edit
                           </button>
 
-                          {/* Update stok = tombol netral (abu) */}
                           <button
                             onClick={() => handleOpenUpdateModal(item)}
                             className="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-md text-xs"
@@ -511,7 +538,6 @@ export default function StokAksesoris() {
                             Update Stok
                           </button>
 
-                          {/* Hapus = merah */}
                           <button
                             onClick={() => handleDelete(item.id)}
                             className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-xs"
@@ -531,13 +557,13 @@ export default function StokAksesoris() {
           {/* PAGINATION */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-4 py-3 border-t bg-white">
             <div className="text-sm text-slate-600">
-              Page <b>{page}</b> / <b>{totalPages}</b> • Total <b>{filteredSortedData.length}</b> item
+              Page <b>{safePage}</b> / <b>{totalPages}</b> • Total <b>{filteredSortedData.length}</b> item
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 className="border px-4 py-2 rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"
-                disabled={page <= 1}
+                disabled={safePage <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 type="button"
               >
@@ -545,7 +571,7 @@ export default function StokAksesoris() {
               </button>
               <button
                 className="border px-4 py-2 rounded-lg disabled:opacity-50 bg-white hover:bg-slate-50"
-                disabled={page >= totalPages}
+                disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 type="button"
               >
@@ -612,7 +638,11 @@ export default function StokAksesoris() {
             <div className="bg-white w-full max-w-md rounded-2xl shadow-lg overflow-hidden">
               <div className="px-5 py-4 border-b flex items-center justify-between">
                 <div className="font-semibold">Update Stok</div>
-                <button className="text-sm border px-3 py-1.5 rounded-lg" onClick={() => setShowUpdateModal(false)} type="button">
+                <button
+                  className="text-sm border px-3 py-1.5 rounded-lg"
+                  onClick={() => setShowUpdateModal(false)}
+                  type="button"
+                >
                   Tutup
                 </button>
               </div>
@@ -639,10 +669,18 @@ export default function StokAksesoris() {
                 />
 
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowUpdateModal(false)} className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50" type="button">
+                  <button
+                    onClick={() => setShowUpdateModal(false)}
+                    className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+                    type="button"
+                  >
                     Batal
                   </button>
-                  <button onClick={handleUpdateStok} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700" type="button">
+                  <button
+                    onClick={handleUpdateStok}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    type="button"
+                  >
                     Simpan
                   </button>
                 </div>
@@ -657,7 +695,11 @@ export default function StokAksesoris() {
             <div className="bg-white w-full max-w-md rounded-2xl shadow-lg overflow-hidden">
               <div className="px-5 py-4 border-b flex items-center justify-between">
                 <div className="font-semibold">Edit Data Aksesoris</div>
-                <button className="text-sm border px-3 py-1.5 rounded-lg" onClick={() => setShowEditModal(false)} type="button">
+                <button
+                  className="text-sm border px-3 py-1.5 rounded-lg"
+                  onClick={() => setShowEditModal(false)}
+                  type="button"
+                >
                   Tutup
                 </button>
               </div>
@@ -666,17 +708,29 @@ export default function StokAksesoris() {
                 <div className="grid grid-cols-1 gap-3">
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">SKU</label>
-                    <input className="border px-3 py-2.5 w-full rounded-lg" value={editSku} onChange={(e) => setEditSku(e.target.value)} />
+                    <input
+                      className="border px-3 py-2.5 w-full rounded-lg"
+                      value={editSku}
+                      onChange={(e) => setEditSku(e.target.value)}
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Nama Produk</label>
-                    <input className="border px-3 py-2.5 w-full rounded-lg" value={editNama} onChange={(e) => setEditNama(e.target.value)} />
+                    <input
+                      className="border px-3 py-2.5 w-full rounded-lg"
+                      value={editNama}
+                      onChange={(e) => setEditNama(e.target.value)}
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Warna</label>
-                    <input className="border px-3 py-2.5 w-full rounded-lg" value={editWarna} onChange={(e) => setEditWarna(e.target.value)} />
+                    <input
+                      className="border px-3 py-2.5 w-full rounded-lg"
+                      value={editWarna}
+                      onChange={(e) => setEditWarna(e.target.value)}
+                    />
                   </div>
 
                   <div>
@@ -697,14 +751,27 @@ export default function StokAksesoris() {
 
                   <div>
                     <label className="block text-sm text-slate-600 mb-1">Harga Modal</label>
-                    <input type="number" className="border px-3 py-2.5 w-full rounded-lg" value={editHargaModal} onChange={(e) => setEditHargaModal(e.target.value)} />
+                    <input
+                      type="number"
+                      className="border px-3 py-2.5 w-full rounded-lg"
+                      value={editHargaModal}
+                      onChange={(e) => setEditHargaModal(e.target.value)}
+                    />
                   </div>
 
                   <div className="flex justify-end gap-2 pt-2">
-                    <button onClick={() => setShowEditModal(false)} className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50" type="button">
+                    <button
+                      onClick={() => setShowEditModal(false)}
+                      className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+                      type="button"
+                    >
                       Batal
                     </button>
-                    <button onClick={handleSaveEdit} className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700" type="button">
+                    <button
+                      onClick={handleSaveEdit}
+                      className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700"
+                      type="button"
+                    >
                       Simpan
                     </button>
                   </div>
@@ -720,7 +787,11 @@ export default function StokAksesoris() {
             <div className="bg-white w-full max-w-md rounded-2xl shadow-lg overflow-hidden">
               <div className="px-5 py-4 border-b flex items-center justify-between">
                 <div className="font-semibold">Edit Massal</div>
-                <button className="text-sm border px-3 py-1.5 rounded-lg" onClick={() => setShowMassModal(false)} type="button">
+                <button
+                  className="text-sm border px-3 py-1.5 rounded-lg"
+                  onClick={() => setShowMassModal(false)}
+                  type="button"
+                >
                   Tutup
                 </button>
               </div>
@@ -769,10 +840,18 @@ export default function StokAksesoris() {
                   </div>
 
                   <div className="flex justify-end gap-2 pt-2">
-                    <button onClick={() => setShowMassModal(false)} className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50" type="button">
+                    <button
+                      onClick={() => setShowMassModal(false)}
+                      className="border px-4 py-2 rounded-lg bg-white hover:bg-slate-50"
+                      type="button"
+                    >
                       Batal
                     </button>
-                    <button onClick={saveMassEdit} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700" type="button">
+                    <button
+                      onClick={saveMassEdit}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                      type="button"
+                    >
                       Simpan
                     </button>
                   </div>
