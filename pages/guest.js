@@ -1,3 +1,4 @@
+// pages/guest.js
 import { useEffect, useMemo, useState } from 'react'
 import GuestLayout from '@/components/GuestLayout'
 import { supabase } from '../lib/supabaseClient'
@@ -15,13 +16,13 @@ export default function GuestPage() {
   const [plSearch, setPlSearch] = useState('')
   const [plKategori, setPlKategori] = useState('')
 
-  // ===== STOK BARANG (RPC) =====
+  // ===== STOK BARANG (READ ONLY) =====
   const [stok, setStok] = useState([])
   const [stokSearch, setStokSearch] = useState('')
   const [stokStatus, setStokStatus] = useState('READY')
   const [stokPage, setStokPage] = useState(1)
 
-  // ===== STOK AKSESORIS (RPC) =====
+  // ===== STOK AKSESORIS (READ ONLY) =====
   const [aks, setAks] = useState([])
   const [aksSearch, setAksSearch] = useState('')
   const [aksKategori, setAksKategori] = useState('')
@@ -45,7 +46,7 @@ export default function GuestPage() {
     }
 
     // cek role dari profiles
-    const { data: prof, error } = await supabase
+    const { data: prof } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
@@ -55,80 +56,103 @@ export default function GuestPage() {
     setRole(r)
     setLoadingRole(false)
 
-    // kalau admin nyasar ke /guest, boleh:
-    // 1) tetap tampil guest mode, atau
-    // 2) redirect ke dashboard
-    // pilih salah satu:
-    // if (r === 'admin') window.location.href = '/dashboard'
-
     // load data guest
     await Promise.all([fetchPricelist(), fetchStok(), fetchAks()])
   }
 
+  // ===== PRICELIST =====
   async function fetchPricelist() {
-    // sesuaikan nama tabel pricelist kamu:
-    // misalnya: 'pricelist_produk' atau 'pricelist'
+    // ⚠️ ganti kalau nama tabel pricelist kamu beda
     const { data, error } = await supabase
-      .from('pricelist_produk') // <-- ganti kalau nama tabelmu beda
-      .select('*')
+      .from('pricelist_produk')
+      .select('id,nama_produk,kategori,harga_tokped,harga_shopee,harga_offline')
       .order('kategori', { ascending: true })
       .order('nama_produk', { ascending: true })
 
-    if (!error) setPricelist(data || [])
+    if (error) {
+      console.error('fetchPricelist error:', error)
+      setPricelist([])
+      return
+    }
+
+    setPricelist(data || [])
   }
 
+  // ===== STOK BARANG (tanpa harga modal) =====
   async function fetchStok() {
     setLoading(true)
     const offset = (stokPage - 1) * PAGE_SIZE
+    const q = (stokSearch || '').trim()
+    const status = (stokStatus || '').trim()
 
-    async function fetchStok() {
-  setLoading(true)
-  const offset = (stokPage - 1) * PAGE_SIZE
+    let query = supabase
+      .from('stok')
+      .select('id,nama_produk,sn,imei,warna,storage,garansi,asal_produk,status')
+      .order('nama_produk', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1)
 
-  const { data, error } = await supabase
-    .from('stok')
-    .select('id,nama_produk,sn,imei,warna,storage,garansi,asal_produk,status')
-    .ilike('nama_produk', `%${stokSearch || ''}%`)
-    .eq('status', stokStatus || 'READY')
-    .range(offset, offset + PAGE_SIZE - 1)
+    // status filter
+    if (status) query = query.eq('status', status)
 
-  setLoading(false)
+    // search multi kolom (nama/sn/imei/warna)
+    if (q) {
+      const like = `%${q}%`
+      query = query.or(
+        `nama_produk.ilike.${like},sn.ilike.${like},imei.ilike.${like},warna.ilike.${like}`
+      )
+    }
 
-  if (error) {
-    console.error('fetchStok error:', error)
-    setStok([])
-    return
-  }
-
-  setStok(data || [])
-}
-
+    const { data, error } = await query
 
     setLoading(false)
-    if (!error) setStok(data || [])
+
+    if (error) {
+      console.error('fetchStok error:', error)
+      setStok([])
+      return
+    }
+
+    setStok(data || [])
   }
 
- async function fetchAks() {
-  setLoading(true)
-  const offset = (aksPage - 1) * PAGE_SIZE
+  // ===== STOK AKSESORIS (tanpa harga modal) =====
+  async function fetchAks() {
+    setLoading(true)
+    const offset = (aksPage - 1) * PAGE_SIZE
+    const q = (aksSearch || '').trim()
+    const k = (aksKategori || '').trim()
 
-  const { data, error } = await supabase
-    .from('stok_aksesoris')
-    .select('id,nama_produk,sku,warna,kategori,stok')
-    .ilike('nama_produk', `%${aksSearch || ''}%`)
-    .range(offset, offset + PAGE_SIZE - 1)
+    let query = supabase
+      .from('stok_aksesoris')
+      .select('id,nama_produk,sku,warna,kategori,stok')
+      .order('nama_produk', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1)
 
-  setLoading(false)
+    // search multi kolom (nama/sku/warna)
+    if (q) {
+      const like = `%${q}%`
+      query = query.or(
+        `nama_produk.ilike.${like},sku.ilike.${like},warna.ilike.${like}`
+      )
+    }
 
-  if (error) {
-    console.error('fetchAks error:', error)
-    setAks([])
-    return
+    // filter kategori (optional)
+    if (k) {
+      query = query.ilike('kategori', `%${k}%`)
+    }
+
+    const { data, error } = await query
+
+    setLoading(false)
+
+    if (error) {
+      console.error('fetchAks error:', error)
+      setAks([])
+      return
+    }
+
+    setAks(data || [])
   }
-
-  setAks(data || [])
-}
-
 
   // ===== PRICELIST FILTER LOCAL (ringan) =====
   const plKategoriOptions = useMemo(() => {
@@ -154,9 +178,6 @@ export default function GuestPage() {
   }, [pricelist, plSearch, plKategori])
 
   if (loadingRole) return <div className="p-6">Loading...</div>
-
-  // kalau mau STRICT: hanya guest boleh akses /guest
-  // if (role !== 'guest') return <div className="p-6">Unauthorized</div>
 
   return (
     <GuestLayout>
@@ -313,6 +334,13 @@ export default function GuestPage() {
                   <td className="px-4 py-3">{x.status || '-'}</td>
                 </tr>
               ))}
+              {stok.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                    Tidak ada data.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -415,6 +443,13 @@ export default function GuestPage() {
                   <td className="px-4 py-3 text-right">{x.stok ?? 0}</td>
                 </tr>
               ))}
+              {aks.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                    Tidak ada data.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
