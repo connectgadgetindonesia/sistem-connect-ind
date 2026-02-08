@@ -5,14 +5,11 @@ import { supabase } from '../lib/supabaseClient'
 
 const PAGE_SIZE = 20
 
-const up = (s) => (s || '').toString().trim().toUpperCase()
-
 const rupiah = (n) => {
   const x = typeof n === 'number' ? n : parseInt(String(n || '0'), 10) || 0
   return 'Rp ' + x.toLocaleString('id-ID')
 }
 
-// tombol tab kategori gaya “master”
 function TabButton({ active, children, onClick }) {
   return (
     <button
@@ -33,26 +30,26 @@ export default function GuestPage() {
   const [role, setRole] = useState('')
   const [loadingRole, setLoadingRole] = useState(true)
 
-  // ===== PRICELIST (READ ONLY) =====
+  // ===== PRICELIST =====
   const [pricelist, setPricelist] = useState([])
   const [plSearch, setPlSearch] = useState('')
-  const [plActiveKategori, setPlActiveKategori] = useState('') // tab aktif
-  const [plSort, setPlSort] = useState('AZ') // AZ / ZA
+  const [plActiveKategori, setPlActiveKategori] = useState('')
+  const [plSort, setPlSort] = useState('AZ')
   const pricelistCaptureRef = useRef(null)
 
-  // ===== STOK BARANG (READ ONLY) =====
+  // ===== STOK BARANG =====
   const [stok, setStok] = useState([])
   const [stokSearch, setStokSearch] = useState('')
   const [stokPage, setStokPage] = useState(1)
-  const [stokKategoriOptions, setStokKategoriOptions] = useState([]) // dari kolom tipe (kalau ada)
-  const [stokActiveKategori, setStokActiveKategori] = useState('') // tab aktif
+  const [stokKategoriOptions, setStokKategoriOptions] = useState([])
+  const [stokActiveKategori, setStokActiveKategori] = useState('')
 
-  // ===== STOK AKSESORIS (READ ONLY) =====
+  // ===== STOK AKSESORIS =====
   const [aks, setAks] = useState([])
   const [aksSearch, setAksSearch] = useState('')
   const [aksPage, setAksPage] = useState(1)
   const [aksKategoriOptions, setAksKategoriOptions] = useState([])
-  const [aksActiveKategori, setAksActiveKategori] = useState('') // tab aktif
+  const [aksActiveKategori, setAksActiveKategori] = useState('')
 
   const [loading, setLoading] = useState(false)
 
@@ -71,7 +68,6 @@ export default function GuestPage() {
       return
     }
 
-    // cek role dari profiles
     const { data: prof } = await supabase
       .from('profiles')
       .select('role')
@@ -93,8 +89,6 @@ export default function GuestPage() {
   // PRICELIST
   // =========================
   async function fetchPricelist() {
-    // beberapa project pakai tabel 'pricelist', sebagian 'pricelist_produk'
-    // kita coba 'pricelist' dulu, kalau error coba 'pricelist_produk'
     let res = await supabase
       .from('pricelist')
       .select('id,nama_produk,kategori,harga_tokped,harga_shopee,harga_offline')
@@ -118,10 +112,10 @@ export default function GuestPage() {
     const rows = res.data || []
     setPricelist(rows)
 
-    // set default tab kategori
+    // set default tab kategori (AMAN tanpa useEffect tambahan)
     if (!plActiveKategori) {
       const first = (rows.find((x) => (x.kategori || '').trim())?.kategori || '').trim()
-      setPlActiveKategori(first) // boleh kosong kalau memang belum ada kategori
+      setPlActiveKategori(first)
     }
   }
 
@@ -140,10 +134,7 @@ export default function GuestPage() {
 
     let rows = (pricelist || []).filter((x) => {
       const okK = !k || (x.kategori || '') === k
-      const okQ =
-        !q ||
-        (x.nama_produk || '').toLowerCase().includes(q) ||
-        (x.kategori || '').toLowerCase().includes(q)
+      const okQ = !q || (x.nama_produk || '').toLowerCase().includes(q)
       return okK && okQ
     })
 
@@ -162,10 +153,15 @@ export default function GuestPage() {
       if (!el) return
 
       const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      })
       const image = canvas.toDataURL('image/jpeg', 1.0)
 
-      const fileKategori = (plActiveKategori || 'PRICELIST').replace(/[^\w\- ]+/g, '').trim() || 'PRICELIST'
+      const fileKategori =
+        (plActiveKategori || 'PRICELIST').replace(/[^\w\- ]+/g, '').trim() || 'PRICELIST'
       const link = document.createElement('a')
       link.href = image
       link.download = `PRICELIST-${fileKategori}.jpg`
@@ -178,24 +174,19 @@ export default function GuestPage() {
 
   // =========================
   // STOK BARANG (READY SAJA)
-  // tab kategori: pakai kolom "tipe" kalau ada
-  // kolom tampil: nama_produk, warna, garansi, storage
   // =========================
   async function fetchStokKategoriOptions() {
-    // ambil tipe untuk tab (kalau tabel stok punya kolom tipe)
     const { data, error } = await supabase
       .from('stok')
       .select('tipe')
       .eq('status', 'READY')
-      .limit(2000)
+      .limit(3000)
 
     if (error) {
-      // kalau kolom "tipe" tidak ada, biarkan kosong => tab hanya "Semua"
       console.warn('fetchStokKategoriOptions warning:', error.message)
       setStokKategoriOptions([])
       setStokActiveKategori('')
-      // tetap fetch stok
-      await fetchStok(1, '', '')
+      await fetchStok(1, stokSearch, '')
       return
     }
 
@@ -204,11 +195,14 @@ export default function GuestPage() {
       const t = (x?.tipe || '').toString().trim()
       if (t) set.add(t)
     })
+
     const opts = Array.from(set).sort((a, b) => a.localeCompare(b))
     setStokKategoriOptions(opts)
 
-    if (!stokActiveKategori && opts.length > 0) setStokActiveKategori(opts[0])
-    await fetchStok(1, stokSearch, opts.length > 0 ? (stokActiveKategori || opts[0]) : '')
+    const active = stokActiveKategori || (opts[0] || '')
+    if (!stokActiveKategori) setStokActiveKategori(active)
+
+    await fetchStok(1, stokSearch, active)
   }
 
   async function fetchStok(page = stokPage, search = stokSearch, tipe = stokActiveKategori) {
@@ -234,7 +228,6 @@ export default function GuestPage() {
     }
 
     const { data, error } = await query
-
     setLoading(false)
 
     if (error) {
@@ -248,8 +241,6 @@ export default function GuestPage() {
 
   // =========================
   // STOK AKSESORIS (stok > 0)
-  // tab kategori: kolom kategori
-  // kolom tampil: nama_produk, warna, stok
   // =========================
   async function fetchAksKategoriOptions() {
     const { data, error } = await supabase
@@ -262,7 +253,7 @@ export default function GuestPage() {
       console.error('fetchAksKategoriOptions error:', error)
       setAksKategoriOptions([])
       setAksActiveKategori('')
-      await fetchAks(1, '', '')
+      await fetchAks(1, aksSearch, '')
       return
     }
 
@@ -275,8 +266,10 @@ export default function GuestPage() {
     const opts = Array.from(set).sort((a, b) => a.localeCompare(b))
     setAksKategoriOptions(opts)
 
-    if (!aksActiveKategori && opts.length > 0) setAksActiveKategori(opts[0])
-    await fetchAks(1, aksSearch, opts.length > 0 ? (aksActiveKategori || opts[0]) : '')
+    const active = aksActiveKategori || (opts[0] || '')
+    if (!aksActiveKategori) setAksActiveKategori(active)
+
+    await fetchAks(1, aksSearch, active)
   }
 
   async function fetchAks(page = aksPage, search = aksSearch, kategori = aksActiveKategori) {
@@ -300,7 +293,6 @@ export default function GuestPage() {
     }
 
     const { data, error } = await query
-
     setLoading(false)
 
     if (error) {
@@ -312,22 +304,13 @@ export default function GuestPage() {
     setAks(data || [])
   }
 
-  // ===== GUARD =====
+  // ===== GUARD (ini aman karena hook sudah selesai dipanggil) =====
   if (loadingRole) return <div className="p-6">Loading...</div>
-
-  // optional strict:
-  // if (role !== 'guest') return <div className="p-6">Unauthorized</div>
-
-  // pastikan default kategori pricelist kebentuk walau pertama kali kosong
-  useEffect(() => {
-    if (!plActiveKategori && plKategoriOptions.length > 0) setPlActiveKategori(plKategoriOptions[0])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plKategoriOptions.join('|')])
 
   return (
     <GuestLayout>
       {/* =======================
-          SECTION 1: PRICELIST
+          PRICELIST
       ======================= */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5 mb-6">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -354,7 +337,6 @@ export default function GuestPage() {
           </div>
         </div>
 
-        {/* Tabs kategori pricelist */}
         <div className="flex flex-wrap gap-2 mb-4">
           {plKategoriOptions.length === 0 ? (
             <div className="text-sm text-slate-500">Kategori belum ada.</div>
@@ -400,7 +382,6 @@ export default function GuestPage() {
           </div>
         </div>
 
-        {/* Area yang di-capture untuk JPG */}
         <div ref={pricelistCaptureRef} className="border rounded-2xl overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 font-bold text-sm">
             {plActiveKategori || 'PRICELIST'}
@@ -443,7 +424,7 @@ export default function GuestPage() {
       </div>
 
       {/* =======================
-          SECTION 2: STOK BARANG (READY ONLY)
+          STOK BARANG (READY ONLY)
       ======================= */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5 mb-6">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -461,7 +442,6 @@ export default function GuestPage() {
           </button>
         </div>
 
-        {/* Tabs kategori stok barang (tipe) */}
         <div className="flex flex-wrap gap-2 mb-4">
           {stokKategoriOptions.length === 0 ? (
             <TabButton
@@ -475,21 +455,19 @@ export default function GuestPage() {
               Semua
             </TabButton>
           ) : (
-            <>
-              {stokKategoriOptions.map((k) => (
-                <TabButton
-                  key={k}
-                  active={stokActiveKategori === k}
-                  onClick={() => {
-                    setStokActiveKategori(k)
-                    setStokPage(1)
-                    fetchStok(1, stokSearch, k)
-                  }}
-                >
-                  {k}
-                </TabButton>
-              ))}
-            </>
+            stokKategoriOptions.map((k) => (
+              <TabButton
+                key={k}
+                active={stokActiveKategori === k}
+                onClick={() => {
+                  setStokActiveKategori(k)
+                  setStokPage(1)
+                  fetchStok(1, stokSearch, k)
+                }}
+              >
+                {k}
+              </TabButton>
+            ))
           )}
         </div>
 
@@ -578,7 +556,7 @@ export default function GuestPage() {
       </div>
 
       {/* =======================
-          SECTION 3: STOK AKSESORIS (stok > 0)
+          STOK AKSESORIS (stok > 0)
       ======================= */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 md:p-5">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -596,7 +574,6 @@ export default function GuestPage() {
           </button>
         </div>
 
-        {/* Tabs kategori aksesoris */}
         <div className="flex flex-wrap gap-2 mb-4">
           {aksKategoriOptions.length === 0 ? (
             <TabButton
