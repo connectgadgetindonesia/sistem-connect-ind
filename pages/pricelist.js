@@ -14,9 +14,7 @@ const toDecimal = (v) => {
 }
 
 const toNumber = (v) =>
-  typeof v === 'number'
-    ? v
-    : parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
+  typeof v === 'number' ? v : parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
 
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 
@@ -117,6 +115,12 @@ export default function PricelistPage() {
   })
   const [bulkSaving, setBulkSaving] = useState(false)
 
+  // ===== Edit Nama Kategori =====
+  const [editKategoriOpen, setEditKategoriOpen] = useState(false)
+  const [editKategoriOld, setEditKategoriOld] = useState('')
+  const [editKategoriNew, setEditKategoriNew] = useState('')
+  const [editKategoriSaving, setEditKategoriSaving] = useState(false)
+
   // ===== Download JPG =====
   const printRef = useRef(null)
 
@@ -154,186 +158,184 @@ export default function PricelistPage() {
   }, [rows, search, sortBy])
 
   async function downloadJpgKategori() {
-  try {
-    const mod = await import('html2canvas')
-    const html2canvas = mod.default
+    try {
+      const mod = await import('html2canvas')
+      const html2canvas = mod.default
 
-    const kategori = activeKategori || 'Kategori'
-    const rowsData = (filteredRows || []).map((r) => ({
-      id: r.id,
-      nama: String(r.nama_produk || '').toUpperCase(),
-      harga: formatRp(r.harga_offline),
-    }))
+      const kategori = activeKategori || 'Kategori'
+      const rowsData = (filteredRows || []).map((r) => ({
+        id: r.id,
+        nama: String(r.nama_produk || '').toUpperCase(),
+        harga: formatRp(r.harga_offline),
+      }))
 
-    if (!rowsData.length) return alert('Tidak ada data untuk didownload.')
+      if (!rowsData.length) return alert('Tidak ada data untuk didownload.')
 
-    // ====== SETTING 9:16 ======
-    const W = 1080
-    const H = 1920
-    const PAD = 64
-    const HEADER_H = 260
-    const FOOTER_H = 140
-    const TABLE_HEAD_H = 74
-    const ROW_H = 86
+      // ====== SETTING 9:16 ======
+      const W = 1080
+      const H = 1920
+      const PAD = 64
+      const HEADER_H = 260
+      const FOOTER_H = 140
+      const TABLE_HEAD_H = 74
+      const ROW_H = 86
 
-    const tableAreaH = H - (PAD * 2) - HEADER_H - FOOTER_H - TABLE_HEAD_H
-    const ITEMS_PER_PAGE = Math.max(1, Math.floor(tableAreaH / ROW_H))
+      const tableAreaH = H - PAD * 2 - HEADER_H - FOOTER_H - TABLE_HEAD_H
+      const ITEMS_PER_PAGE = Math.max(1, Math.floor(tableAreaH / ROW_H))
 
-    const chunks = []
-    for (let i = 0; i < rowsData.length; i += ITEMS_PER_PAGE) {
-      chunks.push(rowsData.slice(i, i + ITEMS_PER_PAGE))
-    }
-
-    // format tanggal: 07 Feb 2026
-    const now = new Date()
-    const month = now.toLocaleString('id-ID', { month: 'short' })
-    const day = String(now.getDate()).padStart(2, '0')
-    const year = now.getFullYear()
-    const tanggal = `${day} ${month} ${year}`
-
-    const safeKategori = String(kategori).replace(/\s+/g, '-')
-
-    // ✅ kalau multi page: kita kumpulkan dulu semua jpg blob lalu zip
-    const filesForZip = []
-
-    const renderPageToBlob = async (items, pageIndex, totalPages) => {
-      const wrap = document.createElement('div')
-      wrap.style.position = 'fixed'
-      wrap.style.left = '-99999px'
-      wrap.style.top = '0'
-      wrap.style.width = W + 'px'
-      wrap.style.height = H + 'px'
-      wrap.style.background = '#ffffff'
-      wrap.style.fontFamily = 'Arial, sans-serif'
-      wrap.style.color = '#0f172a'
-      wrap.style.overflow = 'hidden'
-      wrap.style.borderRadius = '28px'
-
-      wrap.innerHTML = `
-        <div style="
-          height:${HEADER_H}px;
-          padding:${PAD}px;
-          color:#ffffff;
-          background: linear-gradient(135deg, #0b1220 0%, #111827 55%, #0f172a 100%);
-          position: relative;
-        ">
-          <div style="font-size:18px; letter-spacing:2px; opacity:.9; font-weight:800;">
-            CONNECT.IND • PRICELIST
-          </div>
-
-          <div style="margin-top:18px; font-size:72px; font-weight:900; line-height:1;">
-            ${String(kategori)}
-          </div>
-
-          <div style="margin-top:14px; font-size:26px; opacity:.9; font-weight:700;">
-            Update: <b>${tanggal}</b>
-          </div>
-
-          <div style="position:absolute; right:${PAD}px; top:${PAD}px; text-align:right;">
-            <div style="font-size:18px; opacity:.9; font-weight:800;">Harga Offline</div>
-            <div style="font-size:34px; font-weight:900;">Semarang</div>
-            ${
-              totalPages > 1
-                ? `<div style="margin-top:10px; font-size:18px; opacity:.9; font-weight:800;">${pageIndex + 1}/${totalPages}</div>`
-                : ''
-            }
-          </div>
-        </div>
-
-        <div style="padding:${PAD}px;">
-          <div style="
-            border:1px solid #e5e7eb;
-            border-radius:22px;
-            overflow:hidden;
-            box-shadow: 0 6px 20px rgba(15,23,42,0.06);
-            background:#fff;
-          ">
-            <div style="display:flex; background:#f1f5f9; border-bottom:1px solid #e5e7eb;">
-              <div style="flex:1; padding:18px 20px; font-size:20px; font-weight:900;">Nama Produk</div>
-              <div style="width:320px; padding:18px 20px; font-size:20px; font-weight:900; text-align:right;">Harga</div>
-            </div>
-
-            <div>
-              ${items
-                .map(
-                  (x) => `
-                <div style="display:flex; border-top:1px solid #e5e7eb; background:#ffffff;">
-                  <div style="flex:1; padding:20px 20px; font-size:22px; font-weight:900; letter-spacing:.2px;">
-                    ${x.nama}
-                  </div>
-                  <div style="width:320px; padding:20px 20px; font-size:26px; font-weight:900; text-align:right;">
-                    ${x.harga}
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
-          </div>
-        </div>
-
-        <div style="
-          position:absolute;
-          left:0; right:0; bottom:0;
-          height:${FOOTER_H}px;
-          padding: 0 ${PAD}px ${PAD}px ${PAD}px;
-          display:flex;
-          align-items:flex-end;
-          justify-content:space-between;
-          color:#64748b;
-          font-size:20px;
-          font-weight:700;
-          background: transparent;
-        ">
-          <div>Harga dapat berubah sewaktu-waktu.</div>
-          <div style="font-weight:900;">CONNECT.IND</div>
-        </div>
-      `
-
-      document.body.appendChild(wrap)
-
-      const canvas = await html2canvas(wrap, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        width: W,
-        height: H,
-        windowWidth: W,
-        windowHeight: H,
-      })
-
-      const blob = await canvasToJpegBlob(canvas, 0.95)
-
-      wrap.remove()
-      return blob
-    }
-
-    // ==== generate semua halaman dulu
-    for (let i = 0; i < chunks.length; i++) {
-      // eslint-disable-next-line no-await-in-loop
-      const blob = await renderPageToBlob(chunks[i], i, chunks.length)
-
-      const suffix = chunks.length > 1 ? `-${i + 1}` : ''
-      const filename = `Pricelist-${safeKategori}${suffix}.jpg`
-
-      if (chunks.length === 1) {
-        // ✅ single: langsung download JPG (HP aman karena 1x download)
-        await saveBlob(filename, blob)
-      } else {
-        filesForZip.push({ name: filename, blob })
+      const chunks = []
+      for (let i = 0; i < rowsData.length; i += ITEMS_PER_PAGE) {
+        chunks.push(rowsData.slice(i, i + ITEMS_PER_PAGE))
       }
-    }
 
-    // ✅ multi: download 1 ZIP (HP aman)
-    if (filesForZip.length > 0) {
-      await saveZip(`Pricelist-${safeKategori}.zip`, filesForZip)
+      // format tanggal: 07 Feb 2026
+      const now = new Date()
+      const month = now.toLocaleString('id-ID', { month: 'short' })
+      const day = String(now.getDate()).padStart(2, '0')
+      const year = now.getFullYear()
+      const tanggal = `${day} ${month} ${year}`
+
+      const safeKategori = String(kategori).replace(/\s+/g, '-')
+
+      // ✅ kalau multi page: kita kumpulkan dulu semua jpg blob lalu zip
+      const filesForZip = []
+
+      const renderPageToBlob = async (items, pageIndex, totalPages) => {
+        const wrap = document.createElement('div')
+        wrap.style.position = 'fixed'
+        wrap.style.left = '-99999px'
+        wrap.style.top = '0'
+        wrap.style.width = W + 'px'
+        wrap.style.height = H + 'px'
+        wrap.style.background = '#ffffff'
+        wrap.style.fontFamily = 'Arial, sans-serif'
+        wrap.style.color = '#0f172a'
+        wrap.style.overflow = 'hidden'
+        wrap.style.borderRadius = '28px'
+
+        wrap.innerHTML = `
+          <div style="
+            height:${HEADER_H}px;
+            padding:${PAD}px;
+            color:#ffffff;
+            background: linear-gradient(135deg, #0b1220 0%, #111827 55%, #0f172a 100%);
+            position: relative;
+          ">
+            <div style="font-size:18px; letter-spacing:2px; opacity:.9; font-weight:800;">
+              CONNECT.IND • PRICELIST
+            </div>
+
+            <div style="margin-top:18px; font-size:72px; font-weight:900; line-height:1;">
+              ${String(kategori)}
+            </div>
+
+            <div style="margin-top:14px; font-size:26px; opacity:.9; font-weight:700;">
+              Update: <b>${tanggal}</b>
+            </div>
+
+            <div style="position:absolute; right:${PAD}px; top:${PAD}px; text-align:right;">
+              <div style="font-size:18px; opacity:.9; font-weight:800;">Harga Offline</div>
+              <div style="font-size:34px; font-weight:900;">Semarang</div>
+              ${
+                totalPages > 1
+                  ? `<div style="margin-top:10px; font-size:18px; opacity:.9; font-weight:800;">${pageIndex + 1}/${totalPages}</div>`
+                  : ''
+              }
+            </div>
+          </div>
+
+          <div style="padding:${PAD}px;">
+            <div style="
+              border:1px solid #e5e7eb;
+              border-radius:22px;
+              overflow:hidden;
+              box-shadow: 0 6px 20px rgba(15,23,42,0.06);
+              background:#fff;
+            ">
+              <div style="display:flex; background:#f1f5f9; border-bottom:1px solid #e5e7eb;">
+                <div style="flex:1; padding:18px 20px; font-size:20px; font-weight:900;">Nama Produk</div>
+                <div style="width:320px; padding:18px 20px; font-size:20px; font-weight:900; text-align:right;">Harga</div>
+              </div>
+
+              <div>
+                ${items
+                  .map(
+                    (x) => `
+                  <div style="display:flex; border-top:1px solid #e5e7eb; background:#ffffff;">
+                    <div style="flex:1; padding:20px 20px; font-size:22px; font-weight:900; letter-spacing:.2px;">
+                      ${x.nama}
+                    </div>
+                    <div style="width:320px; padding:20px 20px; font-size:26px; font-weight:900; text-align:right;">
+                      ${x.harga}
+                    </div>
+                  </div>
+                `
+                  )
+                  .join('')}
+              </div>
+            </div>
+          </div>
+
+          <div style="
+            position:absolute;
+            left:0; right:0; bottom:0;
+            height:${FOOTER_H}px;
+            padding: 0 ${PAD}px ${PAD}px ${PAD}px;
+            display:flex;
+            align-items:flex-end;
+            justify-content:space-between;
+            color:#64748b;
+            font-size:20px;
+            font-weight:700;
+            background: transparent;
+          ">
+            <div>Harga dapat berubah sewaktu-waktu.</div>
+            <div style="font-weight:900;">CONNECT.IND</div>
+          </div>
+        `
+
+        document.body.appendChild(wrap)
+
+        const canvas = await html2canvas(wrap, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          width: W,
+          height: H,
+          windowWidth: W,
+          windowHeight: H,
+        })
+
+        const blob = await canvasToJpegBlob(canvas, 0.95)
+        wrap.remove()
+        return blob
+      }
+
+      // ==== generate semua halaman dulu
+      for (let i = 0; i < chunks.length; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const blob = await renderPageToBlob(chunks[i], i, chunks.length)
+
+        const suffix = chunks.length > 1 ? `-${i + 1}` : ''
+        const filename = `Pricelist-${safeKategori}${suffix}.jpg`
+
+        if (chunks.length === 1) {
+          // ✅ single: langsung download JPG (HP aman karena 1x download)
+          await saveBlob(filename, blob)
+        } else {
+          filesForZip.push({ name: filename, blob })
+        }
+      }
+
+      // ✅ multi: download 1 ZIP (HP aman)
+      if (filesForZip.length > 0) {
+        await saveZip(`Pricelist-${safeKategori}.zip`, filesForZip)
+      }
+    } catch (e) {
+      console.error('downloadJpgKategori error:', e)
+      alert('Gagal download. Error: ' + (e?.message || String(e)))
     }
-  } catch (e) {
-    console.error('downloadJpgKategori error:', e)
-    alert('Gagal download. Error: ' + (e?.message || String(e)))
   }
-}
-
 
   useEffect(() => {
     boot()
@@ -352,9 +354,7 @@ export default function PricelistPage() {
 
       if (kErr) console.error('load kategori error:', kErr)
 
-      const listFromKategori = (kData || [])
-        .map((x) => normalizeKategoriLabel(x.nama))
-        .filter(Boolean)
+      const listFromKategori = (kData || []).map((x) => normalizeKategoriLabel(x.nama)).filter(Boolean)
 
       // 2) ambil distinct dari tabel pricelist (buat jaga-jaga biar tab gak pernah hilang)
       const { data: d2, error: e2 } = await supabase.from('pricelist').select('kategori')
@@ -444,6 +444,74 @@ export default function PricelistPage() {
     }
   }
 
+  // ===== Edit Nama Kategori (rename kategori) =====
+  function openEditKategori() {
+    const oldName = normalizeKategoriLabel(activeKategori)
+    if (!oldName) return alert('Kategori belum dipilih.')
+    setEditKategoriOld(oldName)
+    setEditKategoriNew(oldName)
+    setEditKategoriOpen(true)
+  }
+
+  async function saveEditKategori() {
+    const oldName = normalizeKategoriLabel(editKategoriOld)
+    const newName = normalizeKategoriLabel(editKategoriNew)
+
+    if (!oldName) return alert('Kategori lama tidak valid.')
+    if (!newName) return alert('Nama kategori baru masih kosong.')
+    if (newName === oldName) {
+      setEditKategoriOpen(false)
+      return
+    }
+
+    if ((kategoriList || []).includes(newName)) {
+      return alert('Nama kategori sudah ada. Gunakan nama lain.')
+    }
+
+    try {
+      setEditKategoriSaving(true)
+
+      // 1) rename di pricelist_kategori
+      const { error: kErr } = await supabase.from('pricelist_kategori').update({ nama: newName }).eq('nama', oldName)
+
+      if (kErr) {
+        console.error('rename pricelist_kategori error:', kErr)
+        alert('Gagal rename kategori (pricelist_kategori).')
+        return
+      }
+
+      // 2) rename semua produk di pricelist
+      const { error: pErr } = await supabase.from('pricelist').update({ kategori: newName }).eq('kategori', oldName)
+
+      if (pErr) {
+        console.error('rename pricelist error:', pErr)
+        alert('Kategori berhasil diganti di master, tapi gagal update data produk.')
+        return
+      }
+
+      // 3) rename setting kategori (boleh kosong)
+      const { error: sErr } = await supabase
+        .from('pricelist_setting')
+        .update({ kategori: newName })
+        .eq('kategori', oldName)
+
+      if (sErr) {
+        console.error('rename setting error:', sErr)
+        alert('Kategori berhasil diganti, tapi gagal update setting kategori.')
+        return
+      }
+
+      setEditKategoriOpen(false)
+
+      // reload tab & data, jadikan kategori baru aktif
+      await boot(newName)
+      await fetchRows(newName)
+      alert('Nama kategori berhasil diubah.')
+    } finally {
+      setEditKategoriSaving(false)
+    }
+  }
+
   async function openSetting() {
     setShowSetting(true)
     await loadSetting(settingKategori || activeKategori)
@@ -500,10 +568,7 @@ export default function PricelistPage() {
     const shpPct = toDecimal(sData?.shopee_pajak_pct ?? 0)
     const shpFlat = toNumber(sData?.shopee_biaya_flat ?? 0)
 
-    const { data: pData, error: pErr } = await supabase
-      .from('pricelist')
-      .select('id, harga_offline')
-      .eq('kategori', k)
+    const { data: pData, error: pErr } = await supabase.from('pricelist').select('id, harga_offline').eq('kategori', k)
 
     if (pErr) {
       console.error('applySetting fetch products error:', pErr)
@@ -768,6 +833,9 @@ export default function PricelistPage() {
             <button onClick={openSetting} style={btnOutline}>
               Setting Pajak & Biaya
             </button>
+            <button onClick={openEditKategori} style={btnOutline} disabled={!activeKategori}>
+              Edit Nama Kategori
+            </button>
           </div>
         </div>
 
@@ -983,9 +1051,7 @@ export default function PricelistPage() {
               borderRadius: 12,
             }}
           >
-            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
-              PRICE LIST - {activeKategori}
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>PRICE LIST - {activeKategori}</div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -1011,6 +1077,51 @@ export default function PricelistPage() {
             <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>CONNECT.IND</div>
           </div>
         </div>
+
+        {/* MODAL EDIT KATEGORI */}
+        {editKategoriOpen && (
+          <div style={modalOverlay} onMouseDown={() => setEditKategoriOpen(false)}>
+            <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>Edit Nama Kategori</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                    Mengubah kategori akan otomatis update semua produk & setting kategori.
+                  </div>
+                </div>
+                <button style={btnOutline} onClick={() => setEditKategoriOpen(false)}>
+                  Tutup
+                </button>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div style={fieldRow}>
+                  <div style={label}>Kategori Lama</div>
+                  <input style={{ ...input, background: '#f8fafc' }} value={editKategoriOld} disabled />
+                </div>
+
+                <div style={fieldRow}>
+                  <div style={label}>Kategori Baru</div>
+                  <input
+                    style={input}
+                    value={editKategoriNew}
+                    onChange={(e) => setEditKategoriNew(e.target.value)}
+                    placeholder="Contoh: iPhone / iPad / Mac / Aksesoris"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button style={btnOutline} onClick={() => setEditKategoriOpen(false)}>
+                  Batal
+                </button>
+                <button style={btnPrimary} onClick={saveEditKategori} disabled={editKategoriSaving}>
+                  {editKategoriSaving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODAL SETTING */}
         {showSetting && (
@@ -1335,6 +1446,7 @@ const label = {
   fontWeight: 800,
   color: '#0f172a',
 }
+
 // ===== helpers download (ZIP + single file) =====
 async function canvasToJpegBlob(canvas, quality = 0.95) {
   return await new Promise((resolve, reject) => {
