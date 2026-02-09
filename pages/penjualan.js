@@ -14,19 +14,32 @@ const clampInt = (v, min = 1, max = 999) => {
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
 const SKU_OFFICE = 'OFC-365-1'
 
-const rsStyles = {
-  control: (base) => ({
+const card = 'bg-white border border-gray-200 rounded-xl'
+const input = 'border border-gray-200 p-2 rounded-lg w-full'
+const label = 'text-sm text-gray-600'
+const btn = 'px-4 py-2 rounded-lg font-medium'
+const btnBlue = `${btn} bg-blue-600 text-white hover:opacity-90`
+const btnYellow = `${btn} bg-yellow-600 text-white hover:opacity-90`
+const btnGreen = `${btn} bg-green-600 text-white hover:opacity-90`
+const btnGray = `${btn} bg-slate-700 text-white hover:opacity-90`
+
+const selectStyles = {
+  control: (base, state) => ({
     ...base,
-    minHeight: 40,
-    borderColor: '#e5e7eb',
+    borderColor: state.isFocused ? '#93c5fd' : '#e5e7eb', // gray-200
     boxShadow: 'none',
+    borderRadius: 10,
+    minHeight: 40
   }),
   menu: (base) => ({ ...base, zIndex: 50 }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused ? '#f3f4f6' : 'white', // gray-100
+    color: '#111827' // gray-900
+  })
 }
 
 export default function Penjualan() {
-  const [submitting, setSubmitting] = useState(false)
-
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
   const [diskonInvoice, setDiskonInvoice] = useState('')
@@ -36,13 +49,15 @@ export default function Penjualan() {
   const [biayaNominal, setBiayaNominal] = useState('')
   const [biayaList, setBiayaList] = useState([]) // {desc, nominal}
 
+  const [submitting, setSubmitting] = useState(false)
+
   const [formData, setFormData] = useState({
     tanggal: '',
     nama_pembeli: '',
     alamat: '',
     no_wa: '',
     referral: '',
-    dilayani_oleh: '',
+    dilayani_oleh: ''
   })
 
   // ====== TAB PEMBELI (Customer vs Indent) ======
@@ -62,7 +77,7 @@ export default function Penjualan() {
     storage: '',
     office_username: '',
     qty: 1,
-    is_aksesoris: false,
+    is_aksesoris: false
   })
 
   const [bonusBaru, setBonusBaru] = useState({
@@ -74,35 +89,36 @@ export default function Penjualan() {
     storage: '',
     office_username: '',
     qty: 1,
-    is_aksesoris: false,
+    is_aksesoris: false
   })
 
   const [options, setOptions] = useState([])
 
   // ====== OPTIONS SN/SKU ======
-  async function refreshOptions() {
-    const { data: stokReady } = await supabase
-      .from('stok')
-      .select('sn, nama_produk, warna')
-      .eq('status', 'READY')
-
-    const { data: aksesoris } = await supabase.from('stok_aksesoris').select('sku, nama_produk, warna')
-
-    const combinedOptions = [
-      ...(stokReady?.map((item) => ({
-        value: item.sn,
-        label: `${item.sn} | ${item.nama_produk} | ${item.warna}`,
-      })) || []),
-      ...(aksesoris?.map((item) => ({
-        value: item.sku,
-        label: `${item.sku} | ${item.nama_produk} | ${item.warna}`,
-      })) || []),
-    ]
-    setOptions(combinedOptions)
-  }
-
   useEffect(() => {
-    refreshOptions()
+    async function fetchOptions() {
+      const { data: stokReady } = await supabase
+        .from('stok')
+        .select('sn, nama_produk, warna')
+        .eq('status', 'READY')
+
+      const { data: aksesoris } = await supabase
+        .from('stok_aksesoris')
+        .select('sku, nama_produk, warna')
+
+      const combinedOptions = [
+        ...(stokReady?.map((item) => ({
+          value: item.sn,
+          label: `${item.sn} | ${item.nama_produk} | ${item.warna || '-'}`
+        })) || []),
+        ...(aksesoris?.map((item) => ({
+          value: item.sku,
+          label: `${item.sku} | ${item.nama_produk} | ${item.warna || '-'}`
+        })) || [])
+      ]
+      setOptions(combinedOptions)
+    }
+    fetchOptions()
   }, [])
 
   // ====== OPTIONS CUSTOMER LAMA ======
@@ -130,7 +146,7 @@ export default function Penjualan() {
           map.set(key, {
             nama,
             alamat: (r.alamat || '').toString(),
-            no_wa: wa,
+            no_wa: wa
           })
         }
       })
@@ -140,7 +156,7 @@ export default function Penjualan() {
         .map((c) => ({
           value: `${c.nama}__${c.no_wa}`,
           label: `${c.nama}${c.no_wa ? ` • ${c.no_wa}` : ''}`,
-          meta: c,
+          meta: c
         }))
 
       setCustomerOptions(opts)
@@ -181,21 +197,21 @@ export default function Penjualan() {
         const infoProduk = [namaProduk, warna, storage].filter(Boolean).join(' ')
         const infoBayar =
           hargaJual > 0 || dp > 0
-            ? `DP ${dp ? `Rp ${dp.toLocaleString('id-ID')}` : 'Rp 0'} • Sisa Rp ${sisa.toLocaleString('id-ID')}`
+            ? `DP Rp ${dp.toLocaleString('id-ID')} • Sisa Rp ${sisa.toLocaleString('id-ID')}`
             : ''
 
         return {
           value: r.id,
-          label: `${nama}${wa ? ` • ${wa}` : ''}${status ? ` • ${status}` : ''}${infoProduk ? ` • ${infoProduk}` : ''}${
-            infoBayar ? ` • ${infoBayar}` : ''
-          }`,
+          label: `${nama}${wa ? ` • ${wa}` : ''}${status ? ` • ${status}` : ''}${
+            infoProduk ? ` • ${infoProduk}` : ''
+          }${infoBayar ? ` • ${infoBayar}` : ''}`,
           meta: {
             id: r.id,
             nama,
             no_wa: wa,
             alamat,
-            raw: r,
-          },
+            raw: r
+          }
         }
       })
 
@@ -214,7 +230,7 @@ export default function Penjualan() {
         ...prev,
         nama_pembeli: c.nama || '',
         alamat: c.alamat || '',
-        no_wa: c.no_wa || '',
+        no_wa: c.no_wa || ''
       }))
       setSelectedIndent(null)
     } else {
@@ -224,7 +240,7 @@ export default function Penjualan() {
         ...prev,
         nama_pembeli: i.nama || '',
         alamat: i.alamat || '',
-        no_wa: i.no_wa || '',
+        no_wa: i.no_wa || ''
       }))
       setSelectedCustomer(null)
     }
@@ -232,12 +248,12 @@ export default function Penjualan() {
 
   // ====== CARI STOK (auto isi detail) ======
   useEffect(() => {
-    if (produkBaru.sn_sku.length > 0) cariStok(produkBaru.sn_sku, setProdukBaru)
+    if ((produkBaru.sn_sku || '').length > 0) cariStok(produkBaru.sn_sku, setProdukBaru)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [produkBaru.sn_sku])
 
   useEffect(() => {
-    if (bonusBaru.sn_sku.length > 0) cariStok(bonusBaru.sn_sku, setBonusBaru)
+    if ((bonusBaru.sn_sku || '').length > 0) cariStok(bonusBaru.sn_sku, setBonusBaru)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bonusBaru.sn_sku])
 
@@ -260,12 +276,16 @@ export default function Penjualan() {
         garansi: unit.garansi || '',
         storage: unit.storage || '',
         is_aksesoris: false,
-        qty: 1,
+        qty: 1
       }))
       return
     }
 
-    const { data: aks } = await supabase.from('stok_aksesoris').select('*').eq('sku', code).maybeSingle()
+    const { data: aks } = await supabase
+      .from('stok_aksesoris')
+      .select('*')
+      .eq('sku', code)
+      .maybeSingle()
 
     if (aks) {
       setter((prev) => ({
@@ -276,13 +296,13 @@ export default function Penjualan() {
         garansi: '',
         storage: '',
         is_aksesoris: true,
-        qty: prev.qty && prev.qty > 0 ? prev.qty : 1,
+        qty: prev.qty && prev.qty > 0 ? prev.qty : 1
       }))
     } else {
       setter((prev) => ({
         ...prev,
         is_aksesoris: false,
-        qty: 1,
+        qty: 1
       }))
     }
   }
@@ -297,7 +317,14 @@ export default function Penjualan() {
 
     const qty = produkBaru.is_aksesoris ? clampInt(produkBaru.qty, 1, 100) : 1
 
-    setProdukList((prev) => [...prev, { ...produkBaru, qty }])
+    setProdukList((p) => [
+      ...p,
+      {
+        ...produkBaru,
+        sn_sku: code,
+        qty
+      }
+    ])
 
     setProdukBaru({
       sn_sku: '',
@@ -309,7 +336,7 @@ export default function Penjualan() {
       storage: '',
       office_username: '',
       qty: 1,
-      is_aksesoris: false,
+      is_aksesoris: false
     })
   }
 
@@ -323,7 +350,14 @@ export default function Penjualan() {
 
     const qty = bonusBaru.is_aksesoris ? clampInt(bonusBaru.qty, 1, 100) : 1
 
-    setBonusList((prev) => [...prev, { ...bonusBaru, qty }])
+    setBonusList((p) => [
+      ...p,
+      {
+        ...bonusBaru,
+        sn_sku: code,
+        qty
+      }
+    ])
 
     setBonusBaru({
       sn_sku: '',
@@ -334,27 +368,27 @@ export default function Penjualan() {
       storage: '',
       office_username: '',
       qty: 1,
-      is_aksesoris: false,
+      is_aksesoris: false
     })
-  }
-
-  function hapusProduk(i) {
-    setProdukList((prev) => prev.filter((_, idx) => idx !== i))
-  }
-  function hapusBonus(i) {
-    setBonusList((prev) => prev.filter((_, idx) => idx !== i))
-  }
-  function hapusBiaya(i) {
-    setBiayaList((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   function tambahBiaya() {
     const nominal = toNumber(biayaNominal)
     const desc = (biayaDesc || '').trim()
     if (!desc || nominal <= 0) return alert('Isi deskripsi & nominal biaya.')
-    setBiayaList((prev) => [...prev, { desc, nominal }])
+    setBiayaList((p) => [...p, { desc, nominal }])
     setBiayaDesc('')
     setBiayaNominal('')
+  }
+
+  function hapusProduk(index) {
+    setProdukList((p) => p.filter((_, i) => i !== index))
+  }
+  function hapusBonus(index) {
+    setBonusList((p) => p.filter((_, i) => i !== index))
+  }
+  function hapusBiaya(index) {
+    setBiayaList((p) => p.filter((_, i) => i !== index))
   }
 
   async function generateInvoiceId(tanggal) {
@@ -396,16 +430,6 @@ export default function Penjualan() {
     return map
   }
 
-  const sumHarga = useMemo(() => produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0), [produkList])
-  const sumDiskon = useMemo(() => Math.min(toNumber(diskonInvoice), sumHarga), [diskonInvoice, sumHarga])
-  const sumBiaya = useMemo(() => biayaList.reduce((s, b) => s + toNumber(b.nominal), 0), [biayaList])
-
-  const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
-  const isOfficeSKUBonus = (bonusBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
-
-  const buyerSelectOptions = buyerTab === 'customer' ? customerOptions : indentOptions
-  const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
-
   async function handleSubmit(e) {
     e.preventDefault()
     if (submitting) return
@@ -423,19 +447,11 @@ export default function Penjualan() {
     try {
       const invoice = await generateInvoiceId(formData.tanggal)
 
-      // expand qty aksesoris → baris per pcs
       const expandQty = (arr, isBonus) => {
         const out = []
         for (const it of arr) {
           const qty = it.is_aksesoris ? clampInt(it.qty, 1, 100) : 1
-          for (let i = 0; i < qty; i++) {
-            out.push({
-              ...it,
-              __qty_index: i + 1,
-              __qty_total: qty,
-              is_bonus: isBonus,
-            })
-          }
+          for (let i = 0; i < qty; i++) out.push({ ...it, is_bonus: isBonus, __is_fee: false })
         }
         return out
       }
@@ -450,7 +466,6 @@ export default function Penjualan() {
         true
       )
 
-      // fee items (biaya) sebagai baris bonus (harga_jual 0, modal = biaya)
       const feeItems = biayaList.map((f, i) => ({
         sn_sku: `FEE-${i + 1}`,
         nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
@@ -461,12 +476,15 @@ export default function Penjualan() {
         harga_modal: toNumber(f.nominal),
         is_bonus: true,
         __is_fee: true,
+        is_aksesoris: false
       }))
 
       const diskonNominal = toNumber(diskonInvoice)
 
-      // diskon dibagi berdasar list produk asli (bukan expanded)
-      const produkBerbayarForDiskon = produkList.map((p) => ({ ...p, harga_jual: toNumber(p.harga_jual) }))
+      const produkBerbayarForDiskon = produkList.map((p) => ({
+        ...p,
+        harga_jual: toNumber(p.harga_jual)
+      }))
       const petaDiskon = distribusiDiskon(produkBerbayarForDiskon, diskonNominal)
 
       const semuaProduk = [...produkBerbayarExpanded, ...bonusExpanded, ...feeItems]
@@ -483,7 +501,6 @@ export default function Penjualan() {
           no_wa: (formData.no_wa || '').toString().trim(),
           referral: (formData.referral || '').toString().trim().toUpperCase(),
           dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
-
           sn_sku: item.sn_sku,
           nama_produk: item.nama_produk,
           warna: item.warna,
@@ -495,17 +512,21 @@ export default function Penjualan() {
           laba,
           invoice_id: invoice,
           diskon_invoice: diskonNominal,
-          diskon_item,
+          diskon_item
         }
 
         if (item.office_username) rowToInsert.office_username = item.office_username.trim()
 
         const { error: insErr } = await supabase.from('penjualan_baru').insert(rowToInsert)
-        if (insErr) throw new Error(`Gagal simpan penjualan: ${insErr.message}`)
+        if (insErr) throw new Error(`Gagal insert penjualan: ${insErr.message}`)
 
-        if (item.__is_fee) continue // biaya: tidak ubah stok
+        if (item.__is_fee) continue
 
-        const { data: stokUnit, error: cekErr } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
+        const { data: stokUnit, error: cekErr } = await supabase
+          .from('stok')
+          .select('id')
+          .eq('sn', item.sn_sku)
+          .maybeSingle()
         if (cekErr) throw new Error(`Gagal cek stok: ${cekErr.message}`)
 
         if (stokUnit) {
@@ -517,123 +538,108 @@ export default function Penjualan() {
         }
       }
 
-      // ===== UPDATE INDENT (hanya jika memang transaksi indent) =====
+      // ====== UPDATE INDENT (jika sedang pilih indent) ======
       const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
       const waTrim = (formData.no_wa || '').toString().trim()
 
-      const shouldUpdateIndent = buyerTab === 'indent' || !!selectedIndent?.meta?.id
-      if (shouldUpdateIndent) {
+      if (buyerTab === 'indent') {
         if (selectedIndent?.meta?.id) {
-          const { error: indErr } = await supabase.from('transaksi_indent').update({ status: 'Sudah Diambil' }).eq('id', selectedIndent.meta.id)
-          if (indErr) throw new Error(`Gagal update indent: ${indErr.message}`)
+          await supabase.from('transaksi_indent').update({ status: 'Sudah Diambil' }).eq('id', selectedIndent.meta.id)
         } else {
-          const { error: indErr } = await supabase
-            .from('transaksi_indent')
-            .update({ status: 'Sudah Diambil' })
-            .eq('nama', namaUpper)
-            .eq('no_wa', waTrim)
-          if (indErr) throw new Error(`Gagal update indent: ${indErr.message}`)
+          await supabase.from('transaksi_indent').update({ status: 'Sudah Diambil' }).eq('nama', namaUpper).eq('no_wa', waTrim)
         }
       }
 
       alert('Berhasil simpan multi produk!')
 
-      setFormData({
-        tanggal: '',
-        nama_pembeli: '',
-        alamat: '',
-        no_wa: '',
-        referral: '',
-        dilayani_oleh: '',
-      })
+      setFormData({ tanggal: '', nama_pembeli: '', alamat: '', no_wa: '', referral: '', dilayani_oleh: '' })
       setSelectedCustomer(null)
       setSelectedIndent(null)
       setProdukList([])
       setBonusList([])
       setBiayaList([])
       setDiskonInvoice('')
-      setBuyerTab('customer')
-      await refreshOptions()
     } catch (err) {
       console.error(err)
-      alert(err?.message || 'Terjadi error.')
+      alert(err?.message || 'Terjadi error saat simpan.')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const sumHarga = useMemo(() => produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0), [produkList])
+  const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
+  const totalSetelahDiskon = Math.max(0, sumHarga - sumDiskon)
+
+  const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
+  const isOfficeSKUBonus = (bonusBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
+
+  const buyerSelectOptions = buyerTab === 'customer' ? customerOptions : indentOptions
+  const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
+
   return (
     <Layout>
       <div className="p-4">
         {/* HEADER CARD */}
-        <div className="bg-white border rounded-xl p-5 mb-5">
-          <div className="flex items-center justify-between">
+        <div className={`${card} p-5 mb-5`}>
+          <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-bold">Input Penjualan</h1>
               <p className="text-sm text-gray-600">Multi produk • Bonus • Biaya • Diskon invoice</p>
             </div>
-            <div className="text-sm text-gray-600 text-right">
+            <div className="text-sm text-gray-700 text-right">
               <div>Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b></div>
               <div>Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b></div>
-              <div>Total: <b>Rp {(sumHarga - sumDiskon).toLocaleString('id-ID')}</b></div>
-              {sumBiaya > 0 ? <div className="text-xs text-gray-500 mt-1">Biaya (pengurang laba): Rp {sumBiaya.toLocaleString('id-ID')}</div> : null}
+              <div>Total: <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b></div>
             </div>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* LEFT: FORM */}
-            <div className="space-y-5">
-              {/* DATA CUSTOMER */}
-              <div className="bg-white border rounded-xl p-4">
-                <h2 className="text-base font-bold mb-3">Data Pembeli</h2>
+        {/* GRID */}
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* LEFT */}
+          <div className="space-y-4">
+            {/* DATA PEMBELI */}
+            <div className={`${card} p-5`}>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold">Data Pembeli</h2>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBuyerTab('customer')}
+                    className={`px-3 py-1 rounded-lg border ${buyerTab === 'customer' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200'}`}
+                  >
+                    Customer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBuyerTab('indent')}
+                    className={`px-3 py-1 rounded-lg border ${buyerTab === 'indent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200'}`}
+                  >
+                    Indent
+                  </button>
+                </div>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-600">Tanggal</label>
-                    <input
-                      type="date"
-                      className="border p-2 rounded w-full"
-                      value={formData.tanggal}
-                      onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="flex items-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setBuyerTab('customer')}
-                      className={`px-3 py-2 rounded-lg border text-sm w-full ${
-                        buyerTab === 'customer' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
-                      }`}
-                    >
-                      Customer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBuyerTab('indent')}
-                      className={`px-3 py-2 rounded-lg border text-sm w-full ${
-                        buyerTab === 'indent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
-                      }`}
-                    >
-                      Indent
-                    </button>
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <div className={label}>Tanggal</div>
+                  <input
+                    type="date"
+                    className={input}
+                    value={formData.tanggal}
+                    onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
+                    required
+                  />
                 </div>
 
-                <div className="mt-3">
-                  <label className="text-xs text-gray-600">Pilih {buyerTab === 'customer' ? 'Customer Lama' : 'Transaksi Indent'}</label>
+                <div className="md:col-span-2">
+                  <div className={label}>{buyerTab === 'customer' ? 'Pilih Customer Lama' : 'Pilih Indent Berjalan'}</div>
                   <Select
-                    styles={rsStyles}
                     className="text-sm"
+                    styles={selectStyles}
                     options={buyerSelectOptions}
-                    placeholder={
-                      buyerTab === 'customer'
-                        ? 'Ketik / pilih customer lama'
-                        : 'Pilih transaksi indent yang masih berjalan'
-                    }
+                    placeholder={buyerTab === 'customer' ? 'Ketik / pilih customer lama' : 'Pilih transaksi indent yang masih berjalan'}
                     value={buyerSelectValue}
                     onChange={(selected) => {
                       if (buyerTab === 'customer') setSelectedCustomer(selected || null)
@@ -643,427 +649,282 @@ export default function Penjualan() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <label className="text-xs text-gray-600">Nama Pembeli</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="Nama Pembeli"
-                      value={formData.nama_pembeli}
-                      onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">No. WA</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="No. WA"
-                      value={formData.no_wa}
-                      onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">Alamat</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="Alamat"
-                      value={formData.alamat}
-                      onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
-                      required
-                    />
-                  </div>
+                <div>
+                  <div className={label}>Nama Pembeli</div>
+                  <input className={input} value={formData.nama_pembeli} onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })} required />
+                </div>
+                <div>
+                  <div className={label}>No. WA</div>
+                  <input className={input} value={formData.no_wa} onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })} required />
+                </div>
+                <div className="md:col-span-2">
+                  <div className={label}>Alamat</div>
+                  <input className={input} value={formData.alamat} onChange={(e) => setFormData({ ...formData, alamat: e.target.value })} required />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <label className="text-xs text-gray-600">Referral</label>
-                    <select
-                      className="border p-2 rounded w-full"
-                      value={formData.referral}
-                      onChange={(e) => setFormData({ ...formData, referral: e.target.value })}
-                      required
-                    >
-                      <option value="">Pilih Referral</option>
-                      {KARYAWAN.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Dilayani Oleh</label>
-                    <select
-                      className="border p-2 rounded w-full"
-                      value={formData.dilayani_oleh}
-                      onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })}
-                      required
-                    >
-                      <option value="">Pilih Dilayani Oleh</option>
-                      {KARYAWAN.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <div className={label}>Referral</div>
+                  <select className={input} value={formData.referral} onChange={(e) => setFormData({ ...formData, referral: e.target.value })} required>
+                    <option value="">Pilih Referral</option>
+                    {KARYAWAN.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
                 </div>
-              </div>
-
-              {/* TAMBAH PRODUK */}
-              <div className="bg-white border rounded-xl p-4">
-                <h2 className="text-base font-bold mb-3">Tambah Produk</h2>
-
-                <div className="mb-2">
-                  <label className="text-xs text-gray-600">Cari SN / SKU</label>
-                  <Select
-                    styles={rsStyles}
-                    className="text-sm"
-                    options={options}
-                    placeholder="Cari SN / SKU"
-                    value={options.find((opt) => opt.value === produkBaru.sn_sku) || null}
-                    onChange={(selected) => setProdukBaru({ ...produkBaru, sn_sku: selected?.value || '' })}
-                    isClearable
-                  />
+                <div>
+                  <div className={label}>Dilayani Oleh</div>
+                  <select className={input} value={formData.dilayani_oleh} onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })} required>
+                    <option value="">Pilih Dilayani Oleh</option>
+                    {KARYAWAN.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                  <div>
-                    <label className="text-xs text-gray-600">Harga Jual</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="Harga Jual"
-                      type="number"
-                      value={produkBaru.harga_jual}
-                      onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-gray-600">Qty</label>
-                    {produkBaru.is_aksesoris ? (
-                      <input
-                        className="border p-2 rounded w-full"
-                        placeholder="Qty"
-                        type="number"
-                        min="1"
-                        value={produkBaru.qty}
-                        onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })}
-                      />
-                    ) : (
-                      <div className="border p-2 rounded w-full text-sm text-gray-500 bg-gray-50">1 (unit SN)</div>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={tambahProdukKeList}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:opacity-95"
-                  >
-                    Tambah
-                  </button>
-                </div>
-
-                {isOfficeSKUProduk && (
-                  <div className="mt-3">
-                    <label className="text-xs text-gray-600">Username Office</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="Username Office (email pelanggan)"
-                      value={produkBaru.office_username}
-                      onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                {/* preview detail */}
-                {(produkBaru.nama_produk || produkBaru.sn_sku) && (
-                  <div className="mt-3 border rounded-lg p-3 bg-slate-50 text-sm">
-                    <div className="font-semibold">{produkBaru.nama_produk || '-'}</div>
-                    <div className="text-gray-600">
-                      {produkBaru.sn_sku ? <>SN/SKU: <b>{produkBaru.sn_sku}</b></> : null}
-                      {produkBaru.warna ? <> • Warna: <b>{produkBaru.warna}</b></> : null}
-                      {produkBaru.storage ? <> • Storage: <b>{produkBaru.storage}</b></> : null}
-                    </div>
-                    <div className="text-gray-600">
-                      Modal: <b>Rp {toNumber(produkBaru.harga_modal).toLocaleString('id-ID')}</b>
-                      {produkBaru.garansi ? <> • Garansi: <b>{produkBaru.garansi}</b></> : null}
-                      {produkBaru.is_aksesoris ? <span className="ml-2 text-xs bg-white border rounded px-2 py-0.5">AKSESORIS</span> : null}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* TAMBAH BONUS */}
-              <div className="bg-white border rounded-xl p-4">
-                <h2 className="text-base font-bold mb-3 text-yellow-700">Tambah Bonus (Gratis)</h2>
-
-                <div className="mb-2">
-                  <label className="text-xs text-gray-600">Cari SN / SKU Bonus</label>
-                  <Select
-                    styles={rsStyles}
-                    className="text-sm"
-                    options={options}
-                    placeholder="Cari SN / SKU Bonus"
-                    value={options.find((opt) => opt.value === bonusBaru.sn_sku) || null}
-                    onChange={(selected) => setBonusBaru({ ...bonusBaru, sn_sku: selected?.value || '' })}
-                    isClearable
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                  <div>
-                    <label className="text-xs text-gray-600">Qty Bonus</label>
-                    {bonusBaru.is_aksesoris ? (
-                      <input
-                        className="border p-2 rounded w-full"
-                        placeholder="Qty Bonus"
-                        type="number"
-                        min="1"
-                        value={bonusBaru.qty}
-                        onChange={(e) => setBonusBaru({ ...bonusBaru, qty: clampInt(e.target.value, 1, 100) })}
-                      />
-                    ) : (
-                      <div className="border p-2 rounded w-full text-sm text-gray-500 bg-gray-50">1 (unit SN)</div>
-                    )}
-                  </div>
-
-                  <div />
-
-                  <button
-                    type="button"
-                    onClick={tambahBonusKeList}
-                    className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:opacity-95"
-                  >
-                    Tambah
-                  </button>
-                </div>
-
-                {isOfficeSKUBonus && (
-                  <div className="mt-3">
-                    <label className="text-xs text-gray-600">Username Office</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="Username Office (email pelanggan)"
-                      value={bonusBaru.office_username}
-                      onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* DISKON + BIAYA */}
-              <div className="bg-white border rounded-xl p-4">
-                <h2 className="text-base font-bold mb-3">Diskon & Biaya</h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-600">Diskon Invoice (Rp)</label>
-                    <input
-                      className="border p-2 rounded w-full"
-                      placeholder="Masukkan diskon"
-                      type="number"
-                      min="0"
-                      value={diskonInvoice}
-                      onChange={(e) => setDiskonInvoice(e.target.value)}
-                    />
-                    <div className="text-xs text-gray-500 mt-1">
-                      Subtotal Rp {sumHarga.toLocaleString('id-ID')} • Total Rp {(sumHarga - sumDiskon).toLocaleString('id-ID')}
-                    </div>
-                  </div>
-
-                  <div className="border rounded-lg p-3 bg-slate-50">
-                    <div className="text-sm font-semibold mb-2">Tambah Biaya (pengurang laba)</div>
-                    <div className="grid grid-cols-1 gap-2">
-                      <input
-                        className="border p-2 rounded w-full"
-                        placeholder="Deskripsi (contoh: Ongkir)"
-                        value={biayaDesc}
-                        onChange={(e) => setBiayaDesc(e.target.value)}
-                      />
-                      <div className="flex gap-2">
-                        <input
-                          className="border p-2 rounded w-full"
-                          placeholder="Nominal (Rp)"
-                          type="number"
-                          min="0"
-                          value={biayaNominal}
-                          onChange={(e) => setBiayaNominal(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={tambahBiaya}
-                          className="bg-slate-700 text-white px-4 rounded-lg hover:opacity-95"
-                        >
-                          Tambah
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SUBMIT */}
-              <div className="bg-white border rounded-xl p-4">
-                <button
-                  className="bg-green-600 text-white py-2 rounded-lg w-full disabled:opacity-60"
-                  type="submit"
-                  disabled={submitting}
-                >
-                  {submitting ? 'Menyimpan...' : 'Simpan Penjualan'}
-                </button>
               </div>
             </div>
 
-            {/* RIGHT: SUMMARY */}
-            <div className="space-y-5">
-              <div className="bg-white border rounded-xl p-4">
-                <h2 className="text-base font-bold mb-3">Ringkasan</h2>
+            {/* TAMBAH PRODUK */}
+            <div className={`${card} p-5`}>
+              <h2 className="font-bold mb-3">Tambah Produk</h2>
 
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="border rounded-lg p-3 bg-slate-50">
-                    <div className="text-gray-600">Subtotal</div>
-                    <div className="text-lg font-bold">Rp {sumHarga.toLocaleString('id-ID')}</div>
-                  </div>
-                  <div className="border rounded-lg p-3 bg-slate-50">
-                    <div className="text-gray-600">Total (setelah diskon)</div>
-                    <div className="text-lg font-bold">Rp {(sumHarga - sumDiskon).toLocaleString('id-ID')}</div>
-                  </div>
-                </div>
-
-                {sumBiaya > 0 && (
-                  <div className="mt-3 text-sm text-gray-600">
-                    Biaya (pengurang laba): <b>Rp {sumBiaya.toLocaleString('id-ID')}</b>
-                  </div>
-                )}
+              <div className="mb-2">
+                <div className={label}>Cari SN / SKU</div>
+                <Select
+                  className="text-sm"
+                  styles={selectStyles}
+                  options={options}
+                  placeholder="Cari SN / SKU"
+                  value={options.find((opt) => opt.value === produkBaru.sn_sku) || null}
+                  onChange={(selected) => setProdukBaru({ ...produkBaru, sn_sku: selected?.value || '' })}
+                  isClearable
+                />
               </div>
 
-              {/* LIST PRODUK */}
-              <div className="bg-white border rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold">Daftar Produk</h2>
-                  <div className="text-sm text-gray-600">
-                    {produkList.length} item
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                <div>
+                  <div className={label}>Harga Jual</div>
+                  <input className={input} type="number" value={produkBaru.harga_jual} onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })} />
                 </div>
 
-                <div className="border rounded-lg p-3 bg-slate-50">
-                  {produkList.length === 0 ? (
-                    <div className="text-sm text-gray-500">Belum ada produk.</div>
+                <div>
+                  <div className={label}>Qty</div>
+                  {produkBaru.is_aksesoris ? (
+                    <input
+                      className={input}
+                      type="number"
+                      min="1"
+                      value={produkBaru.qty}
+                      onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })}
+                    />
                   ) : (
-                    <div className="space-y-2">
-                      {produkList.map((p, i) => (
-                        <div key={i} className="flex items-start justify-between gap-3 bg-white border rounded-lg p-3">
-                          <div className="text-sm">
-                            <div className="font-semibold">{p.nama_produk || '-'}</div>
-                            <div className="text-gray-600">
-                              <span className="font-mono">{p.sn_sku}</span>
-                              {p.is_aksesoris ? <> • QTY <b>{clampInt(p.qty, 1, 999)}</b></> : <> • Qty <b>1</b></>}
-                              {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username ? (
-                                <> • <span className="text-gray-500">Office:</span> <b>{p.office_username}</b></>
-                              ) : null}
-                            </div>
-                            <div className="text-gray-600">
-                              Harga: <b>Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}</b>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => hapusProduk(i)}
-                            className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:opacity-90"
-                          >
-                            Hapus
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    <div className={`${input} flex items-center text-sm text-gray-600`}>1 (unit SN)</div>
                   )}
                 </div>
+
+                <button type="button" onClick={tambahProdukKeList} className={btnBlue}>
+                  Tambah
+                </button>
               </div>
 
-              {/* LIST BONUS */}
-              <div className="bg-white border rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold text-yellow-700">Daftar Bonus</h2>
-                  <div className="text-sm text-gray-600">
-                    {bonusList.length} item
+              {isOfficeSKUProduk && (
+                <div className="mt-3">
+                  <div className={label}>Username Office (email pelanggan)</div>
+                  <input className={input} value={produkBaru.office_username} onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })} />
+                </div>
+              )}
+            </div>
+
+            {/* TAMBAH BONUS */}
+            <div className={`${card} p-5`}>
+              <h2 className="font-bold mb-3 text-yellow-700">Tambah Bonus (Gratis)</h2>
+
+              <div className="mb-2">
+                <div className={label}>Cari SN / SKU Bonus</div>
+                <Select
+                  className="text-sm"
+                  styles={selectStyles}
+                  options={options}
+                  placeholder="Cari SN / SKU Bonus"
+                  value={options.find((opt) => opt.value === bonusBaru.sn_sku) || null}
+                  onChange={(selected) => setBonusBaru({ ...bonusBaru, sn_sku: selected?.value || '' })}
+                  isClearable
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                <div>
+                  <div className={label}>Qty Bonus</div>
+                  {bonusBaru.is_aksesoris ? (
+                    <input
+                      className={input}
+                      type="number"
+                      min="1"
+                      value={bonusBaru.qty}
+                      onChange={(e) => setBonusBaru({ ...bonusBaru, qty: clampInt(e.target.value, 1, 100) })}
+                    />
+                  ) : (
+                    <div className={`${input} flex items-center text-sm text-gray-600`}>1 (unit SN)</div>
+                  )}
+                </div>
+
+                <div />
+
+                <button type="button" onClick={tambahBonusKeList} className={btnYellow}>
+                  Tambah
+                </button>
+              </div>
+
+              {isOfficeSKUBonus && (
+                <div className="mt-3">
+                  <div className={label}>Username Office (email pelanggan)</div>
+                  <input className={input} value={bonusBaru.office_username} onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })} />
+                </div>
+              )}
+            </div>
+
+            {/* DISKON & BIAYA */}
+            <div className={`${card} p-5`}>
+              <h2 className="font-bold mb-3">Diskon & Biaya</h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <div className={label}>Diskon Invoice (Rp)</div>
+                  <input className={input} type="number" min="0" value={diskonInvoice} onChange={(e) => setDiskonInvoice(e.target.value)} />
+                </div>
+                <div className="text-sm text-gray-700 flex items-end">
+                  <div>
+                    Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b> • Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b> • Total:{' '}
+                    <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b>
                   </div>
                 </div>
+              </div>
 
-                <div className="border rounded-lg p-3 bg-yellow-50">
-                  {bonusList.length === 0 ? (
-                    <div className="text-sm text-gray-500">Belum ada bonus.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {bonusList.map((b, i) => (
-                        <div key={i} className="flex items-start justify-between gap-3 bg-white border rounded-lg p-3">
-                          <div className="text-sm">
-                            <div className="font-semibold">{b.nama_produk || '-'}</div>
-                            <div className="text-gray-600">
-                              <span className="font-mono">{b.sn_sku}</span>
-                              {b.is_aksesoris ? <> • QTY <b>{clampInt(b.qty, 1, 999)}</b></> : <> • Qty <b>1</b></>}
-                              {b.sn_sku?.toUpperCase() === SKU_OFFICE && b.office_username ? (
-                                <> • <span className="text-gray-500">Office:</span> <b>{b.office_username}</b></>
-                              ) : null}
-                            </div>
-                            <div className="text-gray-600">
-                              Status: <b>BONUS</b>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => hapusBonus(i)}
-                            className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:opacity-90"
-                          >
-                            Hapus
-                          </button>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                <div>
+                  <div className={label}>Deskripsi Biaya</div>
+                  <input className={input} placeholder="contoh: Ongkir" value={biayaDesc} onChange={(e) => setBiayaDesc(e.target.value)} />
+                </div>
+                <div>
+                  <div className={label}>Nominal (Rp)</div>
+                  <input className={input} type="number" min="0" value={biayaNominal} onChange={(e) => setBiayaNominal(e.target.value)} />
+                </div>
+                <button type="button" onClick={tambahBiaya} className={btnGray}>
+                  Tambah Biaya
+                </button>
+              </div>
+
+              <div className="mt-3 text-xs text-gray-600">
+                Catatan: Diskon dibagi proporsional ke produk berbayar, biaya dicatat sebagai pengurang laba (harga jual 0).
+              </div>
+            </div>
+
+            {/* SUBMIT */}
+            <button className={`${btnGreen} w-full`} type="submit" disabled={submitting}>
+              {submitting ? 'Menyimpan...' : 'Simpan Penjualan'}
+            </button>
+          </div>
+
+          {/* RIGHT */}
+          <div className="space-y-4">
+            {/* RINGKASAN */}
+            <div className={`${card} p-5`}>
+              <h2 className="font-bold mb-3">Ringkasan</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  <div className="text-xs text-gray-600">Subtotal</div>
+                  <div className="font-bold">Rp {sumHarga.toLocaleString('id-ID')}</div>
+                </div>
+                <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  <div className="text-xs text-gray-600">Total (setelah diskon)</div>
+                  <div className="font-bold">Rp {totalSetelahDiskon.toLocaleString('id-ID')}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* DAFTAR PRODUK */}
+            <div className={`${card} p-5`}>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-bold">Daftar Produk</h2>
+                <div className="text-sm text-gray-600">{produkList.length} item</div>
+              </div>
+
+              {produkList.length === 0 ? (
+                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-gray-50">Belum ada produk.</div>
+              ) : (
+                <div className="space-y-2">
+                  {produkList.map((p, i) => (
+                    <div key={i} className="border border-gray-200 rounded-xl p-3 flex items-start justify-between gap-3">
+                      <div className="text-sm">
+                        <div className="font-semibold">{p.nama_produk || '-'}</div>
+                        <div className="text-gray-600">
+                          {p.sn_sku}
+                          {p.is_aksesoris ? ` • QTY ${clampInt(p.qty, 1, 999)}` : ''}
+                          {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username ? ` • Office: ${p.office_username}` : ''}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* LIST BIAYA */}
-              <div className="bg-white border rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold">Daftar Biaya</h2>
-                  <div className="text-sm text-gray-600">{biayaList.length} item</div>
-                </div>
-
-                <div className="border rounded-lg p-3 bg-slate-50">
-                  {biayaList.length === 0 ? (
-                    <div className="text-sm text-gray-500">Belum ada biaya.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {biayaList.map((b, i) => (
-                        <div key={i} className="flex items-center justify-between gap-3 bg-white border rounded-lg p-3">
-                          <div className="text-sm">
-                            <div className="font-semibold">{b.desc}</div>
-                            <div className="text-gray-600">Rp {toNumber(b.nominal).toLocaleString('id-ID')}</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => hapusBiaya(i)}
-                            className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:opacity-90"
-                          >
-                            Hapus
-                          </button>
+                        <div className="mt-1">
+                          Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}
                         </div>
-                      ))}
+                      </div>
+                      <button type="button" onClick={() => hapusProduk(i)} className="text-red-600 text-sm hover:underline">
+                        Hapus
+                      </button>
                     </div>
-                  )}
+                  ))}
                 </div>
+              )}
+            </div>
+
+            {/* DAFTAR BONUS */}
+            <div className={`${card} p-5`}>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-bold text-yellow-700">Daftar Bonus</h2>
+                <div className="text-sm text-gray-600">{bonusList.length} item</div>
               </div>
 
-              {/* NOTE */}
-              <div className="bg-white border rounded-xl p-4">
-                <div className="text-sm text-gray-600">
-                  <b>Catatan:</b> Diskon dibagi proporsional ke produk berbayar, biaya dicatat sebagai pengurang laba (harga jual 0).
+              {bonusList.length === 0 ? (
+                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-yellow-50">Belum ada bonus.</div>
+              ) : (
+                <div className="space-y-2">
+                  {bonusList.map((b, i) => (
+                    <div key={i} className="border border-gray-200 rounded-xl p-3 flex items-start justify-between gap-3 bg-yellow-50/40">
+                      <div className="text-sm">
+                        <div className="font-semibold">{b.nama_produk || '-'}</div>
+                        <div className="text-gray-600">
+                          {b.sn_sku}
+                          {b.is_aksesoris ? ` • QTY ${clampInt(b.qty, 1, 999)}` : ''}
+                          {b.sn_sku?.toUpperCase() === SKU_OFFICE && b.office_username ? ` • Office: ${b.office_username}` : ''}
+                        </div>
+                        <div className="mt-1 font-semibold text-yellow-700">BONUS</div>
+                      </div>
+                      <button type="button" onClick={() => hapusBonus(i)} className="text-red-600 text-sm hover:underline">
+                        Hapus
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              )}
+            </div>
+
+            {/* DAFTAR BIAYA */}
+            <div className={`${card} p-5`}>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-bold">Daftar Biaya</h2>
+                <div className="text-sm text-gray-600">{biayaList.length} item</div>
               </div>
+
+              {biayaList.length === 0 ? (
+                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-gray-50">Belum ada biaya.</div>
+              ) : (
+                <div className="space-y-2">
+                  {biayaList.map((b, i) => (
+                    <div key={i} className="border border-gray-200 rounded-xl p-3 flex items-start justify-between gap-3">
+                      <div className="text-sm">
+                        <div className="font-semibold">{b.desc}</div>
+                        <div className="text-gray-600">Rp {toNumber(b.nominal).toLocaleString('id-ID')}</div>
+                      </div>
+                      <button type="button" onClick={() => hapusBiaya(i)} className="text-red-600 text-sm hover:underline">
+                        Hapus
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </form>
