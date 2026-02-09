@@ -445,72 +445,82 @@ export default function PricelistPage() {
   }
 
   // ===== Edit Nama Kategori (rename kategori) =====
-  function openEditKategori() {
-    const oldName = normalizeKategoriLabel(activeKategori)
-    if (!oldName) return alert('Kategori belum dipilih.')
-    setEditKategoriOld(oldName)
-    setEditKategoriNew(oldName)
-    setEditKategoriOpen(true)
+function openEditKategori() {
+  if (!kategoriList || kategoriList.length === 0) return alert('Belum ada kategori.')
+  const oldName = normalizeKategoriLabel(activeKategori) || kategoriList[0]
+  setEditKategoriOld(oldName)
+  setEditKategoriNew(oldName)
+  setEditKategoriOpen(true)
+}
+
+
+ async function saveEditKategori() {
+  const oldName = normalizeKategoriLabel(editKategoriOld)
+  const newName = normalizeKategoriLabel(editKategoriNew)
+
+  if (!oldName) return alert('Kategori lama belum dipilih.')
+  if (!newName) return alert('Nama kategori baru masih kosong.')
+  if (newName === oldName) {
+    setEditKategoriOpen(false)
+    return
   }
 
-  async function saveEditKategori() {
-    const oldName = normalizeKategoriLabel(editKategoriOld)
-    const newName = normalizeKategoriLabel(editKategoriNew)
+  // cegah bentrok
+  if ((kategoriList || []).some((x) => normalizeKategoriLabel(x) === newName)) {
+    return alert('Nama kategori baru sudah ada. Gunakan nama lain.')
+  }
 
-    if (!oldName) return alert('Kategori lama tidak valid.')
-    if (!newName) return alert('Nama kategori baru masih kosong.')
-    if (newName === oldName) {
-      setEditKategoriOpen(false)
+  try {
+    setEditKategoriSaving(true)
+
+    // 1) rename di pricelist_kategori
+    const { error: kErr } = await supabase
+      .from('pricelist_kategori')
+      .update({ nama: newName })
+      .eq('nama', oldName)
+
+    if (kErr) {
+      console.error('rename pricelist_kategori error:', kErr)
+      alert('Gagal rename kategori (pricelist_kategori).')
       return
     }
 
-    if ((kategoriList || []).includes(newName)) {
-      return alert('Nama kategori sudah ada. Gunakan nama lain.')
+    // 2) rename semua produk di pricelist
+    const { error: pErr } = await supabase
+      .from('pricelist')
+      .update({ kategori: newName })
+      .eq('kategori', oldName)
+
+    if (pErr) {
+      console.error('rename pricelist error:', pErr)
+      alert('Kategori berhasil diganti di master, tapi gagal update data produk.')
+      return
     }
 
-    try {
-      setEditKategoriSaving(true)
+    // 3) rename setting kategori (opsional)
+    const { error: sErr } = await supabase
+      .from('pricelist_setting')
+      .update({ kategori: newName })
+      .eq('kategori', oldName)
 
-      // 1) rename di pricelist_kategori
-      const { error: kErr } = await supabase.from('pricelist_kategori').update({ nama: newName }).eq('nama', oldName)
-
-      if (kErr) {
-        console.error('rename pricelist_kategori error:', kErr)
-        alert('Gagal rename kategori (pricelist_kategori).')
-        return
-      }
-
-      // 2) rename semua produk di pricelist
-      const { error: pErr } = await supabase.from('pricelist').update({ kategori: newName }).eq('kategori', oldName)
-
-      if (pErr) {
-        console.error('rename pricelist error:', pErr)
-        alert('Kategori berhasil diganti di master, tapi gagal update data produk.')
-        return
-      }
-
-      // 3) rename setting kategori (boleh kosong)
-      const { error: sErr } = await supabase
-        .from('pricelist_setting')
-        .update({ kategori: newName })
-        .eq('kategori', oldName)
-
-      if (sErr) {
-        console.error('rename setting error:', sErr)
-        alert('Kategori berhasil diganti, tapi gagal update setting kategori.')
-        return
-      }
-
-      setEditKategoriOpen(false)
-
-      // reload tab & data, jadikan kategori baru aktif
-      await boot(newName)
-      await fetchRows(newName)
-      alert('Nama kategori berhasil diubah.')
-    } finally {
-      setEditKategoriSaving(false)
+    if (sErr) {
+      console.error('rename setting error:', sErr)
+      // tidak kita stop total, tapi kasih info
+      alert('Kategori & produk berhasil diganti, tapi update setting kategori gagal. (Cek tabel pricelist_setting)')
     }
+
+    setEditKategoriOpen(false)
+
+    // refresh list + set aktif ke kategori baru
+    await boot(newName)
+    await fetchRows(newName)
+
+    alert('Nama kategori berhasil diubah.')
+  } finally {
+    setEditKategoriSaving(false)
   }
+}
+
 
   async function openSetting() {
     setShowSetting(true)
@@ -1095,10 +1105,26 @@ export default function PricelistPage() {
               </div>
 
               <div style={{ marginTop: 14 }}>
-                <div style={fieldRow}>
-                  <div style={label}>Kategori Lama</div>
-                  <input style={{ ...input, background: '#f8fafc' }} value={editKategoriOld} disabled />
-                </div>
+              <div style={fieldRow}>
+  <div style={label}>Kategori Lama</div>
+  <select
+    style={input}
+    value={editKategoriOld}
+    onChange={(e) => {
+      const k = normalizeKategoriLabel(e.target.value)
+      setEditKategoriOld(k)
+      // default isi kategori baru ikut kategori lama (biar enak)
+      setEditKategoriNew(k)
+    }}
+  >
+    {kategoriList.map((k) => (
+      <option key={k} value={k}>
+        {k}
+      </option>
+    ))}
+  </select>
+</div>
+
 
                 <div style={fieldRow}>
                   <div style={label}>Kategori Baru</div>
