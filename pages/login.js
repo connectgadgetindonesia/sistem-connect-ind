@@ -74,11 +74,11 @@ export default function LoginPage() {
 
       // 2) Minta server bikin cookie pendek (user_auth) untuk middleware
       const res = await fetch('/api/auth-cookie', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}` },
+  credentials: 'include',
+})
+
 
       if (!res.ok) {
         const txt = await res.text().catch(() => '')
