@@ -11,6 +11,13 @@ const clampInt = (v, min = 1, max = 999) => {
   return Math.max(min, Math.min(max, n))
 }
 
+// ✅ format input rupiah pakai titik (8.499.000)
+const parseIDR = (val) => toNumber(String(val || '').replace(/[^\d]/g, ''))
+const formatIDR = (val) => {
+  const n = parseIDR(val)
+  return n ? n.toLocaleString('id-ID') : ''
+}
+
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
 const SKU_OFFICE = 'OFC-365-1'
 
@@ -43,6 +50,11 @@ export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
   const [diskonInvoice, setDiskonInvoice] = useState('')
+
+  // ✅ state display supaya input ada titik
+  const [hargaJualDisplay, setHargaJualDisplay] = useState('')
+  const [diskonDisplay, setDiskonDisplay] = useState('')
+  const [biayaNominalDisplay, setBiayaNominalDisplay] = useState('')
 
   // Biaya lain-lain (tidak memengaruhi total invoice, hanya laba)
   const [biayaDesc, setBiayaDesc] = useState('')
@@ -338,6 +350,7 @@ export default function Penjualan() {
       qty: 1,
       is_aksesoris: false
     })
+    setHargaJualDisplay('') // ✅ reset display harga
   }
 
   function tambahBonusKeList() {
@@ -379,6 +392,7 @@ export default function Penjualan() {
     setBiayaList((p) => [...p, { desc, nominal }])
     setBiayaDesc('')
     setBiayaNominal('')
+    setBiayaNominalDisplay('') // ✅ reset display nominal biaya
   }
 
   function hapusProduk(index) {
@@ -492,7 +506,7 @@ export default function Penjualan() {
       for (const item of semuaProduk) {
         const harga_modal = toNumber(item.harga_modal)
         const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskon.get(item.sn_sku) || 0)
-        const laba = (toNumber(item.harga_jual) - diskon_item) - harga_modal
+        const laba = toNumber(item.harga_jual) - diskon_item - harga_modal
 
         const rowToInsert = {
           ...formData,
@@ -522,11 +536,7 @@ export default function Penjualan() {
 
         if (item.__is_fee) continue
 
-        const { data: stokUnit, error: cekErr } = await supabase
-          .from('stok')
-          .select('id')
-          .eq('sn', item.sn_sku)
-          .maybeSingle()
+        const { data: stokUnit, error: cekErr } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
         if (cekErr) throw new Error(`Gagal cek stok: ${cekErr.message}`)
 
         if (stokUnit) {
@@ -559,6 +569,11 @@ export default function Penjualan() {
       setBonusList([])
       setBiayaList([])
       setDiskonInvoice('')
+
+      // ✅ reset display
+      setHargaJualDisplay('')
+      setDiskonDisplay('')
+      setBiayaNominalDisplay('')
     } catch (err) {
       console.error(err)
       alert(err?.message || 'Terjadi error saat simpan.')
@@ -567,7 +582,14 @@ export default function Penjualan() {
     }
   }
 
-  const sumHarga = useMemo(() => produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0), [produkList])
+  const sumHarga = useMemo(
+    () =>
+      produkList.reduce(
+        (s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1),
+        0
+      ),
+    [produkList]
+  )
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
   const totalSetelahDiskon = Math.max(0, sumHarga - sumDiskon)
 
@@ -588,9 +610,15 @@ export default function Penjualan() {
               <p className="text-sm text-gray-600">Multi produk • Bonus • Biaya • Diskon invoice</p>
             </div>
             <div className="text-sm text-gray-700 text-right">
-              <div>Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b></div>
-              <div>Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b></div>
-              <div>Total: <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b></div>
+              <div>
+                Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b>
+              </div>
+              <div>
+                Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b>
+              </div>
+              <div>
+                Total: <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b>
+              </div>
             </div>
           </div>
         </div>
@@ -607,14 +635,18 @@ export default function Penjualan() {
                   <button
                     type="button"
                     onClick={() => setBuyerTab('customer')}
-                    className={`px-3 py-1 rounded-lg border ${buyerTab === 'customer' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200'}`}
+                    className={`px-3 py-1 rounded-lg border ${
+                      buyerTab === 'customer' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200'
+                    }`}
                   >
                     Customer
                   </button>
                   <button
                     type="button"
                     onClick={() => setBuyerTab('indent')}
-                    className={`px-3 py-1 rounded-lg border ${buyerTab === 'indent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200'}`}
+                    className={`px-3 py-1 rounded-lg border ${
+                      buyerTab === 'indent' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200'
+                    }`}
                   >
                     Indent
                   </button>
@@ -634,7 +666,9 @@ export default function Penjualan() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <div className={label}>{buyerTab === 'customer' ? 'Pilih Customer Lama' : 'Pilih Indent Berjalan'}</div>
+                  <div className={label}>
+                    {buyerTab === 'customer' ? 'Pilih Customer Lama' : 'Pilih Indent Berjalan'}
+                  </div>
                   <Select
                     className="text-sm"
                     styles={selectStyles}
@@ -651,29 +685,62 @@ export default function Penjualan() {
 
                 <div>
                   <div className={label}>Nama Pembeli</div>
-                  <input className={input} value={formData.nama_pembeli} onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })} required />
+                  <input
+                    className={input}
+                    value={formData.nama_pembeli}
+                    onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })}
+                    required
+                  />
                 </div>
                 <div>
                   <div className={label}>No. WA</div>
-                  <input className={input} value={formData.no_wa} onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })} required />
+                  <input
+                    className={input}
+                    value={formData.no_wa}
+                    onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })}
+                    required
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <div className={label}>Alamat</div>
-                  <input className={input} value={formData.alamat} onChange={(e) => setFormData({ ...formData, alamat: e.target.value })} required />
+                  <input
+                    className={input}
+                    value={formData.alamat}
+                    onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
+                    required
+                  />
                 </div>
 
                 <div>
                   <div className={label}>Referral</div>
-                  <select className={input} value={formData.referral} onChange={(e) => setFormData({ ...formData, referral: e.target.value })} required>
+                  <select
+                    className={input}
+                    value={formData.referral}
+                    onChange={(e) => setFormData({ ...formData, referral: e.target.value })}
+                    required
+                  >
                     <option value="">Pilih Referral</option>
-                    {KARYAWAN.map((n) => <option key={n} value={n}>{n}</option>)}
+                    {KARYAWAN.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <div className={label}>Dilayani Oleh</div>
-                  <select className={input} value={formData.dilayani_oleh} onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })} required>
+                  <select
+                    className={input}
+                    value={formData.dilayani_oleh}
+                    onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })}
+                    required
+                  >
                     <option value="">Pilih Dilayani Oleh</option>
-                    {KARYAWAN.map((n) => <option key={n} value={n}>{n}</option>)}
+                    {KARYAWAN.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -699,7 +766,19 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                 <div>
                   <div className={label}>Harga Jual</div>
-                  <input className={input} type="number" value={produkBaru.harga_jual} onChange={(e) => setProdukBaru({ ...produkBaru, harga_jual: e.target.value })} />
+                  {/* ✅ tampil pakai titik */}
+                  <input
+                    className={input}
+                    inputMode="numeric"
+                    placeholder="contoh: 8.499.000"
+                    value={hargaJualDisplay}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      const n = parseIDR(raw)
+                      setHargaJualDisplay(formatIDR(raw))
+                      setProdukBaru((p) => ({ ...p, harga_jual: n }))
+                    }}
+                  />
                 </div>
 
                 <div>
@@ -725,7 +804,11 @@ export default function Penjualan() {
               {isOfficeSKUProduk && (
                 <div className="mt-3">
                   <div className={label}>Username Office (email pelanggan)</div>
-                  <input className={input} value={produkBaru.office_username} onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })} />
+                  <input
+                    className={input}
+                    value={produkBaru.office_username}
+                    onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
+                  />
                 </div>
               )}
             </div>
@@ -773,7 +856,11 @@ export default function Penjualan() {
               {isOfficeSKUBonus && (
                 <div className="mt-3">
                   <div className={label}>Username Office (email pelanggan)</div>
-                  <input className={input} value={bonusBaru.office_username} onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })} />
+                  <input
+                    className={input}
+                    value={bonusBaru.office_username}
+                    onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })}
+                  />
                 </div>
               )}
             </div>
@@ -785,7 +872,19 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
                   <div className={label}>Diskon Invoice (Rp)</div>
-                  <input className={input} type="number" min="0" value={diskonInvoice} onChange={(e) => setDiskonInvoice(e.target.value)} />
+                  {/* ✅ tampil pakai titik */}
+                  <input
+                    className={input}
+                    inputMode="numeric"
+                    placeholder="contoh: 100.000"
+                    value={diskonDisplay}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      const n = parseIDR(raw)
+                      setDiskonDisplay(formatIDR(raw))
+                      setDiskonInvoice(n)
+                    }}
+                  />
                 </div>
                 <div className="text-sm text-gray-700 flex items-end">
                   <div>
@@ -798,11 +897,28 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                 <div>
                   <div className={label}>Deskripsi Biaya</div>
-                  <input className={input} placeholder="contoh: Ongkir" value={biayaDesc} onChange={(e) => setBiayaDesc(e.target.value)} />
+                  <input
+                    className={input}
+                    placeholder="contoh: Ongkir"
+                    value={biayaDesc}
+                    onChange={(e) => setBiayaDesc(e.target.value)}
+                  />
                 </div>
                 <div>
                   <div className={label}>Nominal (Rp)</div>
-                  <input className={input} type="number" min="0" value={biayaNominal} onChange={(e) => setBiayaNominal(e.target.value)} />
+                  {/* ✅ tampil pakai titik */}
+                  <input
+                    className={input}
+                    inputMode="numeric"
+                    placeholder="contoh: 15.000"
+                    value={biayaNominalDisplay}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      const n = parseIDR(raw)
+                      setBiayaNominalDisplay(formatIDR(raw))
+                      setBiayaNominal(n)
+                    }}
+                  />
                 </div>
                 <button type="button" onClick={tambahBiaya} className={btnGray}>
                   Tambah Biaya
@@ -857,9 +973,7 @@ export default function Penjualan() {
                           {p.is_aksesoris ? ` • QTY ${clampInt(p.qty, 1, 999)}` : ''}
                           {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username ? ` • Office: ${p.office_username}` : ''}
                         </div>
-                        <div className="mt-1">
-                          Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}
-                        </div>
+                        <div className="mt-1">Rp {toNumber(p.harga_jual).toLocaleString('id-ID')}</div>
                       </div>
                       <button type="button" onClick={() => hapusProduk(i)} className="text-red-600 text-sm hover:underline">
                         Hapus
