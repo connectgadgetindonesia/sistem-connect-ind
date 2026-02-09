@@ -43,10 +43,14 @@ export default function Layout({ children }) {
     return found?.label || 'CONNECT.IND'
   }, [router.pathname])
 
-  const logout = () => {
-    document.cookie = 'user_token=; Max-Age=0; path=/'
-    router.push('/login')
-  }
+  const logout = async () => {
+  document.cookie = 'user_auth=; Max-Age=0; path=/'
+  document.cookie = 'user_role=; Max-Age=0; path=/'
+  document.cookie = 'user_token=; Max-Age=0; path=/' // jaga-jaga sisa lama
+  await supabase.auth.signOut().catch(() => {})
+  router.push('/login')
+}
+
 
   const SidebarContent = ({ onNavigate }) => (
     <div className="h-full bg-slate-900 text-white flex flex-col justify-between border-r border-slate-800">
