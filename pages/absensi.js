@@ -971,6 +971,8 @@ const tableWrap = {
   borderRadius: 10,
   overflowX: 'auto',
   marginTop: 12,
+  padding: 8,          // ✅ bikin tabel tidak nempel border card
+  background: '#fff',
 }
 
 const table = {
@@ -987,11 +989,12 @@ const tbodyTr = {
   borderTop: '1px solid #e5e7eb',
 }
 
-const thLeft = { textAlign: 'left', padding: 10, fontSize: 12, fontWeight: 900, color: '#0f172a' }
-const thCenter = { textAlign: 'center', padding: 10, fontSize: 12, fontWeight: 900, color: '#0f172a' }
+const thLeft = { textAlign: 'left', padding: 12, fontSize: 12, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }
+const thCenter = { textAlign: 'center', padding: 12, fontSize: 12, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }
 
-const tdLeft = { textAlign: 'left', padding: 10, fontSize: 13, color: '#0f172a' }
-const tdCenter = { textAlign: 'center', padding: 10, fontSize: 13, color: '#0f172a' }
+const tdLeft = { textAlign: 'left', padding: 12, fontSize: 13, color: '#0f172a', verticalAlign: 'middle' }
+const tdCenter = { textAlign: 'center', padding: 12, fontSize: 13, color: '#0f172a', verticalAlign: 'middle' }
+
 
 const taskItem = {
   border: '1px solid #e5e7eb',
