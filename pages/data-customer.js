@@ -41,34 +41,17 @@ async function fetchAllPenjualanByRange({ start, end }) {
 }
 
 // ================= SVG Bar Chart (tanpa library) =================
-// ================= SVG Bar Chart (tanpa library) =================
 function SimpleBarChart({
   title,
   labels = [],
   values = [],
-  height = 300,
+  height = 260,
   fmt = (v) => String(v),
 }) {
-  const wrapRef = useRef(null)
   const svgRef = useRef(null)
-  const [w, setW] = useState(760)
   const [hover, setHover] = useState(null)
 
-  // responsive width
-  useEffect(() => {
-    const el = wrapRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => {
-      const nw = Math.max(520, Math.floor(el.clientWidth || 760))
-      setW(nw)
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const padding = { top: 42, right: 18, bottom: 78, left: 70 }
-  const width = w
-  const innerW = width - padding.left - padding.right
+  const padding = { top: 44, right: 18, bottom: 18, left: 70 } // bottom kecil (tanpa label X)
   const innerH = height - padding.top - padding.bottom
 
   const safeValues = (values || []).map((v) => toNumber(v))
@@ -76,15 +59,17 @@ function SimpleBarChart({
 
   const barCount = Math.max(1, safeValues.length)
 
-  // gap adaptif biar rapi pas top banyak
-  const gap = barCount >= 14 ? 6 : barCount >= 10 ? 8 : 10
-  const barW = Math.max(10, (innerW - gap * (barCount - 1)) / barCount)
+  // Lebar chart dibuat "panjang" biar bar gak gepeng, dan container yang scroll-x
+  const BAR_W = barCount >= 14 ? 44 : barCount >= 10 ? 54 : 64
+  const GAP = 12
+  const innerW = barCount * BAR_W + (barCount - 1) * GAP
+  const width = padding.left + innerW + padding.right
 
   const bars = safeValues.map((vv, i) => {
     const h = (vv / maxVal) * innerH
-    const x = padding.left + i * (barW + gap)
+    const x = padding.left + i * (BAR_W + GAP)
     const y = padding.top + (innerH - h)
-    return { x, y, w: barW, h, v: vv, i }
+    return { x, y, w: BAR_W, h, v: vv, i }
   })
 
   const yTicks = 4
@@ -116,111 +101,104 @@ function SimpleBarChart({
   const text = '#111827'
   const barColor = '#2563EB'
 
-  // label helper (wrap 2 baris)
-  const split2 = (s = '') => {
-    const t = String(s).trim()
-    if (t.length <= 18) return [t, '']
-    return [t.slice(0, 18) + '…', '']
-  }
-
-  // tooltip pos biar gak keluar
-  const tipW = 210
-  const tipH = 62
+  // tooltip anti keluar
+  const tipW = 220
+  const tipH = 68
   const tipX = hover
-    ? Math.min(Math.max(hover.x + hover.w / 2 - tipW / 2, padding.left), width - tipW - padding.right)
+    ? Math.min(
+        Math.max(hover.x + hover.w / 2 - tipW / 2, padding.left),
+        width - tipW - padding.right
+      )
     : 0
   const tipY = padding.top + 10
 
   return (
-    <div ref={wrapRef} className="w-full">
-      <svg
-        ref={svgRef}
-        width={width}
-        height={height}
-        className="bg-white rounded-2xl border shadow-sm"
-        onMouseMove={handleMove}
-        onMouseLeave={handleLeave}
-        style={{ touchAction: 'none' }}
-      >
-        {/* Title */}
-        <text x={padding.left} y={26} fontSize="14" fontWeight="800" fill={text}>
-          {title}
-        </text>
+    <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+      {/* header */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="text-sm font-bold text-slate-900">{title}</div>
+        <div className="text-xs text-slate-500">
+          Arahkan kursor ke bar untuk lihat detail
+        </div>
+      </div>
 
-        {/* Y grid & ticks */}
-        {[...Array(yTicks + 1)].map((_, i) => {
-          const y = padding.top + (innerH / yTicks) * i
-          const val = Math.round(maxVal * (1 - i / yTicks))
-          return (
-            <g key={i}>
-              <line x1={padding.left} y1={y} x2={padding.left + innerW} y2={y} stroke={grid} />
-              <text x={padding.left - 12} y={y + 4} textAnchor="end" fontSize="12" fill={sub}>
-                {fmt(val)}
-              </text>
-            </g>
-          )
-        })}
-
-        {/* Bars */}
-        {bars.map((b, idx) => (
-          <g key={idx}>
-            <rect
-              x={b.x}
-              y={b.y}
-              width={b.w}
-              height={b.h}
-              rx="10"
-              fill={barColor}
-              opacity={hover?.i === idx ? 1 : 0.88}
-            />
-          </g>
-        ))}
-
-        {/* X labels (rotate biar gak numpuk) */}
-        {labels.map((lab, i) => {
-          const x = padding.left + i * (barW + gap) + barW / 2
-          const [l1, l2] = split2(lab)
-          return (
-            <g key={i} transform={`translate(${x}, ${height - 18}) rotate(-25)`}>
-              <text fontSize="11" textAnchor="end" fill={sub}>
-                {l1}
-              </text>
-              {l2 ? (
-                <text y="14" fontSize="11" textAnchor="end" fill={sub}>
-                  {l2}
+      {/* chart area scroll-x (biar gak numpuk & bar tetap lebar) */}
+      <div className="px-2 pb-4 overflow-x-auto">
+        <svg
+          ref={svgRef}
+          width={width}
+          height={height}
+          onMouseMove={handleMove}
+          onMouseLeave={handleLeave}
+          style={{ touchAction: 'none' }}
+        >
+          {/* Y grid & ticks */}
+          {[...Array(yTicks + 1)].map((_, i) => {
+            const y = padding.top + (innerH / yTicks) * i
+            const val = Math.round(maxVal * (1 - i / yTicks))
+            return (
+              <g key={i}>
+                <line x1={padding.left} y1={y} x2={padding.left + innerW} y2={y} stroke={grid} />
+                <text x={padding.left - 12} y={y + 4} textAnchor="end" fontSize="12" fill={sub}>
+                  {fmt(val)}
                 </text>
-              ) : null}
-            </g>
-          )
-        })}
+              </g>
+            )
+          })}
 
-        {/* Hover helper */}
-        {hover && (
-          <>
-            <line
-              x1={hover.x + hover.w / 2}
-              y1={padding.top}
-              x2={hover.x + hover.w / 2}
-              y2={height - padding.bottom + 6}
-              stroke="#CBD5E1"
-              strokeDasharray="4 4"
-            />
-
-            <g transform={`translate(${tipX}, ${tipY})`}>
-              <rect width={tipW} height={tipH} rx="14" fill="white" stroke="#E5E7EB" />
-              <text x="12" y="22" fontSize="12" fill={sub}>
-                {String(labels[hover.i] || '-')}
-              </text>
-              <text x="12" y="44" fontSize="14" fontWeight="900" fill={text}>
-                {fmt(hover.v)}
+          {/* Bars */}
+          {bars.map((b, idx) => (
+            <g key={idx}>
+              <rect
+                x={b.x}
+                y={b.y}
+                width={b.w}
+                height={b.h}
+                rx="12"
+                fill={barColor}
+                opacity={hover?.i === idx ? 1 : 0.88}
+              />
+              {/* mini label bawah (singkat banget) */}
+              <text
+                x={b.x + b.w / 2}
+                y={height - 6}
+                fontSize="10"
+                textAnchor="middle"
+                fill={sub}
+              >
+                {(String(labels[idx] || '').slice(0, 6) + (String(labels[idx] || '').length > 6 ? '…' : ''))}
               </text>
             </g>
-          </>
-        )}
-      </svg>
+          ))}
+
+          {/* Hover */}
+          {hover && (
+            <>
+              <line
+                x1={hover.x + hover.w / 2}
+                y1={padding.top}
+                x2={hover.x + hover.w / 2}
+                y2={height - padding.bottom}
+                stroke="#CBD5E1"
+                strokeDasharray="4 4"
+              />
+              <g transform={`translate(${tipX}, ${tipY})`}>
+                <rect width={tipW} height={tipH} rx="14" fill="white" stroke="#E5E7EB" />
+                <text x="12" y="24" fontSize="12" fill={sub}>
+                  {String(labels[hover.i] || '-')}
+                </text>
+                <text x="12" y="48" fontSize="14" fontWeight="900" fill={text}>
+                  {fmt(hover.v)}
+                </text>
+              </g>
+            </>
+          )}
+        </svg>
+      </div>
     </div>
   )
 }
+
 
 
 export default function DataCustomer() {
@@ -716,7 +694,7 @@ export default function DataCustomer() {
 
         {/* Charts */}
         <div className="grid gap-6 md:grid-cols-2 mb-6">
-          <div className="w-full">
+          <div>
             <SimpleBarChart
               title={`Top Customer (${customerMetric === 'jumlah' ? 'Transaksi' : 'Nominal'})`}
               labels={topCustomersForChart.labels}
