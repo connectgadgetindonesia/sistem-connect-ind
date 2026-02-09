@@ -14,6 +14,7 @@ export default function RiwayatPenjualan() {
     search: '',
   })
 
+  // ✅ tabel kinerja
   const [kinerja, setKinerja] = useState([])
   const [kinerjaLabel, setKinerjaLabel] = useState('')
 
@@ -37,20 +38,26 @@ export default function RiwayatPenjualan() {
     return Object.values(grouped)
   }
 
+  // ✅ ambil nilai unik dalam 1 invoice (kalau berbeda-beda)
   const getUniqueText = (produk = [], key) => {
     const vals = (produk || [])
       .map((p) => (p?.[key] || '').toString().trim())
       .filter(Boolean)
-      .filter((v) => v !== '-')
+      .filter((v) => v !== '-') // biar '-' tidak dianggap data
     const uniq = Array.from(new Set(vals))
     if (uniq.length === 0) return '-'
     return uniq.join(', ')
   }
 
-  const totalHarga = (produk = []) => produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
-  const totalLaba = (produk = []) => produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+  const totalHarga = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.harga_jual, 10) || 0), 0)
 
+  const totalLaba = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+
+  // ✅ hitung kinerja berbasis INVOICE (bukan per baris produk)
   const computeKinerjaFromRows = (data = []) => {
+    // invoice_id -> { dilayani:Set, referral:Set }
     const invMap = new Map()
 
     for (const r of data) {
@@ -65,10 +72,12 @@ export default function RiwayatPenjualan() {
       const dil = (r.dilayani_oleh || '').toString().trim().toUpperCase()
       if (dil && dil !== '-') bucket.dilayani.add(dil)
 
+      // ✅ FIX UTAMA: pakai kolom `referral` (bukan referal)
       const ref = (r.referral || '').toString().trim().toUpperCase()
       if (ref && ref !== '-') bucket.referral.add(ref)
     }
 
+    // employee -> counts
     const emp = new Map()
     for (const [, v] of invMap.entries()) {
       for (const name of v.dilayani) {
@@ -86,12 +95,19 @@ export default function RiwayatPenjualan() {
       total: (x.dilayani || 0) + (x.referral || 0),
     }))
 
-    arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral)
+    arr.sort(
+      (a, b) =>
+        b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral
+    )
     return arr
   }
 
+  // ✅ fetch kinerja: Harian = BULAN berjalan, History = sesuai filter tanggal
   async function fetchKinerja() {
-    let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referral')
+    let q = supabase
+      .from('penjualan_baru')
+      // ✅ FIX UTAMA: select `referral`
+      .select('invoice_id,tanggal,dilayani_oleh,referral')
 
     if (mode === 'harian') {
       const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
@@ -104,7 +120,9 @@ export default function RiwayatPenjualan() {
       setKinerjaLabel(`Periode: ${filter.tanggal_awal || '-'} - ${filter.tanggal_akhir || '-'}`)
     }
 
-    const { data, error } = await q.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
+    const { data, error } = await q
+      .order('tanggal', { ascending: false })
+      .order('invoice_id', { ascending: false })
 
     if (error) {
       console.error('Fetch kinerja error:', error)
@@ -116,6 +134,7 @@ export default function RiwayatPenjualan() {
   }
 
   async function fetchData() {
+    // ===== 1) RIWAYAT (tabel bawah) =====
     let query = supabase.from('penjualan_baru').select('*')
 
     if (mode === 'harian') {
@@ -131,7 +150,9 @@ export default function RiwayatPenjualan() {
       )
     }
 
-    const { data, error } = await query.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
+    const { data, error } = await query
+      .order('tanggal', { ascending: false })
+      .order('invoice_id', { ascending: false })
 
     if (error) {
       console.error('Fetch riwayat error:', error)
@@ -140,6 +161,7 @@ export default function RiwayatPenjualan() {
       setRows(groupByInvoice(data || []))
     }
 
+    // ===== 2) KINERJA (tabel atas) =====
     await fetchKinerja()
   }
 
@@ -147,10 +169,17 @@ export default function RiwayatPenjualan() {
     const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
     if (!konfirmasi) return
 
-    const { data: penjualan } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
+    const { data: penjualan } = await supabase
+      .from('penjualan_baru')
+      .select('*')
+      .eq('invoice_id', invoice_id)
 
     for (const item of penjualan || []) {
-      const { data: stokData } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
+      const { data: stokData } = await supabase
+        .from('stok')
+        .select('id')
+        .eq('sn', item.sn_sku)
+        .maybeSingle()
       if (stokData) {
         await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
       }
@@ -164,14 +193,14 @@ export default function RiwayatPenjualan() {
 
   return (
     <Layout>
-      <div className="p-4 max-w-6xl mx-auto">
+      <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
 
         {/* Tabs */}
-        <div className="flex flex-wrap gap-2 mb-3">
+        <div className="flex gap-2 mb-3">
           <button
             onClick={() => setMode('harian')}
-            className={`px-3 py-2 rounded border ${
+            className={`px-3 py-1 rounded border ${
               mode === 'harian' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
             }`}
           >
@@ -179,7 +208,7 @@ export default function RiwayatPenjualan() {
           </button>
           <button
             onClick={() => setMode('history')}
-            className={`px-3 py-2 rounded border ${
+            className={`px-3 py-1 rounded border ${
               mode === 'history' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
             }`}
           >
@@ -187,20 +216,20 @@ export default function RiwayatPenjualan() {
           </button>
         </div>
 
-        {/* Filter bar (fix overlap) */}
+        {/* Filter bar */}
         <div className="flex flex-wrap gap-2 mb-4 items-center">
           <input
             type="date"
             value={filter.tanggal_awal}
             onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })}
-            className="border p-2 rounded"
+            className="border p-2"
             disabled={mode === 'harian'}
           />
           <input
             type="date"
             value={filter.tanggal_akhir}
             onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })}
-            className="border p-2 rounded"
+            className="border p-2"
             disabled={mode === 'harian'}
           />
           <input
@@ -208,127 +237,132 @@ export default function RiwayatPenjualan() {
             placeholder="Cari nama, produk, SN/SKU..."
             value={filter.search}
             onChange={(e) => setFilter({ ...filter, search: e.target.value })}
-            className="border p-2 rounded flex-1 min-w-[220px]"
+            className="border p-2 flex-1 min-w-[220px]"
           />
-          <button onClick={fetchData} className="bg-blue-600 text-white px-4 py-2 rounded whitespace-nowrap">
+          <button onClick={fetchData} className="bg-blue-600 text-white px-4 rounded">
             Cari
           </button>
 
           {mode === 'history' && (
-            <button
-              onClick={() => setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}
-              className="border px-3 py-2 rounded bg-white hover:bg-gray-50 whitespace-nowrap"
-            >
+            <button onClick={() => setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}>
               Reset Tanggal
             </button>
           )}
 
           {mode === 'harian' && (
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 ml-2">
               Menampilkan transaksi tanggal <b>{dayjs(today).format('DD MMM YYYY')}</b>
             </span>
           )}
         </div>
 
-        {/* Kinerja (wrap overflow) */}
-        <div className="border rounded mb-4 overflow-hidden">
+        {/* ✅ TABEL KINERJA (ATAS) */}
+        <div className="border rounded mb-4 overflow-x-auto">
           <div className="flex items-center justify-between px-3 py-2 bg-gray-100">
             <div className="font-semibold">Kinerja Karyawan</div>
             <div className="text-xs text-gray-700">{kinerjaLabel}</div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-[720px] w-full table-auto border">
-              <thead>
-                <tr className="bg-gray-200">
-                  <th className="border px-2 py-2 text-left">Nama</th>
-                  <th className="border px-2 py-2 whitespace-nowrap">Dilayani Oleh (Invoice)</th>
-                  <th className="border px-2 py-2 whitespace-nowrap">Referral (Invoice)</th>
-                  <th className="border px-2 py-2">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kinerja.map((k) => (
-                  <tr key={k.nama}>
-                    <td className="border px-2 py-2">{k.nama}</td>
-                    <td className="border px-2 py-2 text-center">{k.dilayani}</td>
-                    <td className="border px-2 py-2 text-center">{k.referral}</td>
-                    <td className="border px-2 py-2 text-center font-semibold">{k.total}</td>
-                  </tr>
-                ))}
-                {kinerja.length === 0 && (
-                  <tr>
-                    <td className="border px-2 py-3 text-center text-gray-500" colSpan={4}>
-                      Belum ada data kinerja pada periode ini.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Riwayat (wrap overflow) */}
-        <div className="overflow-x-auto border rounded">
-          <table className="min-w-[1100px] w-full table-auto border">
+          <table className="w-full table-auto border">
             <thead>
               <tr className="bg-gray-200">
-                <th className="border px-2 py-2">Tanggal</th>
-                <th className="border px-2 py-2">Nama</th>
-                <th className="border px-2 py-2">Produk</th>
-                <th className="border px-2 py-2">Dilayani Oleh</th>
-                <th className="border px-2 py-2">Referral</th>
-                <th className="border px-2 py-2">Harga Jual</th>
-                <th className="border px-2 py-2">Laba</th>
-                <th className="border px-2 py-2">Invoice</th>
-                <th className="border px-2 py-2">Aksi</th>
+                <th className="border px-2 py-1 text-left">Nama</th>
+                <th className="border px-2 py-1">Dilayani Oleh (Invoice)</th>
+                <th className="border px-2 py-1">Referral (Invoice)</th>
+                <th className="border px-2 py-1">Total</th>
               </tr>
             </thead>
-
             <tbody>
-              {rows.map((item) => (
-                <tr key={item.invoice_id}>
-                  <td className="border px-2 py-2 whitespace-nowrap">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
-                  <td className="border px-2 py-2 whitespace-nowrap">{item.nama_pembeli}</td>
-
-                  <td className="border px-2 py-2">
-                    {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
-                  </td>
-
-                  <td className="border px-2 py-2">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
-                  <td className="border px-2 py-2">{getUniqueText(item.produk, 'referral')}</td>
-
-                  <td className="border px-2 py-2 whitespace-nowrap">
-                    Rp {totalHarga(item.produk).toLocaleString('id-ID')}
-                  </td>
-                  <td className="border px-2 py-2 whitespace-nowrap">
-                    Rp {totalLaba(item.produk).toLocaleString('id-ID')}
-                  </td>
-
-                  <td className="border px-2 py-2 whitespace-nowrap">
-                    <a href={`/invoice/${item.invoice_id}`} className="text-blue-600 underline" target="_blank" rel="noreferrer">
-                      Unduh
-                    </a>
-                  </td>
-
-                  <td className="border px-2 py-2 whitespace-nowrap">
-                    <button onClick={() => handleDelete(item.invoice_id)} className="bg-red-600 text-white px-3 py-2 rounded">
-                      Hapus
-                    </button>
-                  </td>
+              {kinerja.map((k) => (
+                <tr key={k.nama}>
+                  <td className="border px-2 py-1">{k.nama}</td>
+                  <td className="border px-2 py-1 text-center">{k.dilayani}</td>
+                  <td className="border px-2 py-1 text-center">{k.referral}</td>
+                  <td className="border px-2 py-1 text-center font-semibold">{k.total}</td>
                 </tr>
               ))}
-
-              {rows.length === 0 && (
+              {kinerja.length === 0 && (
                 <tr>
-                  <td className="border px-2 py-4 text-center text-gray-500" colSpan={9}>
-                    Tidak ada data.
+                  <td className="border px-2 py-3 text-center text-gray-500" colSpan={4}>
+                    Belum ada data kinerja pada periode ini.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* TABEL RIWAYAT (BAWAH) */}
+        <table className="w-full table-auto border">
+          <thead>
+            <tr className="bg-gray-200">
+              <th className="border px-2 py-1">Tanggal</th>
+              <th className="border px-2 py-1">Nama</th>
+              <th className="border px-2 py-1">Produk</th>
+              <th className="border px-2 py-1">Dilayani Oleh</th>
+              <th className="border px-2 py-1">Referral</th>
+              <th className="border px-2 py-1">Harga Jual</th>
+              <th className="border px-2 py-1">Laba</th>
+              <th className="border px-2 py-1">Invoice</th>
+              <th className="border px-2 py-1">Aksi</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((item) => (
+              <tr key={item.invoice_id}>
+                <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
+                <td className="border px-2 py-1">{item.nama_pembeli}</td>
+
+                <td className="border px-2 py-1">
+                  {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
+                </td>
+
+                <td className="border px-2 py-1">
+                  {getUniqueText(item.produk, 'dilayani_oleh')}
+                </td>
+
+                {/* ✅ FIX UTAMA: tampilkan dari kolom `referral` */}
+                <td className="border px-2 py-1">
+                  {getUniqueText(item.produk, 'referral')}
+                </td>
+
+                <td className="border px-2 py-1">
+                  Rp {totalHarga(item.produk).toLocaleString('id-ID')}
+                </td>
+                <td className="border px-2 py-1">
+                  Rp {totalLaba(item.produk).toLocaleString('id-ID')}
+                </td>
+                <td className="border px-2 py-1">
+                  <a
+                    href={`/invoice/${item.invoice_id}`}
+                    className="text-blue-600 underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Unduh
+                  </a>
+                </td>
+                <td className="border px-2 py-1">
+                  <button
+                    onClick={() => handleDelete(item.invoice_id)}
+                    className="bg-red-600 text-white px-2 py-1 rounded"
+                  >
+                    Hapus
+                  </button>
+                </td>
+              </tr>
+            ))}
+
+            {rows.length === 0 && (
+              <tr>
+                <td className="border px-2 py-4 text-center text-gray-500" colSpan={9}>
+                  Tidak ada data.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </Layout>
   )
