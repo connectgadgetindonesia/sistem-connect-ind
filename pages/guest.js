@@ -831,3 +831,28 @@ export default function GuestPage() {
     </GuestLayout>
   )
 }
+// ===== helpers download (ZIP + single file) =====
+async function canvasToJpegBlob(canvas, quality = 0.95) {
+  return await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('Gagal convert canvas ke blob'))),
+      'image/jpeg',
+      quality
+    )
+  })
+}
+
+async function saveBlob(filename, blob) {
+  // file-saver lebih stabil untuk mobile dibanding <a>.click() berulang
+  const mod = await import('file-saver')
+  const saveAs = mod.saveAs || mod.default
+  saveAs(blob, filename)
+}
+
+async function saveZip(zipFilename, files /* [{name, blob}] */) {
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  for (const f of files) zip.file(f.name, f.blob)
+  const zipBlob = await zip.generateAsync({ type: 'blob' })
+  await saveBlob(zipFilename, zipBlob)
+}
