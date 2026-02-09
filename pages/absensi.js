@@ -531,58 +531,57 @@ export default function AbsenTugasKaryawan() {
         </div>
 
         {/* TABEL ABSENSI */}
-        <div style={{ ...card, padding: 0 }}>
-          <div style={cardHeaderRow}>
-            <div>
-              <div style={{ fontWeight: 900 }}>Daftar Absensi</div>
-              <div style={helpText}>Tanggal: <b>{selectedDate}</b></div>
-            </div>
-          </div>
+<div className="border rounded p-4 mb-6 bg-white">
+  <div className="font-semibold mb-1">Daftar Absensi</div>
+  <div className="text-xs text-gray-500 mb-3">Tanggal: {selectedDate}</div>
 
-          <div style={tableWrap}>
-            <table style={table}>
-              <thead>
-                <tr style={theadRow}>
-                  <th style={thLeft}>Nama</th>
-                  <th style={thLeft}>Shift</th>
-                  <th style={thLeft}>Status</th>
-                  <th style={thLeft}>Jam Absen</th>
-                  <th style={thLeft}>Jam Pulang</th>
-                  <th style={thCenter}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {absenList.length === 0 && (
-                  <tr>
-                    <td style={{ ...tdCenter, color: '#64748b', padding: 14 }} colSpan={6}>
-                      Belum ada data absen untuk tanggal ini
-                    </td>
-                  </tr>
-                )}
+  {/* ✅ INNER AREA (biar tabel nggak nempel) */}
+  <div className="border rounded-lg overflow-x-auto bg-white">
+    <table className="w-full table-auto">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-4 py-3 text-left text-xs font-bold text-slate-700">Nama</th>
+          <th className="px-4 py-3 text-left text-xs font-bold text-slate-700">Shift</th>
+          <th className="px-4 py-3 text-left text-xs font-bold text-slate-700">Status</th>
+          <th className="px-4 py-3 text-left text-xs font-bold text-slate-700">Jam Absen</th>
+          <th className="px-4 py-3 text-left text-xs font-bold text-slate-700">Jam Pulang</th>
+          <th className="px-4 py-3 text-left text-xs font-bold text-slate-700">Aksi</th>
+        </tr>
+      </thead>
 
-                {absenList.map((row) => (
-                  <tr key={row.id || `${row.nama}-${row.shift}-${row.jam_absen || ''}`} style={tbodyTr}>
-                    <td style={tdLeft}>{row.nama}</td>
-                    <td style={tdLeft}>{row.shift}</td>
-                    <td style={tdLeft}>{row.status}</td>
-                    <td style={tdLeft}>{row.jam_absen || '-'}</td>
-                    <td style={tdLeft}>{row.jam_pulang || '-'}</td>
-                    <td style={tdCenter}>
-                      <button
-                        style={btnOutlineSmall}
-                        onClick={() => handleAbsenPulang(row)}
-                        disabled={!isToday || row.status !== 'Hadir'}
-                        type="button"
-                      >
-                        {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <tbody>
+        {absenList.length === 0 && (
+          <tr>
+            <td className="px-4 py-4 text-center text-gray-500" colSpan={6}>
+              Belum ada data absen untuk tanggal ini
+            </td>
+          </tr>
+        )}
+
+        {absenList.map((row) => (
+          <tr key={row.id || `${row.nama}-${row.shift}-${row.jam_absen || ''}`} className="border-t">
+            <td className="px-4 py-3">{row.nama}</td>
+            <td className="px-4 py-3">{row.shift}</td>
+            <td className="px-4 py-3">{row.status}</td>
+            <td className="px-4 py-3">{row.jam_absen || '-'}</td>
+            <td className="px-4 py-3">{row.jam_pulang || '-'}</td>
+            <td className="px-4 py-3">
+              <button
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                onClick={() => handleAbsenPulang(row)}
+                disabled={!isToday || row.status !== 'Hadir'}
+                type="button"
+              >
+                {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 
         {/* TUGAS */}
         <div style={card}>
@@ -971,8 +970,6 @@ const tableWrap = {
   borderRadius: 10,
   overflowX: 'auto',
   marginTop: 12,
-  padding: 8,          // ✅ bikin tabel tidak nempel border card
-  background: '#fff',
 }
 
 const table = {
@@ -989,12 +986,11 @@ const tbodyTr = {
   borderTop: '1px solid #e5e7eb',
 }
 
-const thLeft = { textAlign: 'left', padding: 12, fontSize: 12, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }
-const thCenter = { textAlign: 'center', padding: 12, fontSize: 12, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }
+const thLeft = { textAlign: 'left', padding: 10, fontSize: 12, fontWeight: 900, color: '#0f172a' }
+const thCenter = { textAlign: 'center', padding: 10, fontSize: 12, fontWeight: 900, color: '#0f172a' }
 
-const tdLeft = { textAlign: 'left', padding: 12, fontSize: 13, color: '#0f172a', verticalAlign: 'middle' }
-const tdCenter = { textAlign: 'center', padding: 12, fontSize: 13, color: '#0f172a', verticalAlign: 'middle' }
-
+const tdLeft = { textAlign: 'left', padding: 10, fontSize: 13, color: '#0f172a' }
+const tdCenter = { textAlign: 'center', padding: 10, fontSize: 13, color: '#0f172a' }
 
 const taskItem = {
   border: '1px solid #e5e7eb',
