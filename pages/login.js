@@ -10,27 +10,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  // ✅ MASTER yang boleh akses dashboard
   const MASTER_EMAILS = ['alvin@connect.ind', 'erick@connect.ind', 'satria@connect.ind']
-  // ✅ GUEST yang hanya boleh akses /guest
   const GUEST_EMAILS = ['shidqi@connect.ind', 'guest1@connectind.com']
   const ALL_ALLOWED = new Set([...MASTER_EMAILS, ...GUEST_EMAILS])
 
-  // ✅ kalau sudah ada session supabase, arahkan sesuai role email
   useEffect(() => {
-    ;(async () => {
-      try {
-        const { data } = await supabase.auth.getUser()
-        if (!data?.user?.email) return
-
-        const emailLower = String(data.user.email || '').toLowerCase()
-        if (GUEST_EMAILS.includes(emailLower)) router.replace('/guest')
-        else router.replace('/dashboard')
-      } catch {
-        // abaikan
-      }
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // kalau sudah ada cookie auth, middleware akan redirect otomatis.
+    // di sini tidak perlu getUser() (biar ringan).
   }, [])
 
   const handleLogin = async (e) => {
@@ -41,21 +27,14 @@ export default function LoginPage() {
     try {
       const emailLower = String(email || '').trim().toLowerCase()
 
-      // ✅ Hard guard: hanya email yg diizinkan
       if (!ALL_ALLOWED.has(emailLower)) {
         setErrorMsg('Akun tidak punya akses.')
         return
       }
 
       const isGuest = GUEST_EMAILS.includes(emailLower)
-      const isMaster = MASTER_EMAILS.includes(emailLower)
+      const role = isGuest ? 'guest' : 'master'
 
-      if (!isGuest && !isMaster) {
-        setErrorMsg('Akun tidak punya akses.')
-        return
-      }
-
-      // 1) Login ke supabase (agar dapat access_token untuk verifikasi user)
       const { data, error } = await supabase.auth.signInWithPassword({
         email: emailLower,
         password,
@@ -66,33 +45,26 @@ export default function LoginPage() {
         return
       }
 
-      const token = data?.session?.access_token
-      if (!token) {
-        setErrorMsg('Login berhasil, tapi token tidak ditemukan.')
+      if (!data?.session) {
+        setErrorMsg('Login berhasil, tapi session tidak ditemukan.')
         return
       }
 
-      // 2) Minta server bikin cookie pendek (user_auth) untuk middleware
-      const res = await fetch('/api/auth-cookie', {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${token}` },
-  credentials: 'include',
-})
+      // ✅ set cookie signed (dibaca middleware)
+      const resp = await fetch('/api/auth-cookie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailLower, role }),
+      })
 
-
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '')
-        console.error('auth-cookie failed:', res.status, txt)
-        setErrorMsg('Login berhasil, tapi gagal set cookie. Coba refresh & login lagi.')
+      const json = await resp.json().catch(() => ({}))
+      if (!resp.ok || !json?.ok) {
+        setErrorMsg(json?.message || 'Login berhasil, tapi gagal set cookie.')
         return
       }
 
-      // 3) Redirect sesuai role
-      if (isGuest) router.push('/guest')
-      else router.push('/dashboard')
-    } catch (err) {
-      console.error(err)
-      setErrorMsg('Terjadi error saat login. Coba lagi.')
+      // redirect sesuai role
+      router.push(isGuest ? '/guest' : '/dashboard')
     } finally {
       setLoading(false)
     }
