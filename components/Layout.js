@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useMemo, useState } from 'react'
+import { supabase } from '../lib/supabaseClient' // ✅ WAJIB (biar signOut jalan)
 import {
   LayoutDashboard,
   ClipboardList,
@@ -15,7 +16,6 @@ import {
   Boxes,
   CreditCard,
   Menu,
-  X,
 } from 'lucide-react'
 
 export default function Layout({ children }) {
@@ -43,17 +43,34 @@ export default function Layout({ children }) {
     return found?.label || 'CONNECT.IND'
   }, [router.pathname])
 
-  const logout = async () => {
-  document.cookie = 'user_auth=; Max-Age=0; path=/'
-  document.cookie = 'user_role=; Max-Age=0; path=/'
-  document.cookie = 'user_token=; Max-Age=0; path=/' // jaga-jaga sisa lama
-  await supabase.auth.signOut().catch(() => {})
-  router.push('/login')
-}
+  const deleteCookie = (name) => {
+    // ✅ paling aman: Path + Max-Age + SameSite
+    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`
+  }
 
+  const logout = async () => {
+    try {
+      // 1) tutup drawer mobile biar seamless
+      setMobileOpen(false)
+
+      // 2) signout supabase (hapus session client)
+      await supabase.auth.signOut().catch(() => {})
+
+      // 3) hapus cookie middleware
+      deleteCookie('user_auth')
+      deleteCookie('user_role')
+      deleteCookie('user_token') // jaga-jaga sisa lama
+
+      // 4) redirect seamless (tanpa refresh, dan ga bisa back)
+      router.replace('/login')
+    } catch {
+      router.replace('/login')
+    }
+  }
 
   const SidebarContent = ({ onNavigate }) => (
-    <div className="h-full bg-slate-900 text-white flex flex-col justify-between border-r border-slate-800">
+    <div className="h-full bg-slate-900 text-white flex flex-col border-r border-slate-800">
+      {/* ===== ATAS ===== */}
       <div>
         {/* Brand */}
         <div className="px-5 py-5 border-b border-slate-800">
@@ -102,9 +119,12 @@ export default function Layout({ children }) {
         </nav>
       </div>
 
-      {/* Logout */}
-      <div className="p-4">
-        <button onClick={logout} className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+      {/* ===== BAWAH (SELALU PALING BAWAH) ===== */}
+      <div className="mt-auto p-4">
+        <button
+          onClick={logout}
+          className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
+        >
           Logout
         </button>
 
@@ -125,10 +145,7 @@ export default function Layout({ children }) {
       {/* Sidebar Mobile (Drawer) */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setMobileOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] shadow-xl">
             <SidebarContent onNavigate={() => setMobileOpen(false)} />
           </div>
@@ -152,18 +169,14 @@ export default function Layout({ children }) {
 
             <div className="min-w-0">
               <div className="text-lg font-semibold truncate">{pageTitle}</div>
-              <div className="text-xs text-slate-500 hidden sm:block">
-                Silakan pilih menu untuk mulai bekerja.
-              </div>
+              <div className="text-xs text-slate-500 hidden sm:block">Silakan pilih menu untuk mulai bekerja.</div>
             </div>
           </div>
         </div>
 
         {/* Content wrapper */}
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-6">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:p-6">
-            {children}
-          </div>
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:p-6">{children}</div>
         </div>
       </main>
     </div>
