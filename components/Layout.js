@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useMemo, useState } from 'react'
-import { supabase } from '../lib/supabaseClient' // ✅ WAJIB (biar signOut jalan)
+import { supabase } from '../lib/supabaseClient'
 import {
   LayoutDashboard,
   ClipboardList,
@@ -16,6 +16,7 @@ import {
   Boxes,
   CreditCard,
   Menu,
+  LogOut,
 } from 'lucide-react'
 
 export default function Layout({ children }) {
@@ -44,24 +45,16 @@ export default function Layout({ children }) {
   }, [router.pathname])
 
   const deleteCookie = (name) => {
-    // ✅ paling aman: Path + Max-Age + SameSite
     document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`
   }
 
   const logout = async () => {
     try {
-      // 1) tutup drawer mobile biar seamless
       setMobileOpen(false)
-
-      // 2) signout supabase (hapus session client)
       await supabase.auth.signOut().catch(() => {})
-
-      // 3) hapus cookie middleware
       deleteCookie('user_auth')
       deleteCookie('user_role')
-      deleteCookie('user_token') // jaga-jaga sisa lama
-
-      // 4) redirect seamless (tanpa refresh, dan ga bisa back)
+      deleteCookie('user_token')
       router.replace('/login')
     } catch {
       router.replace('/login')
@@ -70,7 +63,6 @@ export default function Layout({ children }) {
 
   const SidebarContent = ({ onNavigate }) => (
     <div className="h-full bg-slate-900 text-white flex flex-col border-r border-slate-800">
-      {/* ===== ATAS ===== */}
       <div>
         {/* Brand */}
         <div className="px-5 py-5 border-b border-slate-800">
@@ -89,9 +81,7 @@ export default function Layout({ children }) {
                 key={item.path}
                 href={item.path}
                 className="block"
-                onClick={() => {
-                  if (onNavigate) onNavigate()
-                }}
+                onClick={() => onNavigate?.()}
               >
                 <div
                   className={[
@@ -116,19 +106,21 @@ export default function Layout({ children }) {
               </Link>
             )
           })}
+
+          {/* ✅ Logout persis di bawah Data Customer */}
+          <button
+            type="button"
+            onClick={logout}
+            className="w-full text-left"
+          >
+            <div className="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-red-600/20">
+              <LogOut size={18} className="shrink-0 text-red-300 group-hover:text-red-200" />
+              <span className="text-sm font-semibold text-red-200 group-hover:text-red-100">Logout</span>
+            </div>
+          </button>
         </nav>
-      </div>
 
-      {/* ===== BAWAH (SELALU PALING BAWAH) ===== */}
-      <div className="mt-auto p-4">
-        <button
-          onClick={logout}
-          className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
-        >
-          Logout
-        </button>
-
-        <div className="text-[11px] text-slate-500 mt-3 text-center">
+        <div className="px-4 py-3 text-[11px] text-slate-500">
           © {new Date().getFullYear()} CONNECT.IND
         </div>
       </div>
@@ -157,7 +149,6 @@ export default function Layout({ children }) {
         {/* Topbar */}
         <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 flex items-center gap-3">
-            {/* Mobile menu button */}
             <button
               type="button"
               className="md:hidden border rounded-lg px-2.5 py-2 bg-white hover:bg-slate-50"
@@ -174,7 +165,6 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* Content wrapper */}
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-6">
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:p-6">{children}</div>
         </div>
