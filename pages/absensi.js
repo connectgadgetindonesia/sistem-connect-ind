@@ -139,9 +139,7 @@ export default function AbsenTugasKaryawan() {
           .eq('id', empForm.id)
         if (error) return alert('Gagal update karyawan: ' + error.message)
       } else {
-        const { error } = await supabase
-          .from('data_karyawan')
-          .insert({ nama: nm, aktif: true })
+        const { error } = await supabase.from('data_karyawan').insert({ nama: nm, aktif: true })
         if (error) return alert('Gagal tambah karyawan: ' + error.message)
       }
 
@@ -171,7 +169,10 @@ export default function AbsenTugasKaryawan() {
   }
 
   const employeeNameOptionsNote = useMemo(() => {
-    return (employees || []).filter((e) => e.aktif !== false).map((e) => (e.nama || '').trim()).filter(Boolean)
+    return (employees || [])
+      .filter((e) => e.aktif !== false)
+      .map((e) => (e.nama || '').trim())
+      .filter(Boolean)
   }, [employees])
 
   function onNamaChange(v) {
@@ -277,8 +278,6 @@ export default function AbsenTugasKaryawan() {
         added_manually: false,
       }))
 
-      // ✅ PENTING:
-      // ignoreDuplicates = true -> kalau sudah ada (misal status DONE), TIDAK di-override jadi TODO lagi
       const { error } = await supabase
         .from('tugas_harian')
         .upsert(rows, { onConflict: 'task_date,title', ignoreDuplicates: true })
@@ -343,11 +342,7 @@ export default function AbsenTugasKaryawan() {
     if (!upd || upd.error) {
       const tgl = workTask.task_date || selectedDate
       const title = (workTask.title || '').trim()
-      const upd2 = await supabase
-        .from('tugas_harian')
-        .update(payload)
-        .eq('task_date', tgl)
-        .eq('title', title)
+      const upd2 = await supabase.from('tugas_harian').update(payload).eq('task_date', tgl).eq('title', title)
 
       if (upd2.error) {
         console.error('confirmWork update failed:', upd?.error || upd2.error)
@@ -409,11 +404,7 @@ export default function AbsenTugasKaryawan() {
     }
 
     const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    const { error } = await supabase
-      .from('absensi_karyawan')
-      .update({ jam_pulang: jamNow })
-      .eq('id', row.id)
-      .eq('tanggal', selectedDate)
+    const { error } = await supabase.from('absensi_karyawan').update({ jam_pulang: jamNow }).eq('id', row.id).eq('tanggal', selectedDate)
 
     if (error) return alert('Gagal menyimpan absen pulang: ' + error.message)
     await loadAbsensi(selectedDate)
@@ -433,25 +424,20 @@ export default function AbsenTugasKaryawan() {
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto p-4">
+      <div style={pageWrap}>
         {/* HEADER */}
-        <div className="flex items-start justify-between gap-4 mb-4">
+        <div style={headerRow}>
           <div>
-            <h1 className="text-xl font-bold">Absensi & Tugas Harian</h1>
-            <div className="text-sm text-gray-600">
+            <div style={title}>Absensi & Tugas Harian</div>
+            <div style={subtitle}>
               Mode: {isToday ? <b>Hari Ini</b> : <b>Laporan (Read-only)</b>}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              className="border p-2 rounded"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <input type="date" style={{ ...input, width: 190 }} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
             <button
-              className="border px-3 py-2 rounded"
+              style={btnOutline}
               onClick={async () => {
                 await loadAbsensi(selectedDate)
                 await loadTasks(selectedDate)
@@ -463,27 +449,27 @@ export default function AbsenTugasKaryawan() {
           </div>
         </div>
 
-        {/* BAR: ABSEN + MASTER */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        {/* BAR: ABSEN + RINGKASAN */}
+        <div style={grid3}>
           {/* ABSEN CARD */}
-          <div className="border rounded p-4 lg:col-span-2">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Form Absensi</div>
-              <button className="border px-3 py-2 rounded text-sm" onClick={() => setEmpModal(true)} type="button">
+          <div style={{ ...card, gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ fontWeight: 900 }}>Form Absensi</div>
+              <button style={btnOutlineSmall} onClick={() => setEmpModal(true)} type="button">
                 Data Karyawan
               </button>
             </div>
 
-            <form onSubmit={handleSubmitAbsen} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <form onSubmit={handleSubmitAbsen}>
+              <div style={formGrid}>
                 {/* AUTOCOMPLETE */}
-                <div className="sm:col-span-2">
+                <div style={{ gridColumn: 'span 2' }}>
                   <input
                     type="text"
                     value={nama}
                     onChange={(e) => onNamaChange(e.target.value)}
                     placeholder="Ketik Nama Karyawan"
-                    className="border p-2 w-full rounded"
+                    style={input}
                     disabled={!isToday}
                     list="karyawanList"
                   />
@@ -492,15 +478,15 @@ export default function AbsenTugasKaryawan() {
                       <option key={n} value={n} />
                     ))}
                   </datalist>
-                  <div className="text-xs text-gray-500 mt-1">Ketik nama → akan muncul saran.</div>
+                  <div style={helpText}>Ketik nama → akan muncul saran.</div>
                 </div>
 
-                <select value={shift} onChange={(e) => setShift(e.target.value)} className="border p-2 rounded" disabled={!isToday}>
+                <select value={shift} onChange={(e) => setShift(e.target.value)} style={input} disabled={!isToday}>
                   <option value="Pagi">Shift Pagi (09.00–17.00)</option>
                   <option value="Siang">Shift Siang (13.00–20.00)</option>
                 </select>
 
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="border p-2 rounded" disabled={!isToday}>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} style={input} disabled={!isToday}>
                   <option value="Hadir">Hadir</option>
                   <option value="Izin">Izin</option>
                   <option value="Sakit">Sakit</option>
@@ -509,29 +495,35 @@ export default function AbsenTugasKaryawan() {
                 </select>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <button
                   type="submit"
-                  className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+                  style={btnPrimary}
                   disabled={!isToday || sudahAbsenHariIni}
                   title={!isToday ? 'History mode (read-only)' : sudahAbsenHariIni ? 'Nama ini sudah absen hari ini' : ''}
                 >
                   Simpan Absen
                 </button>
 
-                {!isToday && <span className="text-xs text-gray-600">History mode: input absen dikunci.</span>}
-                {isToday && sudahAbsenHariIni && <span className="text-xs text-red-600 ml-3">Nama ini sudah absen hari ini.</span>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  {!isToday && <span style={noteText}>History mode: input absen dikunci.</span>}
+                  {isToday && sudahAbsenHariIni && <span style={warnText}>Nama ini sudah absen hari ini.</span>}
+                </div>
               </div>
             </form>
           </div>
 
           {/* INFO CARD */}
-          <div className="border rounded p-4">
-            <div className="font-semibold mb-2">Ringkasan Hari Ini</div>
-            <div className="text-sm text-gray-700 space-y-1">
-              <div>Hadir: <b>{(absenList || []).filter((a) => a.status === 'Hadir').length}</b></div>
-              <div>Izin/Sakit/Libur/Cuti: <b>{(absenList || []).filter((a) => a.status !== 'Hadir').length}</b></div>
-              <div className="text-xs text-gray-500 pt-2">
+          <div style={card}>
+            <div style={{ fontWeight: 900, marginBottom: 10 }}>Ringkasan Hari Ini</div>
+            <div style={{ fontSize: 13, color: '#334155', display: 'grid', gap: 6 }}>
+              <div>
+                Hadir: <b>{(absenList || []).filter((a) => a.status === 'Hadir').length}</b>
+              </div>
+              <div>
+                Izin/Sakit/Libur/Cuti: <b>{(absenList || []).filter((a) => a.status !== 'Hadir').length}</b>
+              </div>
+              <div style={helpText}>
                 Shift Siang: tidak bisa absen pulang kalau tugas belum selesai semua.
               </div>
             </div>
@@ -539,64 +531,73 @@ export default function AbsenTugasKaryawan() {
         </div>
 
         {/* TABEL ABSENSI */}
-        <div className="overflow-x-auto border rounded mb-6">
-          <table className="w-full table-auto">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border px-3 py-2 text-left">Nama</th>
-                <th className="border px-3 py-2 text-left">Shift</th>
-                <th className="border px-3 py-2 text-left">Status</th>
-                <th className="border px-3 py-2 text-left">Jam Absen</th>
-                <th className="border px-3 py-2 text-left">Jam Pulang</th>
-                <th className="border px-3 py-2 text-left">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {absenList.length === 0 && (
-                <tr>
-                  <td className="border px-3 py-3 text-center text-gray-500" colSpan={6}>
-                    Belum ada data absen untuk tanggal ini
-                  </td>
-                </tr>
-              )}
+        <div style={{ ...card, padding: 0 }}>
+          <div style={cardHeaderRow}>
+            <div>
+              <div style={{ fontWeight: 900 }}>Daftar Absensi</div>
+              <div style={helpText}>Tanggal: <b>{selectedDate}</b></div>
+            </div>
+          </div>
 
-              {absenList.map((row) => (
-                <tr key={row.id || `${row.nama}-${row.shift}-${row.jam_absen || ''}`}>
-                  <td className="border px-3 py-2">{row.nama}</td>
-                  <td className="border px-3 py-2">{row.shift}</td>
-                  <td className="border px-3 py-2">{row.status}</td>
-                  <td className="border px-3 py-2">{row.jam_absen || '-'}</td>
-                  <td className="border px-3 py-2">{row.jam_pulang || '-'}</td>
-                  <td className="border px-3 py-2">
-                    <button
-                      className="px-3 py-1 rounded border disabled:opacity-50"
-                      onClick={() => handleAbsenPulang(row)}
-                      disabled={!isToday || row.status !== 'Hadir'}
-                      type="button"
-                    >
-                      {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
-                    </button>
-                  </td>
+          <div style={tableWrap}>
+            <table style={table}>
+              <thead>
+                <tr style={theadRow}>
+                  <th style={thLeft}>Nama</th>
+                  <th style={thLeft}>Shift</th>
+                  <th style={thLeft}>Status</th>
+                  <th style={thLeft}>Jam Absen</th>
+                  <th style={thLeft}>Jam Pulang</th>
+                  <th style={thCenter}>Aksi</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {absenList.length === 0 && (
+                  <tr>
+                    <td style={{ ...tdCenter, color: '#64748b', padding: 14 }} colSpan={6}>
+                      Belum ada data absen untuk tanggal ini
+                    </td>
+                  </tr>
+                )}
+
+                {absenList.map((row) => (
+                  <tr key={row.id || `${row.nama}-${row.shift}-${row.jam_absen || ''}`} style={tbodyTr}>
+                    <td style={tdLeft}>{row.nama}</td>
+                    <td style={tdLeft}>{row.shift}</td>
+                    <td style={tdLeft}>{row.status}</td>
+                    <td style={tdLeft}>{row.jam_absen || '-'}</td>
+                    <td style={tdLeft}>{row.jam_pulang || '-'}</td>
+                    <td style={tdCenter}>
+                      <button
+                        style={btnOutlineSmall}
+                        onClick={() => handleAbsenPulang(row)}
+                        disabled={!isToday || row.status !== 'Hadir'}
+                        type="button"
+                      >
+                        {row.jam_pulang ? 'Ubah Jam Pulang' : 'Absen Pulang'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* TUGAS */}
-        <div className="border rounded p-4">
-          <div className="flex items-center justify-between mb-3">
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
             <div>
-              <h2 className="font-semibold">Tugas Harian ({selectedDate})</h2>
+              <div style={{ fontWeight: 900 }}>Tugas Harian ({selectedDate})</div>
               {isToday ? (
-                <div className="text-xs text-gray-500">Yang tampil hanya tugas yang BELUM dikerjakan (todo). Yang selesai otomatis hilang.</div>
+                <div style={helpText}>Yang tampil hanya tugas yang BELUM dikerjakan (todo). Yang selesai otomatis hilang.</div>
               ) : (
-                <div className="text-xs text-gray-500">Mode laporan: tampil semua status.</div>
+                <div style={helpText}>Mode laporan: tampil semua status.</div>
               )}
             </div>
 
             <button
-              className="text-sm border px-3 py-1 rounded disabled:opacity-50"
+              style={btnOutlineSmall}
               disabled={!isToday}
               onClick={async () => {
                 await ensureTasksIfNeeded(selectedDate)
@@ -609,75 +610,75 @@ export default function AbsenTugasKaryawan() {
           </div>
 
           {isToday && !canShowTasks && (
-            <p className="text-sm text-gray-500 mb-3">
+            <div style={{ ...helpText, marginBottom: 10 }}>
               Belum ada karyawan yang <b>Hadir</b> hari ini. Tugas akan muncul otomatis setelah ada yang hadir.
-            </p>
+            </div>
           )}
 
           {/* tambah manual */}
-          <div className="flex gap-2 mb-3">
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
             <input
-              className="border p-2 flex-1 rounded"
+              style={{ ...input, flex: 1, minWidth: 260 }}
               placeholder="Tambah tugas manual (untuk hari ini saja)"
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
               disabled={!isToday}
             />
-            <button
-              onClick={addManualTask}
-              className="bg-blue-600 text-white px-3 py-2 rounded disabled:opacity-50"
-              disabled={!isToday}
-              type="button"
-            >
+            <button onClick={addManualTask} style={btnPrimary} disabled={!isToday} type="button">
               Tambah Tugas
             </button>
           </div>
 
           {/* LIST */}
           {tasks.length === 0 ? (
-            <div className="text-sm text-gray-500">
+            <div style={{ fontSize: 13, color: '#64748b' }}>
               {isToday ? 'Tidak ada tugas yang tersisa (atau belum ada yang hadir).' : 'Tidak ada data tugas untuk tanggal ini.'}
             </div>
           ) : (
-            <ul className="space-y-2">
+            <div style={{ display: 'grid', gap: 10 }}>
               {tasks.map((t) => (
-                <li key={t.id} className="border rounded px-3 py-3 flex items-center justify-between">
+                <div key={t.id} style={taskItem}>
                   <div>
-                    <div className="font-medium">{t.title}</div>
-                    <div className="text-xs text-gray-500">
-                      {t.added_manually ? <span className="text-indigo-600">manual</span> : <span>otomatis</span>}
+                    <div style={{ fontWeight: 900, fontSize: 13, color: '#0f172a' }}>{t.title}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                      {t.added_manually ? <span style={{ fontWeight: 900 }}>manual</span> : <span>otomatis</span>}
                       {!isToday && t.status === 'done' && (
                         <>
                           {' '}
                           • selesai {fmtDateID(t.done_at)} {fmtTimeID(t.done_at)} oleh <b>{t.done_by || '-'}</b>
                         </>
                       )}
-                      {!isToday && t.status !== 'done' && <> • status <b>{t.status || 'todo'}</b></>}
+                      {!isToday && t.status !== 'done' && (
+                        <>
+                          {' '}
+                          • status <b>{t.status || 'todo'}</b>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {isToday ? (
-                    <button className="bg-green-600 text-white px-3 py-2 rounded" onClick={() => openWork(t)} type="button">
+                    <button style={btnPrimary} onClick={() => openWork(t)} type="button">
                       Kerjakan
                     </button>
                   ) : (
-                    <span className="text-xs px-2 py-1 rounded border">{t.status === 'done' ? 'DONE' : 'TODO'}</span>
+                    <span style={badgeOutline}>{t.status === 'done' ? 'DONE' : 'TODO'}</span>
                   )}
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </div>
 
       {/* MODAL: DATA KARYAWAN */}
       {empModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-3xl rounded-lg shadow-lg overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold">Data Karyawan</div>
+        <div style={modalOverlay} onMouseDown={() => setEmpModal(false)}>
+          <div style={{ ...modalCard, width: 'min(980px, 100%)' }} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={modalHeader}>
+              <div style={{ fontWeight: 900 }}>Data Karyawan</div>
               <button
-                className="text-sm border px-3 py-1 rounded"
+                style={btnOutline}
                 onClick={() => {
                   setEmpModal(false)
                   setEmpForm({ id: null, nama: '', aktif: true })
@@ -688,18 +689,20 @@ export default function AbsenTugasKaryawan() {
               </button>
             </div>
 
-            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
               {/* FORM */}
-              <div className="border rounded p-3">
-                <div className="font-semibold mb-2">{empForm.id ? 'Edit Karyawan' : 'Tambah Karyawan'}</div>
-                <div className="space-y-2">
+              <div style={subCard}>
+                <div style={{ fontWeight: 900, marginBottom: 10 }}>{empForm.id ? 'Edit Karyawan' : 'Tambah Karyawan'}</div>
+
+                <div style={{ display: 'grid', gap: 10 }}>
                   <input
-                    className="border p-2 w-full rounded"
+                    style={input}
                     placeholder="Nama karyawan"
                     value={empForm.nama}
                     onChange={(e) => setEmpForm((p) => ({ ...p, nama: e.target.value }))}
                   />
-                  <label className="flex items-center gap-2 text-sm">
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#0f172a', fontWeight: 800 }}>
                     <input
                       type="checkbox"
                       checked={!!empForm.aktif}
@@ -708,54 +711,53 @@ export default function AbsenTugasKaryawan() {
                     Aktif
                   </label>
 
-                  <div className="flex gap-2">
-                    <button
-                      className="bg-blue-600 text-white px-3 py-2 rounded disabled:opacity-50"
-                      onClick={saveEmployee}
-                      disabled={empLoading}
-                      type="button"
-                    >
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button style={btnPrimary} onClick={saveEmployee} disabled={empLoading} type="button">
                       {empForm.id ? 'Simpan Perubahan' : 'Tambah'}
                     </button>
-                    <button className="border px-3 py-2 rounded" onClick={() => setEmpForm({ id: null, nama: '', aktif: true })} type="button">
+                    <button style={btnOutline} onClick={() => setEmpForm({ id: null, nama: '', aktif: true })} type="button">
                       Reset
                     </button>
                   </div>
 
-                  <div className="text-xs text-gray-500">Nama akan otomatis disimpan dalam format kapital (UPPERCASE).</div>
+                  <div style={helpText}>Nama akan otomatis disimpan dalam format kapital (UPPERCASE).</div>
                 </div>
               </div>
 
               {/* LIST */}
-              <div className="border rounded p-3">
-                <div className="font-semibold mb-2">Daftar Karyawan</div>
+              <div style={subCard}>
+                <div style={{ fontWeight: 900, marginBottom: 10 }}>Daftar Karyawan</div>
 
-                <div className="max-h-[340px] overflow-auto border rounded">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="text-left px-2 py-2 border-b">Nama</th>
-                        <th className="text-left px-2 py-2 border-b">Status</th>
-                        <th className="text-left px-2 py-2 border-b">Aksi</th>
+                <div style={{ ...tableWrap, maxHeight: 360, overflow: 'auto' }}>
+                  <table style={table}>
+                    <thead>
+                      <tr style={theadRow}>
+                        <th style={thLeft}>Nama</th>
+                        <th style={thLeft}>Status</th>
+                        <th style={thLeft}>Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(employees || []).map((e) => (
-                        <tr key={e.id}>
-                          <td className="px-2 py-2 border-b">{e.nama}</td>
-                          <td className="px-2 py-2 border-b">
-                            {e.aktif === false ? <span className="text-gray-500">Nonaktif</span> : <span className="text-green-700">Aktif</span>}
+                        <tr key={e.id} style={tbodyTr}>
+                          <td style={tdLeft}>{e.nama}</td>
+                          <td style={tdLeft}>
+                            {e.aktif === false ? (
+                              <span style={{ color: '#64748b', fontWeight: 800 }}>Nonaktif</span>
+                            ) : (
+                              <span style={{ color: '#16a34a', fontWeight: 900 }}>Aktif</span>
+                            )}
                           </td>
-                          <td className="px-2 py-2 border-b">
-                            <div className="flex gap-2">
+                          <td style={tdLeft}>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <button
-                                className="border px-2 py-1 rounded"
+                                style={btnEdit}
                                 onClick={() => setEmpForm({ id: e.id, nama: e.nama, aktif: e.aktif !== false })}
                                 type="button"
                               >
                                 Edit
                               </button>
-                              <button className="border px-2 py-1 rounded text-red-600" onClick={() => deleteEmployee(e.id)} type="button">
+                              <button style={btnDelete} onClick={() => deleteEmployee(e.id)} type="button">
                                 Hapus
                               </button>
                             </div>
@@ -764,7 +766,7 @@ export default function AbsenTugasKaryawan() {
                       ))}
                       {(!employees || employees.length === 0) && (
                         <tr>
-                          <td colSpan={3} className="px-2 py-3 text-center text-gray-500">
+                          <td colSpan={3} style={{ ...tdCenter, color: '#64748b', padding: 14 }}>
                             Belum ada data karyawan.
                           </td>
                         </tr>
@@ -773,7 +775,7 @@ export default function AbsenTugasKaryawan() {
                   </table>
                 </div>
 
-                <div className="text-xs text-gray-500 mt-2">
+                <div style={{ ...helpText, marginTop: 10 }}>
                   Tips: kalau ada karyawan keluar, ubah menjadi <b>Nonaktif</b> saja (biar riwayat tetap aman).
                 </div>
               </div>
@@ -784,23 +786,23 @@ export default function AbsenTugasKaryawan() {
 
       {/* MODAL: KERJAKAN */}
       {workModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-md rounded-lg shadow-lg overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold">Konfirmasi Pengerjaan</div>
-              <button className="text-sm border px-3 py-1 rounded" onClick={() => setWorkModal(false)} type="button">
+        <div style={modalOverlay} onMouseDown={() => setWorkModal(false)}>
+          <div style={{ ...modalCard, width: 'min(560px, 100%)' }} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={modalHeader}>
+              <div style={{ fontWeight: 900 }}>Konfirmasi Pengerjaan</div>
+              <button style={btnOutline} onClick={() => setWorkModal(false)} type="button">
                 Tutup
               </button>
             </div>
 
-            <div className="p-4 space-y-3">
-              <div className="text-sm text-gray-700">
+            <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+              <div style={{ fontSize: 13, color: '#334155' }}>
                 Tugas: <b>{workTask?.title}</b>
               </div>
 
               <div>
-                <div className="text-sm text-gray-600 mb-1">Dikerjakan oleh:</div>
-                <select className="border p-2 rounded w-full" value={workAssignee} onChange={(e) => setWorkAssignee(e.target.value)}>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6, fontWeight: 800 }}>Dikerjakan oleh:</div>
+                <select style={input} value={workAssignee} onChange={(e) => setWorkAssignee(e.target.value)}>
                   {hadirNames.map((n) => (
                     <option key={n} value={n}>
                       {n}
@@ -809,16 +811,16 @@ export default function AbsenTugasKaryawan() {
                 </select>
               </div>
 
-              <div className="flex gap-2 justify-end pt-2">
-                <button className="border px-3 py-2 rounded" onClick={() => setWorkModal(false)} type="button">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+                <button style={btnOutline} onClick={() => setWorkModal(false)} type="button">
                   Batal
                 </button>
-                <button className="bg-green-600 text-white px-3 py-2 rounded" onClick={confirmWork} type="button">
+                <button style={btnPrimary} onClick={confirmWork} type="button">
                   Simpan (Selesai)
                 </button>
               </div>
 
-              <div className="text-xs text-gray-500">
+              <div style={helpText}>
                 Setelah disimpan, tugas akan <b>hilang dari list Hari Ini</b> tapi tetap tercatat di laporan.
               </div>
             </div>
@@ -827,4 +829,229 @@ export default function AbsenTugasKaryawan() {
       )}
     </Layout>
   )
+}
+
+/* =======================
+   STYLES (ikut Pricelist)
+======================= */
+
+const pageWrap = {
+  maxWidth: 1150,
+  margin: '0 auto',
+  padding: 24,
+}
+
+const headerRow = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginBottom: 14,
+}
+
+const title = {
+  fontSize: 22,
+  fontWeight: 900,
+  color: '#0f172a',
+}
+
+const subtitle = {
+  fontSize: 13,
+  color: '#64748b',
+  marginTop: 2,
+}
+
+const card = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  padding: 16,
+  marginTop: 12,
+}
+
+const cardHeaderRow = {
+  padding: 16,
+  paddingBottom: 0,
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 12,
+  flexWrap: 'wrap',
+}
+
+const input = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  outline: 'none',
+  fontSize: 13,
+}
+
+const btnPrimary = {
+  padding: '10px 14px',
+  borderRadius: 10,
+  border: 0,
+  background: '#2563eb',
+  color: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
+
+const btnOutline = {
+  padding: '10px 14px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const btnOutlineSmall = {
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  fontWeight: 800,
+  cursor: 'pointer',
+  fontSize: 13,
+}
+
+const btnEdit = {
+  padding: '6px 10px',
+  borderRadius: 8,
+  border: 0,
+  background: '#f59e0b',
+  color: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
+
+const btnDelete = {
+  padding: '6px 10px',
+  borderRadius: 8,
+  border: 0,
+  background: '#dc2626',
+  color: '#fff',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
+
+const helpText = {
+  fontSize: 12,
+  color: '#64748b',
+  marginTop: 6,
+}
+
+const noteText = {
+  fontSize: 12,
+  color: '#64748b',
+  fontWeight: 800,
+}
+
+const warnText = {
+  fontSize: 12,
+  color: '#dc2626',
+  fontWeight: 900,
+}
+
+const grid3 = {
+  display: 'grid',
+  gridTemplateColumns: '2fr 1fr',
+  gap: 12,
+}
+const formGrid = {
+  display: 'grid',
+  gridTemplateColumns: '2fr 1fr 1fr',
+  gap: 10,
+}
+const tableWrap = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  overflowX: 'auto',
+  marginTop: 12,
+}
+
+const table = {
+  width: '100%',
+  borderCollapse: 'collapse',
+}
+
+const theadRow = {
+  background: '#f8fafc',
+  borderBottom: '1px solid #e5e7eb',
+}
+
+const tbodyTr = {
+  borderTop: '1px solid #e5e7eb',
+}
+
+const thLeft = { textAlign: 'left', padding: 10, fontSize: 12, fontWeight: 900, color: '#0f172a' }
+const thCenter = { textAlign: 'center', padding: 10, fontSize: 12, fontWeight: 900, color: '#0f172a' }
+
+const tdLeft = { textAlign: 'left', padding: 10, fontSize: 13, color: '#0f172a' }
+const tdCenter = { textAlign: 'center', padding: 10, fontSize: 13, color: '#0f172a' }
+
+const taskItem = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  padding: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  background: '#fff',
+}
+
+const badgeOutline = {
+  padding: '6px 10px',
+  borderRadius: 10,
+  border: '1px solid #d1d5db',
+  fontSize: 12,
+  fontWeight: 900,
+  color: '#0f172a',
+  background: '#fff',
+}
+
+const modalOverlay = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15,23,42,0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 18,
+  zIndex: 50,
+}
+
+const modalCard = {
+  background: '#fff',
+  borderRadius: 14,
+  border: '1px solid #e5e7eb',
+  padding: 16,
+}
+
+const modalHeader = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+}
+
+const subCard = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  padding: 12,
+  background: '#fff',
+}
+
+/* ===== Responsive kecil (tanpa ganggu logic) ===== */
+if (typeof window !== 'undefined') {
+  // tidak wajib, tapi kalau layar kecil: grid jadi 1 kolom
+  const isSmall = window.matchMedia && window.matchMedia('(max-width: 900px)').matches
+  if (isSmall) {
+    grid3.gridTemplateColumns = '1fr'
+    formGrid.gridTemplateColumns = '1fr'
+  }
 }
