@@ -9,6 +9,25 @@ const rupiah = (n) => {
   return 'Rp ' + x.toLocaleString('id-ID')
 }
 
+// ===== UI TOKENS (samakan dengan Pricelist) =====
+const ui = {
+  card: 'bg-white border border-gray-200 rounded-xl p-5',
+  cardSm: 'bg-white border border-gray-200 rounded-xl p-4',
+  input:
+    'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400',
+  select:
+    'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white',
+  btnPrimary: 'bg-blue-600 text-white font-extrabold px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50',
+  btnOutline: 'border border-gray-300 bg-white font-extrabold px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50',
+  btnEdit: 'bg-orange-500 text-white font-extrabold px-3 py-1.5 rounded-lg hover:opacity-90',
+  btnDelete: 'bg-red-600 text-white font-extrabold px-3 py-1.5 rounded-lg hover:opacity-90',
+  tab: 'px-3 py-1.5 rounded-lg border border-gray-300 bg-white font-extrabold hover:bg-gray-50',
+  tabActive: 'px-3 py-1.5 rounded-lg border border-blue-600 bg-blue-600 text-white font-extrabold',
+  tableWrap: 'border border-gray-200 rounded-xl overflow-x-auto bg-white',
+  th: 'px-3 py-3 text-left text-xs font-extrabold text-slate-700 bg-gray-50 whitespace-nowrap',
+  td: 'px-3 py-3 text-sm text-slate-800 whitespace-nowrap',
+}
+
 export default function Home() {
   // ===== DATA =====
   const [stok, setStok] = useState([])
@@ -71,10 +90,7 @@ export default function Home() {
   }
 
   async function fetchKategoriMaster() {
-    const { data, error } = await supabase
-      .from('kategori_stok')
-      .select('*')
-      .order('nama', { ascending: true })
+    const { data, error } = await supabase.from('kategori_stok').select('*').order('nama', { ascending: true })
     if (!error) setKategoriMaster(data || [])
   }
 
@@ -262,46 +278,94 @@ export default function Home() {
   return (
     <Layout>
       <div className="p-4">
-        <div className="bg-white border rounded-xl p-5 mb-5">
+        <div className={`${ui.card} mb-5`}>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h1 className="text-xl font-bold">Stok Barang</h1>
+              <h1 className="text-xl font-extrabold">Stok Barang</h1>
               <p className="text-sm text-gray-600">Kelola stok READY & SOLD</p>
             </div>
           </div>
 
           {/* FORM */}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input className="border p-2 rounded" placeholder="Nama Produk" value={formData.nama_produk} onChange={(e) => setFormData({ ...formData, nama_produk: e.target.value })} />
-            <input className="border p-2 rounded" placeholder="Serial Number (SN)" value={formData.sn} onChange={(e) => setFormData({ ...formData, sn: e.target.value })} />
+            <input
+              className={ui.input}
+              placeholder="Nama Produk"
+              value={formData.nama_produk}
+              onChange={(e) => setFormData({ ...formData, nama_produk: e.target.value })}
+            />
+            <input
+              className={ui.input}
+              placeholder="Serial Number (SN)"
+              value={formData.sn}
+              onChange={(e) => setFormData({ ...formData, sn: e.target.value })}
+            />
 
-            <input className="border p-2 rounded" placeholder="IMEI" value={formData.imei} onChange={(e) => setFormData({ ...formData, imei: e.target.value })} />
-            <input className="border p-2 rounded" placeholder="Warna" value={formData.warna} onChange={(e) => setFormData({ ...formData, warna: e.target.value })} />
+            <input
+              className={ui.input}
+              placeholder="IMEI"
+              value={formData.imei}
+              onChange={(e) => setFormData({ ...formData, imei: e.target.value })}
+            />
+            <input
+              className={ui.input}
+              placeholder="Warna"
+              value={formData.warna}
+              onChange={(e) => setFormData({ ...formData, warna: e.target.value })}
+            />
 
-            <input className="border p-2 rounded" placeholder="Storage" value={formData.storage} onChange={(e) => setFormData({ ...formData, storage: e.target.value })} />
-            <input className="border p-2 rounded" placeholder="Garansi" value={formData.garansi} onChange={(e) => setFormData({ ...formData, garansi: e.target.value })} />
+            <input
+              className={ui.input}
+              placeholder="Storage"
+              value={formData.storage}
+              onChange={(e) => setFormData({ ...formData, storage: e.target.value })}
+            />
+            <input
+              className={ui.input}
+              placeholder="Garansi"
+              value={formData.garansi}
+              onChange={(e) => setFormData({ ...formData, garansi: e.target.value })}
+            />
 
-            <input className="border p-2 rounded" placeholder="Asal Produk" value={formData.asal_produk} onChange={(e) => setFormData({ ...formData, asal_produk: e.target.value })} />
-            <input className="border p-2 rounded" placeholder="Harga Modal" type="number" value={formData.harga_modal} onChange={(e) => setFormData({ ...formData, harga_modal: e.target.value })} />
+            <input
+              className={ui.input}
+              placeholder="Asal Produk"
+              value={formData.asal_produk}
+              onChange={(e) => setFormData({ ...formData, asal_produk: e.target.value })}
+            />
+            <input
+              className={ui.input}
+              placeholder="Harga Modal"
+              type="number"
+              value={formData.harga_modal}
+              onChange={(e) => setFormData({ ...formData, harga_modal: e.target.value })}
+            />
 
-            <input className="border p-2 rounded" type="date" value={formData.tanggal_masuk} onChange={(e) => setFormData({ ...formData, tanggal_masuk: e.target.value })} />
+            <input
+              className={ui.input}
+              type="date"
+              value={formData.tanggal_masuk}
+              onChange={(e) => setFormData({ ...formData, tanggal_masuk: e.target.value })}
+            />
 
             {/* KATEGORI + TOMBOL +KATEGORI */}
             <div className="flex gap-2">
               <select
-                className="border p-2 rounded flex-1"
+                className={`${ui.select} flex-1`}
                 value={formData.kategori || ''}
                 onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}
               >
                 <option value="">Pilih Kategori</option>
                 {kategoriOptions.map((k) => (
-                  <option key={k} value={k}>{k}</option>
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
                 ))}
               </select>
 
               <button
                 type="button"
-                className="bg-blue-600 text-white px-4 rounded-lg"
+                className={ui.btnOutline}
                 onClick={() => {
                   setKategoriBaru('')
                   setShowKategoriModal(true)
@@ -311,7 +375,7 @@ export default function Home() {
               </button>
             </div>
 
-            <button className="bg-green-600 text-white px-4 py-2 rounded col-span-1 md:col-span-2" type="submit">
+            <button className={`${ui.btnPrimary} col-span-1 md:col-span-2`} type="submit">
               {isEditing ? 'Update Data' : 'Simpan ke Database'}
             </button>
           </form>
@@ -319,17 +383,13 @@ export default function Home() {
 
         {/* CATEGORY TABS */}
         <div className="mb-3 flex flex-wrap gap-2">
-          <button
-            className={`px-3 py-1 rounded-lg border ${filterKategori === '' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-            onClick={() => setFilterKategori('')}
-            type="button"
-          >
+          <button className={filterKategori === '' ? ui.tabActive : ui.tab} onClick={() => setFilterKategori('')} type="button">
             Semua
           </button>
           {kategoriOptions.map((k) => (
             <button
               key={k}
-              className={`px-3 py-1 rounded-lg border ${filterKategori === k ? 'bg-blue-600 text-white' : 'bg-white'}`}
+              className={filterKategori === k ? ui.tabActive : ui.tab}
               onClick={() => setFilterKategori(k)}
               type="button"
             >
@@ -338,16 +398,16 @@ export default function Home() {
           ))}
         </div>
 
-        <div className="bg-white border rounded-xl p-4">
+        <div className={ui.cardSm}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
             <div className="flex gap-2 w-full md:w-auto">
               <input
-                className="border p-2 rounded w-full md:w-72"
+                className={`${ui.input} md:w-72`}
                 placeholder="Cari produk / SN / IMEI / warna / garansi..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              <select className="border p-2 rounded w-40" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+              <select className={`${ui.select} w-40`} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="">Semua</option>
                 <option value="READY">READY</option>
                 <option value="SOLD">SOLD</option>
@@ -359,12 +419,7 @@ export default function Home() {
               <div className="text-sm text-gray-600">
                 Dipilih: <b>{selectedIds.length}</b>
               </div>
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
-                disabled={selectedIds.length === 0}
-                onClick={openMassModal}
-                type="button"
-              >
+              <button className={ui.btnPrimary} disabled={selectedIds.length === 0} onClick={openMassModal} type="button">
                 Edit Massal
               </button>
             </div>
@@ -377,71 +432,72 @@ export default function Home() {
               {loading ? <span className="ml-2 text-gray-400">loading...</span> : null}
             </div>
             <div className="flex items-center gap-2">
-              <button className="border px-3 py-1 rounded disabled:opacity-50" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} type="button">
+              <button className={ui.btnOutline} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} type="button">
                 Prev
               </button>
-              <button className="border px-3 py-1 rounded disabled:opacity-50" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} type="button">
+              <button className={ui.btnOutline} disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} type="button">
                 Next
               </button>
             </div>
           </div>
 
           {/* TABLE */}
-          <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+          <div className={ui.tableWrap}>
+            <table className="w-full text-sm border-collapse">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2 text-left w-10">
+                  <th className={`${ui.th} w-10`}>
                     <input
                       type="checkbox"
                       onChange={toggleSelectAllOnPage}
                       checked={pageData.length > 0 && pageData.every((x) => selectedIds.includes(x.id))}
                     />
                   </th>
-                  <th className="px-3 py-2 text-left">Produk</th>
-                  <th className="px-3 py-2 text-left">SN</th>
-                  <th className="px-3 py-2 text-left">IMEI</th>
-                  <th className="px-3 py-2 text-left">Warna</th>
-                  <th className="px-3 py-2 text-left">Storage</th>
-                  <th className="px-3 py-2 text-left">Garansi</th>
-                  <th className="px-3 py-2 text-left">Kategori</th>
-                  <th className="px-3 py-2 text-left">Asal</th>
-                  <th className="px-3 py-2 text-left">Masuk</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-right">Modal</th>
-                  <th className="px-3 py-2 text-right">Aksi</th>
+                  <th className={ui.th}>Produk</th>
+                  <th className={ui.th}>SN</th>
+                  <th className={ui.th}>IMEI</th>
+                  <th className={ui.th}>Warna</th>
+                  <th className={ui.th}>Storage</th>
+                  <th className={ui.th}>Garansi</th>
+                  <th className={ui.th}>Kategori</th>
+                  <th className={ui.th}>Asal</th>
+                  <th className={ui.th}>Masuk</th>
+                  <th className={ui.th}>Status</th>
+                  <th className={`${ui.th} text-right`}>Modal</th>
+                  <th className={`${ui.th} text-right`}>Aksi</th>
                 </tr>
               </thead>
+
               <tbody>
                 {pageData.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-3 py-6 text-center text-gray-500">
+                    <td colSpan={13} className="px-3 py-8 text-center text-gray-500">
                       Tidak ada data.
                     </td>
                   </tr>
                 ) : (
                   pageData.map((item) => (
-                    <tr key={item.id} className="border-t hover:bg-slate-50">
-                      <td className="px-3 py-2">
+                    <tr key={item.id} className="border-t border-gray-200 hover:bg-slate-50">
+                      <td className={ui.td}>
                         <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} />
                       </td>
-                      <td className="px-3 py-2 font-semibold">{item.nama_produk}</td>
-                      <td className="px-3 py-2">{item.sn}</td>
-                      <td className="px-3 py-2">{item.imei || '-'}</td>
-                      <td className="px-3 py-2">{item.warna || '-'}</td>
-                      <td className="px-3 py-2">{item.storage || '-'}</td>
-                      <td className="px-3 py-2">{item.garansi || '-'}</td>
-                      <td className="px-3 py-2">{item.kategori || '-'}</td>
-                      <td className="px-3 py-2">{item.asal_produk || '-'}</td>
-                      <td className="px-3 py-2">{item.tanggal_masuk || '-'}</td>
-                      <td className="px-3 py-2">{item.status}</td>
-                      <td className="px-3 py-2 text-right">{rupiah(item.harga_modal)}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className={`${ui.td} font-semibold`}>{item.nama_produk}</td>
+                      <td className={ui.td}>{item.sn}</td>
+                      <td className={ui.td}>{item.imei || '-'}</td>
+                      <td className={ui.td}>{item.warna || '-'}</td>
+                      <td className={ui.td}>{item.storage || '-'}</td>
+                      <td className={ui.td}>{item.garansi || '-'}</td>
+                      <td className={ui.td}>{item.kategori || '-'}</td>
+                      <td className={ui.td}>{item.asal_produk || '-'}</td>
+                      <td className={ui.td}>{item.tanggal_masuk || '-'}</td>
+                      <td className={ui.td}>{item.status}</td>
+                      <td className={`${ui.td} text-right`}>{rupiah(item.harga_modal)}</td>
+                      <td className={`${ui.td} text-right`}>
                         <div className="flex justify-end gap-2">
-                          <button onClick={() => handleEdit(item)} className="px-3 py-1 rounded bg-orange-500 text-white hover:opacity-90" type="button">
+                          <button onClick={() => handleEdit(item)} className={ui.btnEdit} type="button">
                             Edit
                           </button>
-                          <button onClick={() => handleDelete(item.id)} className="px-3 py-1 rounded bg-red-600 text-white hover:opacity-90" type="button">
+                          <button onClick={() => handleDelete(item.id)} className={ui.btnDelete} type="button">
                             Hapus
                           </button>
                         </div>
@@ -459,10 +515,10 @@ export default function Home() {
               Menampilkan {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredData.length)} dari {filteredData.length}
             </div>
             <div className="flex items-center gap-2">
-              <button className="border px-3 py-1 rounded disabled:opacity-50" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} type="button">
+              <button className={ui.btnOutline} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} type="button">
                 Prev
               </button>
-              <button className="border px-3 py-1 rounded disabled:opacity-50" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} type="button">
+              <button className={ui.btnOutline} disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} type="button">
                 Next
               </button>
             </div>
@@ -472,45 +528,68 @@ export default function Home() {
         {/* MODAL MASS EDIT */}
         {showMassModal && (
           <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
-            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-              <h2 className="text-lg font-bold mb-1">Edit Massal</h2>
+            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md border border-gray-200">
+              <h2 className="text-lg font-extrabold mb-1">Edit Massal</h2>
               <div className="text-sm text-gray-600 mb-4">
                 Jumlah item dipilih: <b>{selectedIds.length}</b>
               </div>
 
-              <label className="block mb-1 text-sm">Kategori (opsional)</label>
+              <label className="block mb-1 text-sm font-bold text-slate-700">Kategori (opsional)</label>
               <select
-                className="border p-2 rounded w-full mb-3"
+                className={`${ui.select} mb-3`}
                 value={massData.kategori}
                 onChange={(e) => setMassData((p) => ({ ...p, kategori: e.target.value }))}
               >
                 <option value="">(Kosongkan jika tidak diubah)</option>
                 {kategoriOptions.map((k) => (
-                  <option key={k} value={k}>{k}</option>
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
                 ))}
               </select>
 
-              <label className="block mb-1 text-sm">Asal Produk (opsional)</label>
-              <input className="border p-2 rounded w-full mb-3" value={massData.asal_produk} onChange={(e) => setMassData((p) => ({ ...p, asal_produk: e.target.value }))} />
+              <label className="block mb-1 text-sm font-bold text-slate-700">Asal Produk (opsional)</label>
+              <input
+                className={`${ui.input} mb-3`}
+                value={massData.asal_produk}
+                onChange={(e) => setMassData((p) => ({ ...p, asal_produk: e.target.value }))}
+              />
 
-              <label className="block mb-1 text-sm">Garansi (opsional)</label>
-              <input className="border p-2 rounded w-full mb-3" value={massData.garansi} onChange={(e) => setMassData((p) => ({ ...p, garansi: e.target.value }))} />
+              <label className="block mb-1 text-sm font-bold text-slate-700">Garansi (opsional)</label>
+              <input
+                className={`${ui.input} mb-3`}
+                value={massData.garansi}
+                onChange={(e) => setMassData((p) => ({ ...p, garansi: e.target.value }))}
+              />
 
-              <label className="block mb-1 text-sm">Warna (opsional)</label>
-              <input className="border p-2 rounded w-full mb-3" value={massData.warna} onChange={(e) => setMassData((p) => ({ ...p, warna: e.target.value }))} />
+              <label className="block mb-1 text-sm font-bold text-slate-700">Warna (opsional)</label>
+              <input
+                className={`${ui.input} mb-3`}
+                value={massData.warna}
+                onChange={(e) => setMassData((p) => ({ ...p, warna: e.target.value }))}
+              />
 
-              <label className="block mb-1 text-sm">Storage (opsional)</label>
-              <input className="border p-2 rounded w-full mb-3" value={massData.storage} onChange={(e) => setMassData((p) => ({ ...p, storage: e.target.value }))} />
+              <label className="block mb-1 text-sm font-bold text-slate-700">Storage (opsional)</label>
+              <input
+                className={`${ui.input} mb-3`}
+                value={massData.storage}
+                onChange={(e) => setMassData((p) => ({ ...p, storage: e.target.value }))}
+              />
 
-              <label className="block mb-1 text-sm">Tanggal Masuk (opsional)</label>
-              <input type="date" className="border p-2 rounded w-full mb-5" value={massData.tanggal_masuk} onChange={(e) => setMassData((p) => ({ ...p, tanggal_masuk: e.target.value }))} />
+              <label className="block mb-1 text-sm font-bold text-slate-700">Tanggal Masuk (opsional)</label>
+              <input
+                type="date"
+                className={`${ui.input} mb-5`}
+                value={massData.tanggal_masuk}
+                onChange={(e) => setMassData((p) => ({ ...p, tanggal_masuk: e.target.value }))}
+              />
 
-              <div className="flex justify-between">
-                <button onClick={saveMassEdit} className="bg-blue-600 text-white px-4 py-2 rounded-lg" type="button">
-                  Simpan
-                </button>
-                <button onClick={() => setShowMassModal(false)} className="text-gray-600" type="button">
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowMassModal(false)} className={ui.btnOutline} type="button">
                   Batal
+                </button>
+                <button onClick={saveMassEdit} className={ui.btnPrimary} type="button">
+                  Simpan
                 </button>
               </div>
             </div>
@@ -520,22 +599,22 @@ export default function Home() {
         {/* MODAL TAMBAH KATEGORI */}
         {showKategoriModal && (
           <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
-            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-              <h2 className="text-lg font-bold mb-3">Tambah Kategori</h2>
+            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md border border-gray-200">
+              <h2 className="text-lg font-extrabold mb-3">Tambah Kategori</h2>
 
               <input
-                className="border p-2 rounded w-full mb-4"
+                className={`${ui.input} mb-4`}
                 placeholder="Contoh: AIRPODS / IPHONE / IPAD"
                 value={kategoriBaru}
                 onChange={(e) => setKategoriBaru(e.target.value)}
               />
 
-              <div className="flex justify-between">
-                <button onClick={handleSaveKategori} className="bg-blue-600 text-white px-4 py-2 rounded-lg" type="button">
-                  Simpan
-                </button>
-                <button onClick={() => setShowKategoriModal(false)} className="text-gray-600" type="button">
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowKategoriModal(false)} className={ui.btnOutline} type="button">
                   Batal
+                </button>
+                <button onClick={handleSaveKategori} className={ui.btnPrimary} type="button">
+                  Simpan
                 </button>
               </div>
             </div>
