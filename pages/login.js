@@ -3,15 +3,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
-function setCookie(name, value, days = 1) {
-  const maxAge = days * 24 * 60 * 60
-  const secure =
-    typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : ''
-  document.cookie = `${name}=${encodeURIComponent(
-    value
-  )}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,25 +12,20 @@ export default function LoginPage() {
 
   // ✅ MASTER yang boleh akses dashboard
   const MASTER_EMAILS = ['alvin@connect.ind', 'erick@connect.ind', 'satria@connect.ind']
-
   // ✅ GUEST yang hanya boleh akses /guest
   const GUEST_EMAILS = ['shidqi@connect.ind', 'guest1@connectind.com']
-
   const ALL_ALLOWED = new Set([...MASTER_EMAILS, ...GUEST_EMAILS])
 
-  // ✅ Kalau user sudah login, arahkan sesuai role cookie (biar tidak nyasar)
+  // ✅ kalau sudah ada session supabase, arahkan sesuai role email
   useEffect(() => {
     ;(async () => {
       try {
         const { data } = await supabase.auth.getUser()
-        if (!data?.user) return
+        if (!data?.user?.email) return
 
         const emailLower = String(data.user.email || '').toLowerCase()
-        if (GUEST_EMAILS.includes(emailLower)) {
-          router.replace('/guest')
-        } else {
-          router.replace('/dashboard')
-        }
+        if (GUEST_EMAILS.includes(emailLower)) router.replace('/guest')
+        else router.replace('/dashboard')
       } catch {
         // abaikan
       }
@@ -55,23 +41,21 @@ export default function LoginPage() {
     try {
       const emailLower = String(email || '').trim().toLowerCase()
 
-      // ✅ Hard guard: hanya email yang diizinkan yang boleh login
+      // ✅ Hard guard: hanya email yg diizinkan
       if (!ALL_ALLOWED.has(emailLower)) {
         setErrorMsg('Akun tidak punya akses.')
         return
       }
 
-      // ✅ Jika email guest dipaksa login dari /login, tetap boleh,
-      // tapi hasilnya akan diarahkan ke /guest (bukan dashboard).
       const isGuest = GUEST_EMAILS.includes(emailLower)
       const isMaster = MASTER_EMAILS.includes(emailLower)
 
-      // (double safety)
       if (!isGuest && !isMaster) {
         setErrorMsg('Akun tidak punya akses.')
         return
       }
 
+      // 1) Login ke supabase (agar dapat access_token untuk verifikasi user)
       const { data, error } = await supabase.auth.signInWithPassword({
         email: emailLower,
         password,
@@ -88,16 +72,27 @@ export default function LoginPage() {
         return
       }
 
-      // ✅ cookie untuk middleware
-      setCookie('user_token', token, 1)
-      setCookie('user_role', isGuest ? 'guest' : 'master', 1)
+      // 2) Minta server bikin cookie pendek (user_auth) untuk middleware
+      const res = await fetch('/api/auth-cookie', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
 
-      // ✅ redirect sesuai role
-      if (isGuest) {
-        router.push('/guest')
-      } else {
-        router.push('/dashboard')
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '')
+        console.error('auth-cookie failed:', res.status, txt)
+        setErrorMsg('Login berhasil, tapi gagal set cookie. Coba refresh & login lagi.')
+        return
       }
+
+      // 3) Redirect sesuai role
+      if (isGuest) router.push('/guest')
+      else router.push('/dashboard')
+    } catch (err) {
+      console.error(err)
+      setErrorMsg('Terjadi error saat login. Coba lagi.')
     } finally {
       setLoading(false)
     }
