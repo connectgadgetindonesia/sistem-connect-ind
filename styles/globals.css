@@ -24,3 +24,51 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* ===== MOBILE AUTO FIX (CONNECT.IND) ===== */
+@media (max-width: 768px) {
+  /* tombol-tombol melebar biar ga kepotong */
+  button, .btn, a.btn {
+    max-width: 100%;
+  }
+
+  /* paksa container tombol jadi wrap */
+  .mobile-wrap {
+    flex-wrap: wrap !important;
+  }
+
+  /* kalau ada group action, jadikan 2 kolom otomatis */
+  .mobile-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  /* tombol dalam actions full */
+  .mobile-actions > * {
+    width: 100% !important;
+  }
+
+  /* tombol panjang jadi 1 baris full */
+  .mobile-actions .mobile-full {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* form input aman */
+  input, select, textarea {
+    width: 100% !important;
+  }
+
+  /* kartu padding lebih hemat */
+  .mobile-card {
+    padding: 14px !important;
+  }
+
+  /* teks panjang jangan maksa lebar */
+  .mobile-ellipsis {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    max-width: 100% !important;
+  }
+}
