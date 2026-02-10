@@ -3,7 +3,9 @@ import nodemailer from 'nodemailer'
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim())
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method not allowed' })
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, message: 'Method not allowed' })
+  }
 
   try {
     const { to, subject, html, fromEmail } = req.body || {}
@@ -30,14 +32,21 @@ export default async function handler(req, res) {
     if (!host || !port || !user || !pass) {
       return res.status(500).json({
         ok: false,
-        message: 'ENV SMTP belum lengkap. Cek .env.local (SMTP_HOST/PORT/USER/PASS).',
+        message: 'ENV SMTP belum lengkap.',
+        debug: {
+          host,
+          port,
+          secure,
+          userExists: !!user,
+          passExists: !!pass,
+        },
       })
     }
 
     const transporter = nodemailer.createTransport({
       host,
       port,
-      secure, // 465 true, 587 false
+      secure, // 465 true | 587 false
       auth: { user, pass },
     })
 
@@ -57,9 +66,19 @@ export default async function handler(req, res) {
     })
   } catch (err) {
     console.error('SEND EMAIL ERROR:', err)
+
     return res.status(500).json({
       ok: false,
-      message: 'Gagal mengirim email. Cek SMTP Hostinger / password / port.',
+      message: 'Gagal mengirim email.',
+      debug: {
+        name: err?.name,
+        code: err?.code,
+        message: err?.message,
+        command: err?.command,
+        response: err?.response,
+        responseCode: err?.responseCode,
+        stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
+      },
     })
   }
 }
