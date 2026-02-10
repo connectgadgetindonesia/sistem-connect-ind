@@ -101,7 +101,7 @@ function buildInvoiceEmailTemplate(payload) {
           <div style="margin-top:18px; color:#444; font-size:13px; line-height:1.6;">
             Halo <b>${safe(nama_pembeli) || 'Customer'}</b>,<br/>
             Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
-            Mohon tidak membalas email ini, jika ada pertanyaan hubungi WhatsApp kami di <b>0896-3140-0031</b>.
+            Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
           </div>
 
           <div style="margin-top:18px; color:#666; font-size:12px;">
@@ -112,7 +112,7 @@ function buildInvoiceEmailTemplate(payload) {
       </div>
 
       <div style="text-align:center; color:#999; font-size:12px; margin-top:12px;">
-        Email ini dikirim dari otomatis dari sistem CONNECT.IND.
+        Email ini dikirim dari sistem CONNECT.IND.
       </div>
     </div>
   </div>
@@ -147,7 +147,6 @@ export default function EmailPage() {
   const [pickerLoading, setPickerLoading] = useState(false)
   const [pickerRows, setPickerRows] = useState([]) // hasil grouping invoice
 
-  // Auto-generate body ketika data invoice berubah
   useEffect(() => {
     if (!dataInvoice) {
       setHtmlBody('')
@@ -156,10 +155,11 @@ export default function EmailPage() {
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
-  // ====== helper: ambil transaksi per tanggal, group by invoice_id ======
+  // ✅ FIX TANGGAL: ambil range lebih lebar, lalu filter sesuai YYYY-MM-DD (biar tidak geser timezone)
   const fetchInvoicesByDate = async (ymd) => {
-    const start = dayjs(ymd).startOf('day').toISOString()
-    const end = dayjs(ymd).endOf('day').toISOString()
+    // ambil H-1 sampai H+1, lalu filter client = tanggal local match ymd
+    const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
+    const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
 
     setPickerLoading(true)
     try {
@@ -169,11 +169,18 @@ export default function EmailPage() {
         .gte('tanggal', start)
         .lte('tanggal', end)
         .order('tanggal', { ascending: false })
-        .limit(300)
+        .limit(600)
 
       if (error) throw error
 
-      const list = Array.isArray(data) ? data : []
+      const raw = Array.isArray(data) ? data : []
+
+      // filter ketat: hanya yang tanggal local = ymd
+      const list = raw.filter((r) => {
+        if (!r?.tanggal) return false
+        return dayjs(r.tanggal).format('YYYY-MM-DD') === ymd
+      })
+
       if (list.length === 0) {
         setPickerRows([])
         return
@@ -200,6 +207,7 @@ export default function EmailPage() {
         }
 
         const it = map.get(inv)
+
         it.items.push({
           nama_produk: r.nama_produk,
           warna: r.warna,
@@ -207,10 +215,11 @@ export default function EmailPage() {
           garansi: r.garansi,
           harga_jual: r.harga_jual,
         })
+
         it.total += toInt(r.harga_jual)
         it.item_count += 1
 
-        // pastikan head paling baru yang kebaca
+        // head info
         if (!it.tanggal_raw && r.tanggal) {
           it.tanggal_raw = r.tanggal
           it.tanggal = dayjs(r.tanggal).format('DD/MM/YYYY')
@@ -236,14 +245,12 @@ export default function EmailPage() {
     }
   }
 
-  // buka modal + fetch awal
   const openPicker = async () => {
     setPickerOpen(true)
     setPickerSearch('')
     await fetchInvoicesByDate(pickerDate)
   }
 
-  // pilih salah satu transaksi
   const pickInvoice = (inv) => {
     setDataInvoice({
       invoice_id: inv.invoice_id,
@@ -258,7 +265,7 @@ export default function EmailPage() {
     setPickerOpen(false)
   }
 
-  // ====== fallback: tarik manual pakai invoice_id (kalau butuh) ======
+  // ====== fallback manual ======
   const canGenerate = useMemo(() => qInvoice.trim().length >= 3, [qInvoice])
 
   const cariInvoiceManual = async () => {
@@ -311,7 +318,6 @@ export default function EmailPage() {
     }
   }
 
-  // ✅ Kirim email (tetap)
   const sendEmail = async () => {
     if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
@@ -375,27 +381,28 @@ export default function EmailPage() {
 
         {/* PILIH TRANSAKSI (utama) */}
         <div className={`${card} p-4`}>
-          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between">
-            <div className="flex-1">
+          <div className="grid md:grid-cols-12 gap-3 items-end">
+            {/* kiri */}
+            <div className="md:col-span-7">
               <div className={label}>Transaksi yang dipilih</div>
-              <div className="mt-1 flex flex-col sm:flex-row gap-2">
+              <div className="mt-1 flex gap-2">
                 <input
                   className={input}
                   value={dataInvoice?.invoice_id ? `${dataInvoice.invoice_id} • ${dataInvoice.nama_pembeli || ''}` : ''}
                   placeholder="Belum pilih transaksi"
                   readOnly
                 />
-                <button className={btnPrimary} onClick={openPicker}>
+                <button className={btnPrimary + ' shrink-0'} onClick={openPicker}>
                   Pilih Transaksi
                 </button>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                Pilih tanggal → pilih transaksi. Bisa search by nama / invoice / WA di modal.
+                Klik <b>Pilih Transaksi</b> → pilih tanggal → pilih invoice. Search by nama / invoice / WA di modal.
               </div>
             </div>
 
-            {/* fallback manual (biar kalau butuh tetap ada, tapi tidak mengganggu) */}
-            <div className="w-full md:w-[360px]">
+            {/* kanan */}
+            <div className="md:col-span-5">
               <div className={label}>Cari manual (opsional)</div>
               <div className="mt-1 flex gap-2">
                 <input
@@ -405,7 +412,7 @@ export default function EmailPage() {
                   onChange={(e) => setQInvoice(e.target.value)}
                 />
                 <button
-                  className={btnSoft}
+                  className={btnSoft + ' w-[110px] shrink-0'}
                   onClick={cariInvoiceManual}
                   disabled={!canGenerate || loading}
                   style={{ opacity: !canGenerate || loading ? 0.6 : 1 }}
@@ -419,15 +426,23 @@ export default function EmailPage() {
 
           {dataInvoice ? (
             <div className="mt-4 text-sm text-gray-700">
-              <div className="font-semibold">Data ditemukan:</div>
-              <div>
-                Invoice: <b>{dataInvoice.invoice_id}</b> • Tanggal: <b>{dataInvoice.tanggal}</b>
-              </div>
-              <div>
-                Nama: <b>{dataInvoice.nama_pembeli}</b> • WA: <b>{dataInvoice.no_wa}</b>
-              </div>
-              <div className="mt-1">
-                Total: <b>{formatRupiah(dataInvoice.total)}</b> • Item: <b>{dataInvoice.items.length}</b>
+              <div className="font-semibold">Ringkasan transaksi:</div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                <div>
+                  Invoice: <b>{dataInvoice.invoice_id}</b>
+                </div>
+                <div>
+                  Tanggal: <b>{dataInvoice.tanggal}</b>
+                </div>
+                <div>
+                  Nama: <b>{dataInvoice.nama_pembeli}</b>
+                </div>
+                <div>
+                  WA: <b>{dataInvoice.no_wa}</b>
+                </div>
+                <div>
+                  Total: <b>{formatRupiah(dataInvoice.total)}</b> • Item: <b>{dataInvoice.items.length}</b>
+                </div>
               </div>
             </div>
           ) : (
@@ -480,7 +495,7 @@ export default function EmailPage() {
               </div>
             )}
 
-            <div className="pt-2 flex items-center gap-2">
+            <div className="pt-2 flex flex-wrap items-center gap-2">
               <button
                 className={btnPrimary}
                 onClick={sendEmail}
@@ -554,10 +569,7 @@ export default function EmailPage() {
         {/* MODAL PILIH TRANSAKSI */}
         {pickerOpen && (
           <div className="fixed inset-0 z-[60]">
-            <div
-              className="absolute inset-0 bg-black/40"
-              onClick={() => setPickerOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/40" onClick={() => setPickerOpen(false)} />
             <div className="absolute inset-0 flex items-center justify-center p-4">
               <div className="w-full max-w-3xl bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
                 <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -595,7 +607,7 @@ export default function EmailPage() {
                         onChange={(e) => setPickerSearch(e.target.value)}
                       />
                       <div className="text-xs text-gray-500 mt-1">
-                        List akan tampil berdasarkan tanggal. Search hanya untuk memfilter list.
+                        List tampil sesuai tanggal. Search hanya untuk memfilter.
                       </div>
                     </div>
                   </div>
@@ -614,9 +626,7 @@ export default function EmailPage() {
                       {pickerLoading ? (
                         <div className="p-4 text-sm text-gray-600">Memuat transaksi...</div>
                       ) : filteredPickerRows.length === 0 ? (
-                        <div className="p-4 text-sm text-gray-600">
-                          Tidak ada transaksi di tanggal ini.
-                        </div>
+                        <div className="p-4 text-sm text-gray-600">Tidak ada transaksi di tanggal ini.</div>
                       ) : (
                         <div className="divide-y divide-gray-100">
                           {filteredPickerRows.map((r) => (
@@ -649,12 +659,7 @@ export default function EmailPage() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <button
-                      className={btnSoft}
-                      onClick={async () => {
-                        await fetchInvoicesByDate(pickerDate)
-                      }}
-                    >
+                    <button className={btnSoft} onClick={() => fetchInvoicesByDate(pickerDate)}>
                       Refresh
                     </button>
 
