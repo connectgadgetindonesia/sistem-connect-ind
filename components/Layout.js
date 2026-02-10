@@ -17,6 +17,7 @@ import {
   CreditCard,
   Menu,
   LogOut,
+  Mail,
 } from 'lucide-react'
 
 export default function Layout({ children }) {
@@ -34,6 +35,10 @@ export default function Layout({ children }) {
     { label: 'Riwayat Penjualan', path: '/riwayat', icon: ClipboardList },
     { label: 'Claim Cashback', path: '/claim-cashback', icon: BadgeDollarSign },
     { label: 'Rekap Bulanan', path: '/rekap', icon: FileText },
+
+    // ✅ MENU BARU: EMAIL
+    { label: 'Email', path: '/email', icon: Mail },
+
     { label: 'Claim Garansi', path: '/garansi', icon: ShieldCheck },
     { label: 'Akun', path: '/akun', icon: User },
     { label: 'Data Customer', path: '/data-customer', icon: Users },
