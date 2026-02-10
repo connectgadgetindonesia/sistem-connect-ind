@@ -1,17 +1,76 @@
-// /pages/api/send-email.js
 import nodemailer from 'nodemailer'
-import { renderInvoiceJpgBuffer } from '../../lib/invoiceJpg'
+import chromium from '@sparticuz/chromium'
+import puppeteer from 'puppeteer-core'
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+function json(res, status, payload) {
+  res.status(status).json(payload)
+}
+
+// request: { filename, contentType, contentBase64 }
+function normalizeAttachments(arr) {
+  const list = Array.isArray(arr) ? arr : []
+  return list
+    .filter((x) => x && x.contentBase64 && x.filename)
+    .map((x) => ({
+      filename: String(x.filename),
+      content: Buffer.from(String(x.contentBase64), 'base64'),
+      contentType: x.contentType || 'application/octet-stream',
+    }))
+}
+
+async function renderInvoiceJpgBuffer({ baseUrl, invoice_id }) {
+  // halaman invoice kamu: /invoice/[id]
+  // sesuaikan kalau path beda
+  const url = `${baseUrl}/invoice/${encodeURIComponent(invoice_id)}`
+
+  // Vercel/Serverless chromium
+  const executablePath = await chromium.executablePath()
+
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: { width: 1200, height: 1600, deviceScaleFactor: 2 },
+    executablePath,
+    headless: chromium.headless,
+  })
+
+  try {
+    const page = await browser.newPage()
+
+    // kalau invoice butuh cookie auth, tambahkan di sini (opsional)
+    // const cookie = { name:'user_token', value:'...', domain: new URL(baseUrl).hostname, path:'/' }
+    // await page.setCookie(cookie)
+
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 })
+    await sleep(800) // ganti waitForTimeout
+
+    // cari elemen invoice biar screenshot rapi.
+    // invoicepdf.jsx pakai contentRef di div besar; biasanya bisa screenshot body saja.
+    // Kalau kamu punya wrapper khusus, ganti selector-nya.
+    const el =
+      (await page.$('[data-invoice-root]')) ||
+      (await page.$('#invoice-root')) ||
+      (await page.$('body'))
+
+    const buffer = await el.screenshot({ type: 'jpeg', quality: 92 })
+    return buffer
+  } finally {
+    await browser.close()
+  }
+}
 
 export default async function handler(req, res) {
+  if (req.method !== 'POST') return json(res, 405, { ok: false, message: 'Method not allowed' })
+
   try {
-    if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method not allowed' })
+    const { to, subject, html, fromEmail, attachments, invoice_id, attach_invoice_jpg } = req.body || {}
 
-    const { to, subject, html, fromEmail, invoice_id, attach_invoice_jpg, attachments = [] } = req.body || {}
+    if (!to || !String(to).includes('@')) return json(res, 400, { ok: false, message: 'Email tujuan tidak valid' })
+    if (!subject) return json(res, 400, { ok: false, message: 'Subject kosong' })
+    if (!html) return json(res, 400, { ok: false, message: 'HTML kosong' })
 
-    if (!to || !String(to).includes('@')) return res.status(400).json({ ok: false, message: 'Email tujuan tidak valid.' })
-    if (!subject) return res.status(400).json({ ok: false, message: 'Subject kosong.' })
-    if (!html || String(html).length < 20) return res.status(400).json({ ok: false, message: 'HTML email kosong.' })
-
+    // ===== SMTP (Hostinger) =====
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT || 465),
@@ -22,53 +81,39 @@ export default async function handler(req, res) {
       },
     })
 
-    const finalAttachments = []
+    const mailAttachments = normalizeAttachments(attachments)
 
-    // 1) Auto attach invoice jpg (server-side)
+    // ===== auto attach invoice jpg =====
     if (attach_invoice_jpg && invoice_id) {
-      const proto = req.headers['x-forwarded-proto'] || 'https'
-      const host = req.headers['x-forwarded-host'] || req.headers.host
-      const baseUrl = `${proto}://${host}`
+      // ambil base url dari request (aman untuk Vercel)
+      const baseUrl =
+        process.env.APP_URL ||
+        (req.headers['x-forwarded-proto'] ? `${req.headers['x-forwarded-proto']}://${req.headers.host}` : `https://${req.headers.host}`)
 
-      const buf = await renderInvoiceJpgBuffer({ invoiceId: invoice_id, baseUrl })
+      const jpgBuffer = await renderInvoiceJpgBuffer({ baseUrl, invoice_id })
 
-      finalAttachments.push({
+      mailAttachments.unshift({
         filename: `${invoice_id}.jpg`,
-        content: buf,
+        content: jpgBuffer,
         contentType: 'image/jpeg',
       })
     }
 
-    // 2) Attach file lain dari user (base64)
-    for (const a of Array.isArray(attachments) ? attachments : []) {
-      const filename = String(a.filename || '').trim()
-      const contentBase64 = String(a.contentBase64 || '').trim()
-      const contentType = String(a.contentType || 'application/octet-stream')
-
-      if (!filename || !contentBase64) continue
-
-      finalAttachments.push({
-        filename,
-        content: Buffer.from(contentBase64, 'base64'),
-        contentType,
-      })
-    }
-
     const info = await transporter.sendMail({
-      from: fromEmail || process.env.MAIL_FROM || process.env.SMTP_USER,
+      from: fromEmail || process.env.SMTP_FROM || process.env.SMTP_USER,
       to,
       subject,
       html,
-      attachments: finalAttachments,
+      attachments: mailAttachments,
     })
 
-    return res.status(200).json({ ok: true, messageId: info.messageId })
+    return json(res, 200, { ok: true, message: 'Email terkirim', id: info.messageId })
   } catch (e) {
     console.error('send-email error:', e)
-    return res.status(500).json({
+    return json(res, 500, {
       ok: false,
       message: 'Gagal mengirim email.',
-      debug: { error: String(e?.message || e) },
+      debug: { error: e?.message || String(e) },
     })
   }
 }
