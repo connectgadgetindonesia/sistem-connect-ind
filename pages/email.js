@@ -9,13 +9,13 @@ const label = 'text-sm text-gray-600'
 const btn = 'px-4 py-2 rounded-lg font-semibold'
 const btnPrimary = btn + ' bg-black text-white hover:bg-gray-800'
 const btnSoft = btn + ' bg-gray-100 text-gray-900 hover:bg-gray-200'
+const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
 
 const FROM_EMAIL = 'admin@connectgadgetind.com'
 
 // ==== TEMPLATE GENERATOR (HTML) ====
 function buildInvoiceEmailTemplate(payload) {
   const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], total = 0 } = payload || {}
-
   const safe = (v) => String(v ?? '').trim()
 
   const itemsHtml =
@@ -41,7 +41,7 @@ function buildInvoiceEmailTemplate(payload) {
       : `
         <tr>
           <td colspan="3" style="padding:12px; color:#666; border-bottom:1px solid #eee;">
-            (Item belum ditemukan — nanti akan otomatis dari invoice multi-item)
+            (Item belum ditemukan)
           </td>
         </tr>
       `
@@ -101,7 +101,7 @@ function buildInvoiceEmailTemplate(payload) {
           <div style="margin-top:18px; color:#444; font-size:13px; line-height:1.6;">
             Halo <b>${safe(nama_pembeli) || 'Customer'}</b>,<br/>
             Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
-            Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
+            Mohon tidak membalas email ini, jika ada pertanyaan hubungi WhatsApp kami di <b>0896-3140-0031</b>.
           </div>
 
           <div style="margin-top:18px; color:#666; font-size:12px;">
@@ -112,7 +112,7 @@ function buildInvoiceEmailTemplate(payload) {
       </div>
 
       <div style="text-align:center; color:#999; font-size:12px; margin-top:12px;">
-        Email ini dikirim dari sistem CONNECT.IND.
+        Email ini dikirim dari otomatis dari sistem CONNECT.IND.
       </div>
     </div>
   </div>
@@ -124,18 +124,30 @@ function formatRupiah(n) {
   return 'Rp ' + x.toLocaleString('id-ID')
 }
 
+const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
+
 export default function EmailPage() {
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false) // loading tarik invoice manual
   const [sending, setSending] = useState(false)
 
+  // invoice terpilih
   const [qInvoice, setQInvoice] = useState('')
   const [dataInvoice, setDataInvoice] = useState(null)
 
+  // composer
   const [toEmail, setToEmail] = useState('')
   const [subject, setSubject] = useState('Invoice Pembelian – CONNECT.IND')
   const [htmlBody, setHtmlBody] = useState('')
-  const [mode, setMode] = useState('preview')
+  const [mode, setMode] = useState('preview') // preview | html
 
+  // ====== PILIH TRANSAKSI (MODAL) ======
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerDate, setPickerDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [pickerRows, setPickerRows] = useState([]) // hasil grouping invoice
+
+  // Auto-generate body ketika data invoice berubah
   useEffect(() => {
     if (!dataInvoice) {
       setHtmlBody('')
@@ -144,9 +156,112 @@ export default function EmailPage() {
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
+  // ====== helper: ambil transaksi per tanggal, group by invoice_id ======
+  const fetchInvoicesByDate = async (ymd) => {
+    const start = dayjs(ymd).startOf('day').toISOString()
+    const end = dayjs(ymd).endOf('day').toISOString()
+
+    setPickerLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('penjualan_baru')
+        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi')
+        .gte('tanggal', start)
+        .lte('tanggal', end)
+        .order('tanggal', { ascending: false })
+        .limit(300)
+
+      if (error) throw error
+
+      const list = Array.isArray(data) ? data : []
+      if (list.length === 0) {
+        setPickerRows([])
+        return
+      }
+
+      const map = new Map()
+
+      for (const r of list) {
+        const inv = (r.invoice_id || '').trim()
+        if (!inv) continue
+
+        if (!map.has(inv)) {
+          map.set(inv, {
+            invoice_id: inv,
+            tanggal_raw: r.tanggal || null,
+            tanggal: r.tanggal ? dayjs(r.tanggal).format('DD/MM/YYYY') : dayjs(ymd).format('DD/MM/YYYY'),
+            nama_pembeli: r.nama_pembeli || '',
+            alamat: r.alamat || '',
+            no_wa: r.no_wa || '',
+            items: [],
+            total: 0,
+            item_count: 0,
+          })
+        }
+
+        const it = map.get(inv)
+        it.items.push({
+          nama_produk: r.nama_produk,
+          warna: r.warna,
+          storage: r.storage,
+          garansi: r.garansi,
+          harga_jual: r.harga_jual,
+        })
+        it.total += toInt(r.harga_jual)
+        it.item_count += 1
+
+        // pastikan head paling baru yang kebaca
+        if (!it.tanggal_raw && r.tanggal) {
+          it.tanggal_raw = r.tanggal
+          it.tanggal = dayjs(r.tanggal).format('DD/MM/YYYY')
+        }
+        if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
+        if (!it.alamat && r.alamat) it.alamat = r.alamat
+        if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
+      }
+
+      const grouped = Array.from(map.values()).sort((a, b) => {
+        const ta = a.tanggal_raw ? new Date(a.tanggal_raw).getTime() : 0
+        const tb = b.tanggal_raw ? new Date(b.tanggal_raw).getTime() : 0
+        return tb - ta
+      })
+
+      setPickerRows(grouped)
+    } catch (e) {
+      console.error(e)
+      setPickerRows([])
+      alert('Gagal ambil transaksi di tanggal tersebut.')
+    } finally {
+      setPickerLoading(false)
+    }
+  }
+
+  // buka modal + fetch awal
+  const openPicker = async () => {
+    setPickerOpen(true)
+    setPickerSearch('')
+    await fetchInvoicesByDate(pickerDate)
+  }
+
+  // pilih salah satu transaksi
+  const pickInvoice = (inv) => {
+    setDataInvoice({
+      invoice_id: inv.invoice_id,
+      tanggal: inv.tanggal,
+      nama_pembeli: inv.nama_pembeli || '',
+      alamat: inv.alamat || '',
+      no_wa: inv.no_wa || '',
+      items: inv.items || [],
+      total: inv.total || 0,
+    })
+    setQInvoice(inv.invoice_id)
+    setPickerOpen(false)
+  }
+
+  // ====== fallback: tarik manual pakai invoice_id (kalau butuh) ======
   const canGenerate = useMemo(() => qInvoice.trim().length >= 3, [qInvoice])
 
-  const cariInvoice = async () => {
+  const cariInvoiceManual = async () => {
     const key = qInvoice.trim()
     if (!key) return
 
@@ -157,13 +272,13 @@ export default function EmailPage() {
         .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi')
         .eq('invoice_id', key)
         .order('tanggal', { ascending: false })
-        .limit(50)
+        .limit(100)
 
       if (error) throw error
 
       if (!data || data.length === 0) {
         setDataInvoice(null)
-        alert('Invoice tidak ditemukan. Pastikan invoice_id benar.')
+        alert('Invoice tidak ditemukan.')
         return
       }
 
@@ -176,7 +291,7 @@ export default function EmailPage() {
         harga_jual: r.harga_jual,
       }))
 
-      const total = items.reduce((acc, it) => acc + (parseInt(String(it.harga_jual || '0'), 10) || 0), 0)
+      const total = items.reduce((acc, it) => acc + toInt(it.harga_jual), 0)
 
       setDataInvoice({
         invoice_id: head.invoice_id || key,
@@ -196,9 +311,9 @@ export default function EmailPage() {
     }
   }
 
-  // ✅ UPDATED: tampilkan HTTP status + DEBUG dari API
+  // ✅ Kirim email (tetap)
   const sendEmail = async () => {
-    if (!dataInvoice?.invoice_id) return alert('Tarik data invoice dulu.')
+    if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
     if (!subject.trim()) return alert('Subject masih kosong.')
     if (!htmlBody || htmlBody.trim().length < 20) return alert('Body email masih kosong.')
@@ -233,6 +348,17 @@ export default function EmailPage() {
     }
   }
 
+  const filteredPickerRows = useMemo(() => {
+    const s = pickerSearch.trim().toLowerCase()
+    if (!s) return pickerRows
+    return pickerRows.filter((r) => {
+      const inv = String(r.invoice_id || '').toLowerCase()
+      const nm = String(r.nama_pembeli || '').toLowerCase()
+      const wa = String(r.no_wa || '').toLowerCase()
+      return inv.includes(s) || nm.includes(s) || wa.includes(s)
+    })
+  }, [pickerRows, pickerSearch])
+
   return (
     <Layout>
       <div className="p-5 space-y-4">
@@ -247,25 +373,48 @@ export default function EmailPage() {
           </div>
         </div>
 
+        {/* PILIH TRANSAKSI (utama) */}
         <div className={`${card} p-4`}>
-          <div className="grid md:grid-cols-3 gap-3 items-end">
-            <div className="md:col-span-2">
-              <div className={label}>Nomor Invoice (invoice_id)</div>
-              <input
-                className={input}
-                placeholder="Contoh: INV-CTI-02-2026-001"
-                value={qInvoice}
-                onChange={(e) => setQInvoice(e.target.value)}
-              />
+          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between">
+            <div className="flex-1">
+              <div className={label}>Transaksi yang dipilih</div>
+              <div className="mt-1 flex flex-col sm:flex-row gap-2">
+                <input
+                  className={input}
+                  value={dataInvoice?.invoice_id ? `${dataInvoice.invoice_id} • ${dataInvoice.nama_pembeli || ''}` : ''}
+                  placeholder="Belum pilih transaksi"
+                  readOnly
+                />
+                <button className={btnPrimary} onClick={openPicker}>
+                  Pilih Transaksi
+                </button>
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                Pilih tanggal → pilih transaksi. Bisa search by nama / invoice / WA di modal.
+              </div>
             </div>
-            <button
-              className={btnPrimary + ' w-full'}
-              onClick={cariInvoice}
-              disabled={!canGenerate || loading}
-              style={{ opacity: !canGenerate || loading ? 0.6 : 1 }}
-            >
-              {loading ? 'Memuat...' : 'Tarik Data Invoice'}
-            </button>
+
+            {/* fallback manual (biar kalau butuh tetap ada, tapi tidak mengganggu) */}
+            <div className="w-full md:w-[360px]">
+              <div className={label}>Cari manual (opsional)</div>
+              <div className="mt-1 flex gap-2">
+                <input
+                  className={input}
+                  placeholder="Ketik invoice_id..."
+                  value={qInvoice}
+                  onChange={(e) => setQInvoice(e.target.value)}
+                />
+                <button
+                  className={btnSoft}
+                  onClick={cariInvoiceManual}
+                  disabled={!canGenerate || loading}
+                  style={{ opacity: !canGenerate || loading ? 0.6 : 1 }}
+                  title="Fallback kalau diperlukan"
+                >
+                  {loading ? 'Memuat...' : 'Tarik'}
+                </button>
+              </div>
+            </div>
           </div>
 
           {dataInvoice ? (
@@ -282,10 +431,11 @@ export default function EmailPage() {
               </div>
             </div>
           ) : (
-            <div className="mt-4 text-sm text-gray-500">Tarik data dulu untuk membangun template email otomatis.</div>
+            <div className="mt-4 text-sm text-gray-500">Pilih transaksi dulu untuk membangun template email otomatis.</div>
           )}
         </div>
 
+        {/* Composer + Preview */}
         <div className="grid lg:grid-cols-2 gap-4">
           <div className={`${card} p-4 space-y-3`}>
             <div className="text-lg font-semibold">Composer</div>
@@ -325,7 +475,7 @@ export default function EmailPage() {
                   style={{ minHeight: 320, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas' }}
                   value={htmlBody}
                   onChange={(e) => setHtmlBody(e.target.value)}
-                  placeholder="Tarik data invoice untuk generate template otomatis..."
+                  placeholder="Pilih transaksi untuk generate template otomatis..."
                 />
               </div>
             )}
@@ -336,7 +486,7 @@ export default function EmailPage() {
                 onClick={sendEmail}
                 disabled={sending || !dataInvoice}
                 style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}
-                title={!dataInvoice ? 'Tarik data invoice dulu' : ''}
+                title={!dataInvoice ? 'Pilih transaksi dulu' : ''}
               >
                 {sending ? 'Mengirim...' : 'Kirim Email'}
               </button>
@@ -344,17 +494,29 @@ export default function EmailPage() {
               <button
                 className={btnSoft}
                 onClick={() => {
-                  if (!dataInvoice) return alert('Tarik data invoice dulu.')
+                  if (!dataInvoice) return alert('Pilih transaksi dulu.')
                   setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
                   alert('Template invoice digenerate ulang.')
                 }}
               >
                 Generate Ulang Template
               </button>
+
+              <button
+                className={btnSoft}
+                onClick={() => {
+                  setDataInvoice(null)
+                  setQInvoice('')
+                  setHtmlBody('')
+                }}
+                title="Reset pilihan transaksi"
+              >
+                Reset
+              </button>
             </div>
 
             <div className="text-xs text-gray-500">
-              Catatan: Pastikan kamu sudah buat API <b>/api/send-email</b> + env SMTP Hostinger agar tombol ini benar-benar kirim.
+              Catatan: Pastikan API <b>/api/send-email</b> + env SMTP Hostinger sudah aktif.
             </div>
           </div>
 
@@ -381,13 +543,130 @@ export default function EmailPage() {
                   __html:
                     htmlBody ||
                     `<div style="padding:16px; color:#666; font-family:system-ui;">
-                      Tarik data invoice untuk membuat template otomatis.
+                      Pilih transaksi untuk membuat template otomatis.
                     </div>`,
                 }}
               />
             </div>
           </div>
         </div>
+
+        {/* MODAL PILIH TRANSAKSI */}
+        {pickerOpen && (
+          <div className="fixed inset-0 z-[60]">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setPickerOpen(false)}
+            />
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div className="w-full max-w-3xl bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
+                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <div className="text-lg font-bold">Pilih Transaksi</div>
+                    <div className="text-xs text-gray-500">Pilih tanggal, lalu klik salah satu invoice.</div>
+                  </div>
+                  <button className={btnSoft} onClick={() => setPickerOpen(false)}>
+                    Tutup
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div>
+                      <div className={label}>Tanggal</div>
+                      <input
+                        type="date"
+                        className={input}
+                        value={pickerDate}
+                        onChange={async (e) => {
+                          const v = e.target.value
+                          setPickerDate(v)
+                          await fetchInvoicesByDate(v)
+                        }}
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <div className={label}>Search (Nama / Invoice / WA)</div>
+                      <input
+                        className={input}
+                        placeholder="Ketik nama pembeli / invoice / WA..."
+                        value={pickerSearch}
+                        onChange={(e) => setPickerSearch(e.target.value)}
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        List akan tampil berdasarkan tanggal. Search hanya untuk memfilter list.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm flex items-center justify-between">
+                      <div>
+                        Tanggal: <b>{dayjs(pickerDate).format('DD/MM/YYYY')}</b>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {pickerLoading ? 'Memuat...' : `${filteredPickerRows.length} transaksi`}
+                      </div>
+                    </div>
+
+                    <div className="max-h-[420px] overflow-auto">
+                      {pickerLoading ? (
+                        <div className="p-4 text-sm text-gray-600">Memuat transaksi...</div>
+                      ) : filteredPickerRows.length === 0 ? (
+                        <div className="p-4 text-sm text-gray-600">
+                          Tidak ada transaksi di tanggal ini.
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-100">
+                          {filteredPickerRows.map((r) => (
+                            <button
+                              key={r.invoice_id}
+                              onClick={() => pickInvoice(r)}
+                              className="w-full text-left p-3 hover:bg-gray-50"
+                              title="Klik untuk pilih transaksi ini"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    Invoice: <b>{r.invoice_id}</b> • {r.tanggal}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    WA: <b>{r.no_wa || '-'}</b>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <div className="font-bold">{formatRupiah(r.total)}</div>
+                                  <div className="text-xs text-gray-500">{r.item_count} item</div>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <button
+                      className={btnSoft}
+                      onClick={async () => {
+                        await fetchInvoicesByDate(pickerDate)
+                      }}
+                    >
+                      Refresh
+                    </button>
+
+                    <button className={btnDanger} onClick={() => setPickerOpen(false)}>
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )
