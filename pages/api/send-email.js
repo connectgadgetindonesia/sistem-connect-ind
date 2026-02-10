@@ -1,84 +1,64 @@
 import nodemailer from 'nodemailer'
 
-const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim())
-
 export default async function handler(req, res) {
-  // biar aman kalau ada preflight / OPTIONS
   if (req.method === 'OPTIONS') return res.status(200).json({ ok: true })
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ ok: false, message: 'Method not allowed', debug: { method: req.method } })
-  }
+  if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method not allowed', debug: { method: req.method } })
 
   try {
-    const { to, subject, html, fromEmail } = req.body || {}
+    const { to, subject, html, fromEmail, attachmentUrl, attachmentFilename } = req.body || {}
+
+    const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim())
 
     if (!to || !isEmail(to)) return res.status(400).json({ ok: false, message: 'Email tujuan tidak valid.' })
-    if (!subject || String(subject).trim().length < 3) return res.status(400).json({ ok: false, message: 'Subject tidak boleh kosong.' })
-    if (!html || String(html).trim().length < 20) return res.status(400).json({ ok: false, message: 'Body email masih kosong.' })
-
-    const host = process.env.SMTP_HOST
-    const port = parseInt(process.env.SMTP_PORT || '465', 10)
-    const user = process.env.SMTP_USER
-    const pass = process.env.SMTP_PASS
-
-    const secureEnv = String(process.env.SMTP_SECURE || '').toLowerCase()
-    const secure = secureEnv ? secureEnv === 'true' : port === 465
-
-    const fromName = process.env.SMTP_FROM_NAME || 'CONNECT.IND'
-    const fromDefault = process.env.SMTP_FROM_EMAIL || user
-
-    // cek ENV wajib
-    if (!host || !user || !pass) {
-      return res.status(500).json({
-        ok: false,
-        message: 'ENV SMTP belum lengkap di Vercel.',
-        debug: {
-          hasHost: !!host,
-          hasUser: !!user,
-          hasPass: !!pass,
-          port,
-          secure,
-        },
-      })
-    }
+    if (!subject || String(subject).trim().length < 3) return res.status(400).json({ ok: false, message: 'Subject kosong.' })
+    if (!html || String(html).trim().length < 20) return res.status(400).json({ ok: false, message: 'Body email kosong.' })
 
     const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure, // 465 true, 587 false
-      auth: { user, pass },
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 465),
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
     })
 
-    // optional tapi membantu: cek koneksi SMTP
-    await transporter.verify()
+    // ====== ambil file jpg dari attachmentUrl (opsional) ======
+    let attachments = []
+    if (attachmentUrl && String(attachmentUrl).startsWith('http')) {
+      try {
+        const r = await fetch(attachmentUrl)
+        if (r.ok) {
+          const arr = await r.arrayBuffer()
+          attachments.push({
+            filename: attachmentFilename || 'invoice.jpg',
+            content: Buffer.from(arr),
+            contentType: 'image/jpeg',
+          })
+        }
+      } catch (e) {
+        // kalau gagal download lampiran, email tetap dikirim tanpa attachment
+        // (supaya tidak bikin error)
+      }
+    }
 
-    const fromFinal = `${fromName} <${fromEmail || fromDefault}>`
+    const fromFinal = `CONNECT.IND <${fromEmail || process.env.SMTP_USER}>`
 
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: fromFinal,
       to,
       subject,
       html,
+      attachments,
     })
 
-    return res.status(200).json({
-      ok: true,
-      message: 'Email berhasil dikirim.',
-      messageId: info.messageId,
-    })
-  } catch (err) {
-    console.error('SEND EMAIL ERROR:', err)
+    return res.status(200).json({ ok: true, message: 'Email berhasil dikirim.' })
+  } catch (e) {
     return res.status(500).json({
       ok: false,
+      code: 'EUNEXPECTED',
       message: 'Gagal mengirim email.',
-      debug: {
-        code: err?.code,
-        command: err?.command,
-        response: err?.response,
-        responseCode: err?.responseCode,
-        message: err?.message,
-      },
+      debug: { err: String(e?.message || e) },
     })
   }
 }

@@ -4,19 +4,97 @@ import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 
 const card = 'bg-white border border-gray-200 rounded-xl'
-const input = 'border border-gray-200 p-2 rounded-lg w-full'
+const input = 'border border-gray-200 p-2 rounded-lg w-full h-[42px]'
 const label = 'text-sm text-gray-600'
-const btn = 'px-4 py-2 rounded-lg font-semibold'
+const btn = 'px-4 py-2 rounded-lg font-semibold h-[42px]'
 const btnPrimary = btn + ' bg-black text-white hover:bg-gray-800'
 const btnSoft = btn + ' bg-gray-100 text-gray-900 hover:bg-gray-200'
 const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
 
 const FROM_EMAIL = 'admin@connectgadgetind.com'
 
+// kalau endpoint JPG invoice Anda berbeda, ganti ini:
+const buildInvoiceJpgUrl = (invoiceId) => {
+  // contoh endpoint yang disarankan: /api/invoice-jpg?invoice_id=INV-...
+  if (typeof window === 'undefined') return ''
+  return `${window.location.origin}/api/invoice-jpg?invoice_id=${encodeURIComponent(invoiceId)}`
+}
+
+function formatRupiah(n) {
+  const x = typeof n === 'number' ? n : parseInt(String(n || '0'), 10) || 0
+  return 'Rp ' + x.toLocaleString('id-ID')
+}
+const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
+
+// ===== ambil nilai diskon/total dari row (kalau ada) =====
+function pickNumberFromRow(row, keys) {
+  for (const k of keys) {
+    const v = row?.[k]
+    const n = toInt(v)
+    if (n) return n
+  }
+  return 0
+}
+
+function normalizeInvoiceFromRows(rows, fallbackInvoiceId, fallbackDateYMD) {
+  const list = Array.isArray(rows) ? rows : []
+  const head = list[0] || {}
+
+  const items = list
+    .map((r) => ({
+      nama_produk: r.nama_produk,
+      warna: r.warna,
+      storage: r.storage,
+      garansi: r.garansi,
+      harga_jual: r.harga_jual,
+    }))
+    .filter((x) => String(x.nama_produk || '').trim() !== '')
+
+  const subtotal = items.reduce((acc, it) => acc + toInt(it.harga_jual), 0)
+
+  // coba baca diskon dari kolom manapun (silakan tambah kalau kolomnya beda)
+  const discount = pickNumberFromRow(head, ['diskon', 'discount', 'potongan', 'voucher', 'promo', 'discount_amount'])
+
+  // coba baca total akhir dari kolom manapun (silakan tambah kalau kolomnya beda)
+  const grandTotal =
+    pickNumberFromRow(head, ['total_akhir', 'grand_total', 'total_bayar', 'total', 'net_total']) ||
+    Math.max(0, subtotal - discount)
+
+  const tanggal = head.tanggal
+    ? dayjs(head.tanggal).format('DD/MM/YYYY')
+    : fallbackDateYMD
+      ? dayjs(fallbackDateYMD).format('DD/MM/YYYY')
+      : dayjs().format('DD/MM/YYYY')
+
+  return {
+    invoice_id: head.invoice_id || fallbackInvoiceId || '',
+    tanggal,
+    nama_pembeli: head.nama_pembeli || '',
+    alamat: head.alamat || '',
+    no_wa: head.no_wa || '',
+    items,
+    subtotal,
+    discount,
+    total: grandTotal,
+  }
+}
+
 // ==== TEMPLATE GENERATOR (HTML) ====
 function buildInvoiceEmailTemplate(payload) {
-  const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], total = 0 } = payload || {}
+  const {
+    nama_pembeli,
+    invoice_id,
+    tanggal,
+    no_wa,
+    alamat,
+    items = [],
+    subtotal = 0,
+    discount = 0,
+    total = 0,
+  } = payload || {}
+
   const safe = (v) => String(v ?? '').trim()
+  const hasDiscount = toInt(discount) > 0 && toInt(subtotal) > 0
 
   const itemsHtml =
     items.length > 0
@@ -45,6 +123,32 @@ function buildInvoiceEmailTemplate(payload) {
           </td>
         </tr>
       `
+
+  const totalsBox = hasDiscount
+    ? `
+      <div style="min-width:300px; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
+        <div style="display:flex; justify-content:space-between; font-size:13px; color:#666; margin-bottom:8px;">
+          <span>Sub Total</span>
+          <span style="font-weight:700; color:#111;">${formatRupiah(subtotal)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:13px; color:#666; margin-bottom:10px;">
+          <span>Discount</span>
+          <span style="font-weight:700; color:#b42318;">- ${formatRupiah(discount)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; color:#111;">
+          <span style="font-weight:800;">Total</span>
+          <span style="font-weight:900;">${formatRupiah(total)}</span>
+        </div>
+      </div>
+    `
+    : `
+      <div style="min-width:260px; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
+        <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
+          <span>Total</span>
+          <span style="font-weight:800; color:#111;">${formatRupiah(total || subtotal)}</span>
+        </div>
+      </div>
+    `
 
   return `
   <div style="font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#f6f7f9; padding:24px;">
@@ -89,12 +193,7 @@ function buildInvoiceEmailTemplate(payload) {
             </table>
 
             <div style="margin-top:14px; display:flex; justify-content:flex-end;">
-              <div style="min-width:260px; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
-                <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
-                  <span>Total</span>
-                  <span style="font-weight:800; color:#111;">${formatRupiah(total)}</span>
-                </div>
-              </div>
+              ${totalsBox}
             </div>
           </div>
 
@@ -118,13 +217,6 @@ function buildInvoiceEmailTemplate(payload) {
   </div>
   `
 }
-
-function formatRupiah(n) {
-  const x = typeof n === 'number' ? n : parseInt(String(n || '0'), 10) || 0
-  return 'Rp ' + x.toLocaleString('id-ID')
-}
-
-const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 
 export default function EmailPage() {
   const [loading, setLoading] = useState(false) // loading tarik invoice manual
@@ -155,9 +247,8 @@ export default function EmailPage() {
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
-  // ✅ FIX TANGGAL: ambil range lebih lebar, lalu filter sesuai YYYY-MM-DD (biar tidak geser timezone)
+  // ✅ FIX tanggal timezone (range lebar + filter client)
   const fetchInvoicesByDate = async (ymd) => {
-    // ambil H-1 sampai H+1, lalu filter client = tanggal local match ymd
     const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
     const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
 
@@ -165,17 +256,16 @@ export default function EmailPage() {
     try {
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi')
+        .select('*')
         .gte('tanggal', start)
         .lte('tanggal', end)
         .order('tanggal', { ascending: false })
-        .limit(600)
+        .limit(800)
 
       if (error) throw error
 
       const raw = Array.isArray(data) ? data : []
 
-      // filter ketat: hanya yang tanggal local = ymd
       const list = raw.filter((r) => {
         if (!r?.tanggal) return false
         return dayjs(r.tanggal).format('YYYY-MM-DD') === ymd
@@ -189,19 +279,22 @@ export default function EmailPage() {
       const map = new Map()
 
       for (const r of list) {
-        const inv = (r.invoice_id || '').trim()
+        const inv = String(r.invoice_id || '').trim()
         if (!inv) continue
 
         if (!map.has(inv)) {
+          const tmp = normalizeInvoiceFromRows([r], inv, ymd)
           map.set(inv, {
             invoice_id: inv,
             tanggal_raw: r.tanggal || null,
-            tanggal: r.tanggal ? dayjs(r.tanggal).format('DD/MM/YYYY') : dayjs(ymd).format('DD/MM/YYYY'),
-            nama_pembeli: r.nama_pembeli || '',
-            alamat: r.alamat || '',
-            no_wa: r.no_wa || '',
+            tanggal: tmp.tanggal,
+            nama_pembeli: tmp.nama_pembeli,
+            alamat: tmp.alamat,
+            no_wa: tmp.no_wa,
             items: [],
-            total: 0,
+            subtotal: 0,
+            discount: tmp.discount || 0,
+            total: tmp.total || 0,
             item_count: 0,
           })
         }
@@ -216,10 +309,9 @@ export default function EmailPage() {
           harga_jual: r.harga_jual,
         })
 
-        it.total += toInt(r.harga_jual)
+        it.subtotal += toInt(r.harga_jual)
         it.item_count += 1
 
-        // head info
         if (!it.tanggal_raw && r.tanggal) {
           it.tanggal_raw = r.tanggal
           it.tanggal = dayjs(r.tanggal).format('DD/MM/YYYY')
@@ -227,13 +319,26 @@ export default function EmailPage() {
         if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
         if (!it.alamat && r.alamat) it.alamat = r.alamat
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
+
+        // update discount/total kalau row ini punya datanya
+        const d = pickNumberFromRow(r, ['diskon', 'discount', 'potongan', 'voucher', 'promo', 'discount_amount'])
+        if (d) it.discount = d
+
+        const gt = pickNumberFromRow(r, ['total_akhir', 'grand_total', 'total_bayar', 'total', 'net_total'])
+        if (gt) it.total = gt
       }
 
-      const grouped = Array.from(map.values()).sort((a, b) => {
-        const ta = a.tanggal_raw ? new Date(a.tanggal_raw).getTime() : 0
-        const tb = b.tanggal_raw ? new Date(b.tanggal_raw).getTime() : 0
-        return tb - ta
-      })
+      const grouped = Array.from(map.values())
+        .map((x) => {
+          // kalau tidak ada total akhir dari DB, hitung dari subtotal - discount
+          if (!toInt(x.total)) x.total = Math.max(0, toInt(x.subtotal) - toInt(x.discount))
+          return x
+        })
+        .sort((a, b) => {
+          const ta = a.tanggal_raw ? new Date(a.tanggal_raw).getTime() : 0
+          const tb = b.tanggal_raw ? new Date(b.tanggal_raw).getTime() : 0
+          return tb - ta
+        })
 
       setPickerRows(grouped)
     } catch (e) {
@@ -259,6 +364,8 @@ export default function EmailPage() {
       alamat: inv.alamat || '',
       no_wa: inv.no_wa || '',
       items: inv.items || [],
+      subtotal: inv.subtotal || 0,
+      discount: inv.discount || 0,
       total: inv.total || 0,
     })
     setQInvoice(inv.invoice_id)
@@ -274,13 +381,7 @@ export default function EmailPage() {
 
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi')
-        .eq('invoice_id', key)
-        .order('tanggal', { ascending: false })
-        .limit(100)
-
+      const { data, error } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', key).order('tanggal', { ascending: false }).limit(300)
       if (error) throw error
 
       if (!data || data.length === 0) {
@@ -289,26 +390,8 @@ export default function EmailPage() {
         return
       }
 
-      const head = data[0]
-      const items = data.map((r) => ({
-        nama_produk: r.nama_produk,
-        warna: r.warna,
-        storage: r.storage,
-        garansi: r.garansi,
-        harga_jual: r.harga_jual,
-      }))
-
-      const total = items.reduce((acc, it) => acc + toInt(it.harga_jual), 0)
-
-      setDataInvoice({
-        invoice_id: head.invoice_id || key,
-        tanggal: head.tanggal ? dayjs(head.tanggal).format('DD/MM/YYYY') : dayjs().format('DD/MM/YYYY'),
-        nama_pembeli: head.nama_pembeli || '',
-        alamat: head.alamat || '',
-        no_wa: head.no_wa || '',
-        items,
-        total,
-      })
+      const normalized = normalizeInvoiceFromRows(data, key)
+      setDataInvoice(normalized)
     } catch (e) {
       console.error(e)
       alert('Gagal ambil data invoice.')
@@ -318,11 +401,14 @@ export default function EmailPage() {
     }
   }
 
+  // ✅ Kirim email + lampiran JPG
   const sendEmail = async () => {
     if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
     if (!subject.trim()) return alert('Subject masih kosong.')
     if (!htmlBody || htmlBody.trim().length < 20) return alert('Body email masih kosong.')
+
+    const attachmentUrl = buildInvoiceJpgUrl(dataInvoice.invoice_id)
 
     setSending(true)
     try {
@@ -334,6 +420,9 @@ export default function EmailPage() {
           subject: subject.trim(),
           html: htmlBody,
           fromEmail: FROM_EMAIL,
+          // lampiran jpg
+          attachmentUrl,
+          attachmentFilename: `${dataInvoice.invoice_id}.jpg`,
         }),
       })
 
@@ -381,9 +470,9 @@ export default function EmailPage() {
 
         {/* PILIH TRANSAKSI (utama) */}
         <div className={`${card} p-4`}>
-          <div className="grid md:grid-cols-12 gap-3 items-end">
-            {/* kiri */}
-            <div className="md:col-span-7">
+          {/* ✅ dibuat 2 kolom rapi (sejajar) */}
+          <div className="grid lg:grid-cols-2 gap-4 items-end">
+            <div>
               <div className={label}>Transaksi yang dipilih</div>
               <div className="mt-1 flex gap-2">
                 <input
@@ -392,7 +481,7 @@ export default function EmailPage() {
                   placeholder="Belum pilih transaksi"
                   readOnly
                 />
-                <button className={btnPrimary + ' shrink-0'} onClick={openPicker}>
+                <button className={btnPrimary + ' shrink-0 w-[150px]'} onClick={openPicker}>
                   Pilih Transaksi
                 </button>
               </div>
@@ -401,8 +490,7 @@ export default function EmailPage() {
               </div>
             </div>
 
-            {/* kanan */}
-            <div className="md:col-span-5">
+            <div>
               <div className={label}>Cari manual (opsional)</div>
               <div className="mt-1 flex gap-2">
                 <input
@@ -412,14 +500,17 @@ export default function EmailPage() {
                   onChange={(e) => setQInvoice(e.target.value)}
                 />
                 <button
-                  className={btnSoft + ' w-[110px] shrink-0'}
+                  className={btnSoft + ' shrink-0 w-[110px]'}
                   onClick={cariInvoiceManual}
                   disabled={!canGenerate || loading}
                   style={{ opacity: !canGenerate || loading ? 0.6 : 1 }}
-                  title="Fallback kalau diperlukan"
                 >
                   {loading ? 'Memuat...' : 'Tarik'}
                 </button>
+              </div>
+
+              <div className="text-xs text-gray-500 mt-2">
+                Lampiran: <b>{dataInvoice?.invoice_id ? `${dataInvoice.invoice_id}.jpg` : '-'}</b> (otomatis saat kirim email)
               </div>
             </div>
           </div>
@@ -440,9 +531,24 @@ export default function EmailPage() {
                 <div>
                   WA: <b>{dataInvoice.no_wa}</b>
                 </div>
-                <div>
-                  Total: <b>{formatRupiah(dataInvoice.total)}</b> • Item: <b>{dataInvoice.items.length}</b>
-                </div>
+
+                {toInt(dataInvoice.discount) > 0 ? (
+                  <>
+                    <div>
+                      Subtotal: <b>{formatRupiah(dataInvoice.subtotal)}</b>
+                    </div>
+                    <div>
+                      Discount: <b className="text-red-600">- {formatRupiah(dataInvoice.discount)}</b>
+                    </div>
+                    <div>
+                      Total: <b>{formatRupiah(dataInvoice.total)}</b> • Item: <b>{dataInvoice.items.length}</b>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    Total: <b>{formatRupiah(dataInvoice.total || dataInvoice.subtotal)}</b> • Item: <b>{dataInvoice.items.length}</b>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -457,15 +563,8 @@ export default function EmailPage() {
 
             <div>
               <div className={label}>To (Email Customer)</div>
-              <input
-                className={input}
-                placeholder="customer@email.com"
-                value={toEmail}
-                onChange={(e) => setToEmail(e.target.value)}
-              />
-              <div className="text-xs text-gray-500 mt-1">
-                (Untuk sekarang isi manual. Nanti kalau kamu mau, kita tambahkan kolom email customer biar auto.)
-              </div>
+              <input className={input} placeholder="customer@email.com" value={toEmail} onChange={(e) => setToEmail(e.target.value)} />
+              <div className="text-xs text-gray-500 mt-1">(Untuk sekarang isi manual. Nanti kalau mau, kita tambah kolom email customer biar auto.)</div>
             </div>
 
             <div>
@@ -486,7 +585,7 @@ export default function EmailPage() {
               <div>
                 <div className={label}>Body (HTML)</div>
                 <textarea
-                  className={input}
+                  className={'border border-gray-200 p-2 rounded-lg w-full'}
                   style={{ minHeight: 320, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas' }}
                   value={htmlBody}
                   onChange={(e) => setHtmlBody(e.target.value)}
@@ -496,13 +595,7 @@ export default function EmailPage() {
             )}
 
             <div className="pt-2 flex flex-wrap items-center gap-2">
-              <button
-                className={btnPrimary}
-                onClick={sendEmail}
-                disabled={sending || !dataInvoice}
-                style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}
-                title={!dataInvoice ? 'Pilih transaksi dulu' : ''}
-              >
+              <button className={btnPrimary} onClick={sendEmail} disabled={sending || !dataInvoice} style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}>
                 {sending ? 'Mengirim...' : 'Kirim Email'}
               </button>
 
@@ -524,7 +617,6 @@ export default function EmailPage() {
                   setQInvoice('')
                   setHtmlBody('')
                 }}
-                title="Reset pilihan transaksi"
               >
                 Reset
               </button>
@@ -606,9 +698,7 @@ export default function EmailPage() {
                         value={pickerSearch}
                         onChange={(e) => setPickerSearch(e.target.value)}
                       />
-                      <div className="text-xs text-gray-500 mt-1">
-                        List tampil sesuai tanggal. Search hanya untuk memfilter.
-                      </div>
+                      <div className="text-xs text-gray-500 mt-1">List tampil sesuai tanggal. Search hanya untuk memfilter.</div>
                     </div>
                   </div>
 
@@ -617,9 +707,7 @@ export default function EmailPage() {
                       <div>
                         Tanggal: <b>{dayjs(pickerDate).format('DD/MM/YYYY')}</b>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {pickerLoading ? 'Memuat...' : `${filteredPickerRows.length} transaksi`}
-                      </div>
+                      <div className="text-xs text-gray-500">{pickerLoading ? 'Memuat...' : `${filteredPickerRows.length} transaksi`}</div>
                     </div>
 
                     <div className="max-h-[420px] overflow-auto">
@@ -630,12 +718,7 @@ export default function EmailPage() {
                       ) : (
                         <div className="divide-y divide-gray-100">
                           {filteredPickerRows.map((r) => (
-                            <button
-                              key={r.invoice_id}
-                              onClick={() => pickInvoice(r)}
-                              className="w-full text-left p-3 hover:bg-gray-50"
-                              title="Klik untuk pilih transaksi ini"
-                            >
+                            <button key={r.invoice_id} onClick={() => pickInvoice(r)} className="w-full text-left p-3 hover:bg-gray-50">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
@@ -647,7 +730,8 @@ export default function EmailPage() {
                                   </div>
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <div className="font-bold">{formatRupiah(r.total)}</div>
+                                  <div className="font-bold">{formatRupiah(r.total || r.subtotal)}</div>
+                                  {toInt(r.discount) > 0 && <div className="text-xs text-red-600">Disc: - {formatRupiah(r.discount)}</div>}
                                   <div className="text-xs text-gray-500">{r.item_count} item</div>
                                 </div>
                               </div>
@@ -662,7 +746,6 @@ export default function EmailPage() {
                     <button className={btnSoft} onClick={() => fetchInvoicesByDate(pickerDate)}>
                       Refresh
                     </button>
-
                     <button className={btnDanger} onClick={() => setPickerOpen(false)}>
                       Batal
                     </button>
