@@ -20,6 +20,22 @@ const emptyItem = () => ({
   harga_item: '',
 })
 
+// ====== STYLE (samakan feel seperti pricelist.js) ======
+const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
+const sectionTitle = 'text-sm font-semibold text-gray-800'
+const label = 'text-xs text-gray-600 mb-1'
+const input =
+  'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
+const inputSm =
+  'border border-gray-200 px-3 py-2 rounded-lg w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-200'
+const btn =
+  'border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
+const btnXs =
+  'border border-gray-200 px-3 py-2 rounded-lg text-xs bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
+const btnPrimary =
+  'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl w-full disabled:opacity-60 disabled:cursor-not-allowed'
+const pillBase = 'text-xs px-2.5 py-1 rounded-full border'
+
 export default function TransaksiIndent() {
   // ===== TAB LIST =====
   const [tab, setTab] = useState('berjalan') // berjalan | diambil
@@ -277,9 +293,7 @@ export default function TransaksiIndent() {
   // ===== FILTER + TAB =====
   const filtered = useMemo(() => {
     const q = (search || '').toLowerCase().trim()
-    const bySearch = (list || []).filter((it) =>
-      (it.nama || '').toLowerCase().includes(q)
-    )
+    const bySearch = (list || []).filter((it) => (it.nama || '').toLowerCase().includes(q))
 
     const berjalan = bySearch.filter((it) => it.status !== 'Sudah Diambil')
     const diambil = bySearch.filter((it) => it.status === 'Sudah Diambil')
@@ -312,19 +326,12 @@ export default function TransaksiIndent() {
           </div>
         </div>
 
-        {/* ===== FORM (modern card) ===== */}
-        <div className="bg-white border shadow-sm rounded-2xl p-4 md:p-5 mb-6">
+        {/* ===== FORM ===== */}
+        <div className={`${card} p-4 md:p-5 mb-6`}>
           <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold text-gray-800">
-              {isEditing ? 'Edit Transaksi' : 'Input Transaksi'}
-            </div>
+            <div className={sectionTitle}>{isEditing ? 'Edit Transaksi' : 'Input Transaksi'}</div>
             {isEditing && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="text-xs border px-3 py-1.5 rounded-lg hover:bg-gray-50"
-                disabled={loading}
-              >
+              <button type="button" onClick={resetForm} className={btnXs} disabled={loading}>
                 Batal Edit
               </button>
             )}
@@ -334,9 +341,9 @@ export default function TransaksiIndent() {
             {/* Header fields */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <div className="text-xs text-gray-500 mb-1">Nama</div>
+                <div className={label}>Nama</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className={input}
                   placeholder="Nama"
                   value={form.nama}
                   onChange={(e) => setForm({ ...form, nama: e.target.value })}
@@ -344,9 +351,9 @@ export default function TransaksiIndent() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Alamat</div>
+                <div className={label}>Alamat</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className={input}
                   placeholder="Alamat"
                   value={form.alamat}
                   onChange={(e) => setForm({ ...form, alamat: e.target.value })}
@@ -354,9 +361,9 @@ export default function TransaksiIndent() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">No WA</div>
+                <div className={label}>No WA</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className={input}
                   placeholder="No WA"
                   value={form.no_wa}
                   onChange={(e) => setForm({ ...form, no_wa: e.target.value })}
@@ -364,9 +371,9 @@ export default function TransaksiIndent() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">DP</div>
+                <div className={label}>DP</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className={input}
                   placeholder="DP"
                   type="number"
                   value={form.dp}
@@ -375,34 +382,29 @@ export default function TransaksiIndent() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Tanggal</div>
+                <div className={label}>Tanggal</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className={input}
                   type="date"
                   value={form.tanggal}
                   onChange={(e) => setForm({ ...form, tanggal: e.target.value })}
                 />
               </div>
 
-              <div className="border rounded-2xl bg-gray-50 p-3">
-                <div className="text-xs text-gray-500">Total Harga Jual</div>
+              <div className="border border-gray-200 rounded-xl bg-gray-50 p-3">
+                <div className="text-xs text-gray-600">Total Harga Jual</div>
                 <div className="text-lg font-bold text-gray-900">{rupiah(totalHargaJual)}</div>
                 <div className="text-xs text-gray-600 mt-1">
-                  Sisa: <b>{rupiah(sisaPembayaran)}</b>
+                  Sisa: <b className="text-gray-900">{rupiah(sisaPembayaran)}</b>
                 </div>
               </div>
             </div>
 
             {/* Items */}
-            <div className="border rounded-2xl p-4">
+            <div className="border border-gray-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <div className="font-semibold text-gray-800">Produk dalam Transaksi</div>
-                <button
-                  type="button"
-                  className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
-                  onClick={addItemRow}
-                  disabled={loading}
-                >
+                <div className={sectionTitle}>Produk dalam Transaksi</div>
+                <button type="button" className={btn} onClick={addItemRow} disabled={loading}>
                   + Tambah Produk
                 </button>
               </div>
@@ -420,57 +422,59 @@ export default function TransaksiIndent() {
                 {items.map((it, idx) => (
                   <div
                     key={idx}
-                    className="grid grid-cols-1 md:grid-cols-12 gap-2 border rounded-xl p-2.5"
+                    className="border border-gray-200 rounded-xl p-3 md:p-3.5 bg-white"
                   >
-                    <input
-                      className="border px-3 py-2 rounded-lg md:col-span-4"
-                      placeholder="Nama Produk"
-                      value={it.nama_produk}
-                      onChange={(e) => updateItem(idx, 'nama_produk', e.target.value)}
-                    />
-                    <input
-                      className="border px-3 py-2 rounded-lg md:col-span-2"
-                      placeholder="Warna"
-                      value={it.warna}
-                      onChange={(e) => updateItem(idx, 'warna', e.target.value)}
-                    />
-                    <input
-                      className="border px-3 py-2 rounded-lg md:col-span-2"
-                      placeholder="Storage"
-                      value={it.storage}
-                      onChange={(e) => updateItem(idx, 'storage', e.target.value)}
-                    />
-                    <input
-                      className="border px-3 py-2 rounded-lg md:col-span-1"
-                      placeholder="Garansi"
-                      value={it.garansi}
-                      onChange={(e) => updateItem(idx, 'garansi', e.target.value)}
-                    />
-                    <input
-                      className="border px-3 py-2 rounded-lg md:col-span-1"
-                      placeholder="Qty"
-                      type="number"
-                      min="1"
-                      value={it.qty}
-                      onChange={(e) => updateItem(idx, 'qty', e.target.value)}
-                    />
-                    <input
-                      className="border px-3 py-2 rounded-lg md:col-span-2"
-                      placeholder="Harga/Item"
-                      inputMode="numeric"
-                      value={it.harga_item}
-                      onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
-                    />
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                      <input
+                        className={`${inputSm} md:col-span-4`}
+                        placeholder="Nama Produk"
+                        value={it.nama_produk}
+                        onChange={(e) => updateItem(idx, 'nama_produk', e.target.value)}
+                      />
+                      <input
+                        className={`${inputSm} md:col-span-2`}
+                        placeholder="Warna"
+                        value={it.warna}
+                        onChange={(e) => updateItem(idx, 'warna', e.target.value)}
+                      />
+                      <input
+                        className={`${inputSm} md:col-span-2`}
+                        placeholder="Storage"
+                        value={it.storage}
+                        onChange={(e) => updateItem(idx, 'storage', e.target.value)}
+                      />
+                      <input
+                        className={`${inputSm} md:col-span-1`}
+                        placeholder="Garansi"
+                        value={it.garansi}
+                        onChange={(e) => updateItem(idx, 'garansi', e.target.value)}
+                      />
+                      <input
+                        className={`${inputSm} md:col-span-1`}
+                        placeholder="Qty"
+                        type="number"
+                        min="1"
+                        value={it.qty}
+                        onChange={(e) => updateItem(idx, 'qty', e.target.value)}
+                      />
+                      <input
+                        className={`${inputSm} md:col-span-2`}
+                        placeholder="Harga/Item"
+                        inputMode="numeric"
+                        value={it.harga_item}
+                        onChange={(e) => updateItem(idx, 'harga_item', e.target.value)}
+                      />
+                    </div>
 
-                    <div className="md:col-span-12 flex justify-end">
+                    <div className="flex justify-end mt-2">
                       <button
                         type="button"
-                        className="border px-3 py-2 rounded-lg hover:bg-gray-50"
+                        className={btnXs}
                         onClick={() => removeItemRow(idx)}
                         disabled={loading}
                         title="Hapus produk"
                       >
-                        ✕
+                        ✕ Hapus Produk
                       </button>
                     </div>
                   </div>
@@ -482,18 +486,14 @@ export default function TransaksiIndent() {
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl w-full disabled:opacity-60"
-              disabled={loading}
-            >
+            <button type="submit" className={btnPrimary} disabled={loading}>
               {loading ? 'Memproses…' : isEditing ? 'Update Transaksi' : 'Simpan Transaksi'}
             </button>
           </form>
         </div>
 
-        {/* ===== LIST SECTION (modern) ===== */}
-        <div className="bg-white border shadow-sm rounded-2xl p-4 md:p-5">
+        {/* ===== LIST SECTION ===== */}
+        <div className={`${card} p-4 md:p-5`}>
           <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
             <div className="flex gap-2">
               <button
@@ -501,7 +501,7 @@ export default function TransaksiIndent() {
                 className={`px-3 py-2 rounded-lg text-sm border ${
                   tab === 'berjalan'
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white hover:bg-gray-50'
+                    : 'bg-white border-gray-200 hover:bg-gray-50'
                 }`}
               >
                 Berjalan
@@ -511,7 +511,7 @@ export default function TransaksiIndent() {
                 className={`px-3 py-2 rounded-lg text-sm border ${
                   tab === 'diambil'
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white hover:bg-gray-50'
+                    : 'bg-white border-gray-200 hover:bg-gray-50'
                 }`}
               >
                 Sudah Diambil
@@ -521,28 +521,24 @@ export default function TransaksiIndent() {
             <div className="flex-1" />
 
             <div className="w-full md:w-[320px]">
-              <div className="text-xs text-gray-500 mb-1">Search</div>
+              <div className={label}>Search</div>
               <input
                 type="text"
                 placeholder="Cari nama..."
-                className="border px-3 py-2 rounded-lg w-full"
+                className={input}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
 
-            <button
-              onClick={fetchList}
-              className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50"
-              disabled={loading}
-            >
+            <button onClick={fetchList} className={btn} disabled={loading}>
               {loading ? 'Memuat…' : 'Refresh'}
             </button>
           </div>
 
           <div className="text-xs text-gray-500 mb-3">
-            Total: <b className="text-gray-800">{totalRows}</b> transaksi • Halaman:{' '}
-            <b className="text-gray-800">
+            Total: <b className="text-gray-900">{totalRows}</b> transaksi • Halaman:{' '}
+            <b className="text-gray-900">
               {safePage}/{totalPages}
             </b>
           </div>
@@ -564,14 +560,15 @@ export default function TransaksiIndent() {
               const sisa = Math.max((item.harga_jual || 0) - (item.dp || 0), 0)
 
               return (
-                <div key={item.id} className="border rounded-2xl p-4 hover:bg-gray-50">
+                <div
+                  key={item.id}
+                  className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50"
+                >
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
                     <div>
                       <div className="text-lg font-bold text-gray-900">
                         {String(item.nama || '').toUpperCase()}{' '}
-                        <span className="text-sm font-semibold text-gray-600">
-                          ({item.tanggal})
-                        </span>
+                        <span className="text-sm font-semibold text-gray-600">({item.tanggal})</span>
                       </div>
 
                       {item.invoice_id && (
@@ -583,7 +580,7 @@ export default function TransaksiIndent() {
 
                     <div className="flex flex-wrap gap-2 items-center">
                       <span
-                        className={`text-xs px-2.5 py-1 rounded-full border ${
+                        className={`${pillBase} ${
                           item.status === 'Sudah Diambil'
                             ? 'bg-green-50 text-green-700 border-green-200'
                             : 'bg-amber-50 text-amber-700 border-amber-200'
@@ -596,7 +593,7 @@ export default function TransaksiIndent() {
                         <Link
                           href={`/invoice/indent/${item.id}`}
                           target="_blank"
-                          className="inline-block bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-black"
+                          className="inline-flex items-center gap-2 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-black"
                         >
                           🧾 Cetak Invoice
                         </Link>
@@ -604,7 +601,7 @@ export default function TransaksiIndent() {
 
                       <button
                         onClick={() => handleEdit(item)}
-                        className="border px-3 py-2 rounded-lg text-xs hover:bg-white"
+                        className={btnXs}
                         disabled={loading}
                       >
                         Edit
@@ -612,7 +609,7 @@ export default function TransaksiIndent() {
 
                       <button
                         onClick={() => handleDelete(item.id)}
-                        className="border px-3 py-2 rounded-lg text-xs text-red-600 hover:bg-red-50"
+                        className={`${btnXs} text-red-600 hover:bg-red-50`}
                         disabled={loading}
                       >
                         Hapus
@@ -642,21 +639,26 @@ export default function TransaksiIndent() {
                   </div>
 
                   <div className="mt-1 text-sm text-gray-700">
-                    Alamat: {item.alamat || '-'} • WA: {item.no_wa || '-'}
+                    <span className="text-gray-500">Alamat:</span> {item.alamat || '-'} •{' '}
+                    <span className="text-gray-500">WA:</span> {item.no_wa || '-'}
                   </div>
 
-                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
-                    <div className="border rounded-xl p-3 bg-white">
-                      <div className="text-xs text-gray-500">DP</div>
-                      <div className="font-bold">{rupiah(item.dp || 0)}</div>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="border border-gray-200 rounded-xl p-3 bg-white">
+                      <div className="text-xs text-gray-600">DP</div>
+                      <div className="font-bold text-gray-900">{rupiah(item.dp || 0)}</div>
                     </div>
-                    <div className="border rounded-xl p-3 bg-white">
-                      <div className="text-xs text-gray-500">Total</div>
-                      <div className="font-bold">{rupiah(item.harga_jual || 0)}</div>
+                    <div className="border border-gray-200 rounded-xl p-3 bg-white">
+                      <div className="text-xs text-gray-600">Total</div>
+                      <div className="font-bold text-gray-900">{rupiah(item.harga_jual || 0)}</div>
                     </div>
-                    <div className="border rounded-xl p-3 bg-white">
-                      <div className="text-xs text-gray-500">Sisa</div>
-                      <div className={`font-bold ${sisa > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                    <div className="border border-gray-200 rounded-xl p-3 bg-white">
+                      <div className="text-xs text-gray-600">Sisa</div>
+                      <div
+                        className={`font-bold ${
+                          sisa > 0 ? 'text-amber-700' : 'text-green-700'
+                        }`}
+                      >
                         {rupiah(sisa)}
                       </div>
                     </div>
@@ -667,40 +669,40 @@ export default function TransaksiIndent() {
           </div>
 
           {/* Pagination */}
-          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">
               Menampilkan{' '}
-              <b className="text-gray-800">
+              <b className="text-gray-900">
                 {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
                 {Math.min(safePage * PAGE_SIZE, totalRows)}
               </b>{' '}
-              dari <b className="text-gray-800">{totalRows}</b>
+              dari <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
               <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                className={btn}
                 onClick={() => setPage(1)}
                 disabled={safePage === 1}
               >
                 « First
               </button>
               <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                className={btn}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage === 1}
               >
                 ‹ Prev
               </button>
               <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                className={btn}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage === totalPages}
               >
                 Next ›
               </button>
               <button
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                className={btn}
                 onClick={() => setPage(totalPages)}
                 disabled={safePage === totalPages}
               >
