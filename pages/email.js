@@ -14,15 +14,7 @@ const FROM_EMAIL = 'admin@connectgadgetind.com'
 
 // ==== TEMPLATE GENERATOR (HTML) ====
 function buildInvoiceEmailTemplate(payload) {
-  const {
-    nama_pembeli,
-    invoice_id,
-    tanggal,
-    no_wa,
-    alamat,
-    items = [],
-    total = 0,
-  } = payload || {}
+  const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], total = 0 } = payload || {}
 
   const safe = (v) => String(v ?? '').trim()
 
@@ -54,7 +46,6 @@ function buildInvoiceEmailTemplate(payload) {
         </tr>
       `
 
-  // Email HTML style “clean Apple-like”
   return `
   <div style="font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#f6f7f9; padding:24px;">
     <div style="max-width:720px; margin:0 auto;">
@@ -135,6 +126,7 @@ function formatRupiah(n) {
 
 export default function EmailPage() {
   const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
 
   // input pencarian invoice
   const [qInvoice, setQInvoice] = useState('')
@@ -164,8 +156,6 @@ export default function EmailPage() {
 
     setLoading(true)
     try {
-      // ✅ Ambil 1 transaksi dari penjualan_baru berdasarkan invoice_id
-      // Catatan: kalau field kamu beda (misal: nomor_invoice), tinggal ganti di bawah.
       const { data, error } = await supabase
         .from('penjualan_baru')
         .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi')
@@ -181,7 +171,6 @@ export default function EmailPage() {
         return
       }
 
-      // Untuk sekarang: anggap 1 invoice bisa multi item (hasil query bisa banyak baris)
       const head = data[0]
       const items = data.map((r) => ({
         nama_produk: r.nama_produk,
@@ -204,15 +193,47 @@ export default function EmailPage() {
       }
 
       setDataInvoice(payload)
-
-      // email tujuan (sementara manual isi, karena table kamu belum pasti ada kolom email customer)
-      // tapi kalau nanti ada kolom email, kita auto isi dari sini.
     } catch (e) {
       console.error(e)
       alert('Gagal ambil data invoice.')
       setDataInvoice(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const sendEmail = async () => {
+    if (!dataInvoice?.invoice_id) return alert('Tarik data invoice dulu.')
+    if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
+    if (!subject.trim()) return alert('Subject masih kosong.')
+    if (!htmlBody || htmlBody.trim().length < 20) return alert('Body email masih kosong.')
+
+    setSending(true)
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: toEmail.trim(),
+          subject: subject.trim(),
+          html: htmlBody,
+          fromEmail: FROM_EMAIL,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok) {
+        alert(json?.message || 'Gagal mengirim email.')
+        return
+      }
+
+      alert('✅ Email berhasil dikirim ke ' + toEmail)
+    } catch (e) {
+      console.error(e)
+      alert('Gagal mengirim email.')
+    } finally {
+      setSending(false)
     }
   }
 
@@ -255,14 +276,18 @@ export default function EmailPage() {
           {dataInvoice ? (
             <div className="mt-4 text-sm text-gray-700">
               <div className="font-semibold">Data ditemukan:</div>
-              <div>Invoice: <b>{dataInvoice.invoice_id}</b> • Tanggal: <b>{dataInvoice.tanggal}</b></div>
-              <div>Nama: <b>{dataInvoice.nama_pembeli}</b> • WA: <b>{dataInvoice.no_wa}</b></div>
-              <div className="mt-1">Total: <b>{formatRupiah(dataInvoice.total)}</b> • Item: <b>{dataInvoice.items.length}</b></div>
+              <div>
+                Invoice: <b>{dataInvoice.invoice_id}</b> • Tanggal: <b>{dataInvoice.tanggal}</b>
+              </div>
+              <div>
+                Nama: <b>{dataInvoice.nama_pembeli}</b> • WA: <b>{dataInvoice.no_wa}</b>
+              </div>
+              <div className="mt-1">
+                Total: <b>{formatRupiah(dataInvoice.total)}</b> • Item: <b>{dataInvoice.items.length}</b>
+              </div>
             </div>
           ) : (
-            <div className="mt-4 text-sm text-gray-500">
-              Tarik data dulu untuk membangun template email otomatis.
-            </div>
+            <div className="mt-4 text-sm text-gray-500">Tarik data dulu untuk membangun template email otomatis.</div>
           )}
         </div>
 
@@ -286,24 +311,14 @@ export default function EmailPage() {
 
             <div>
               <div className={label}>Subject</div>
-              <input
-                className={input}
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-              />
+              <input className={input} value={subject} onChange={(e) => setSubject(e.target.value)} />
             </div>
 
             <div className="flex gap-2">
-              <button
-                className={btnSoft}
-                onClick={() => setMode('preview')}
-              >
+              <button className={btnSoft} onClick={() => setMode('preview')}>
                 Preview
               </button>
-              <button
-                className={btnSoft}
-                onClick={() => setMode('html')}
-              >
+              <button className={btnSoft} onClick={() => setMode('html')}>
                 Edit HTML
               </button>
             </div>
@@ -324,11 +339,12 @@ export default function EmailPage() {
             <div className="pt-2 flex items-center gap-2">
               <button
                 className={btnPrimary}
-                disabled
-                style={{ opacity: 0.6 }}
-                title="Next step: kita sambungkan SMTP Hostinger untuk kirim beneran"
+                onClick={sendEmail}
+                disabled={sending || !dataInvoice}
+                style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}
+                title={!dataInvoice ? 'Tarik data invoice dulu' : ''}
               >
-                Kirim Email (Next Step)
+                {sending ? 'Mengirim...' : 'Kirim Email'}
               </button>
 
               <button
@@ -345,7 +361,7 @@ export default function EmailPage() {
             </div>
 
             <div className="text-xs text-gray-500">
-              Catatan: tahap ini UI + template dulu. Tahap berikutnya baru “Kirim Email” pakai SMTP Hostinger.
+              Catatan: Pastikan kamu sudah buat API <b>/api/send-email</b> + env SMTP Hostinger agar tombol ini benar-benar kirim.
             </div>
           </div>
 
@@ -353,15 +369,17 @@ export default function EmailPage() {
           <div className={`${card} p-4`}>
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Preview Email</div>
-              <div className="text-xs text-gray-500">
-                Render HTML
-              </div>
+              <div className="text-xs text-gray-500">Render HTML</div>
             </div>
 
             <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
               <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm">
-                <div><b>To:</b> {toEmail || '(belum diisi)'}</div>
-                <div><b>Subject:</b> {subject}</div>
+                <div>
+                  <b>To:</b> {toEmail || '(belum diisi)'}
+                </div>
+                <div>
+                  <b>Subject:</b> {subject}
+                </div>
               </div>
 
               <div
