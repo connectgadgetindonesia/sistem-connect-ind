@@ -128,24 +128,20 @@ export default function EmailPage() {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
 
-  // input pencarian invoice
   const [qInvoice, setQInvoice] = useState('')
   const [dataInvoice, setDataInvoice] = useState(null)
 
-  // composer
   const [toEmail, setToEmail] = useState('')
   const [subject, setSubject] = useState('Invoice Pembelian – CONNECT.IND')
   const [htmlBody, setHtmlBody] = useState('')
-  const [mode, setMode] = useState('preview') // preview | html
+  const [mode, setMode] = useState('preview')
 
-  // Auto-generate body ketika data invoice berubah
   useEffect(() => {
     if (!dataInvoice) {
       setHtmlBody('')
       return
     }
-    const generated = buildInvoiceEmailTemplate(dataInvoice)
-    setHtmlBody(generated)
+    setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
   const canGenerate = useMemo(() => qInvoice.trim().length >= 3, [qInvoice])
@@ -182,7 +178,7 @@ export default function EmailPage() {
 
       const total = items.reduce((acc, it) => acc + (parseInt(String(it.harga_jual || '0'), 10) || 0), 0)
 
-      const payload = {
+      setDataInvoice({
         invoice_id: head.invoice_id || key,
         tanggal: head.tanggal ? dayjs(head.tanggal).format('DD/MM/YYYY') : dayjs().format('DD/MM/YYYY'),
         nama_pembeli: head.nama_pembeli || '',
@@ -190,9 +186,7 @@ export default function EmailPage() {
         no_wa: head.no_wa || '',
         items,
         total,
-      }
-
-      setDataInvoice(payload)
+      })
     } catch (e) {
       console.error(e)
       alert('Gagal ambil data invoice.')
@@ -202,6 +196,7 @@ export default function EmailPage() {
     }
   }
 
+  // ✅ UPDATED: tampilkan HTTP status + DEBUG dari API
   const sendEmail = async () => {
     if (!dataInvoice?.invoice_id) return alert('Tarik data invoice dulu.')
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
@@ -224,7 +219,8 @@ export default function EmailPage() {
       const json = await res.json().catch(() => ({}))
 
       if (!res.ok || !json.ok) {
-        alert(json?.message || 'Gagal mengirim email.')
+        const dbg = json?.debug ? `\n\nDEBUG:\n${JSON.stringify(json.debug, null, 2)}` : ''
+        alert((json?.message || 'Gagal mengirim email.') + `\n\nHTTP: ${res.status}` + dbg)
         return
       }
 
@@ -251,7 +247,6 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* Cari Invoice */}
         <div className={`${card} p-4`}>
           <div className="grid md:grid-cols-3 gap-3 items-end">
             <div className="md:col-span-2">
@@ -291,7 +286,6 @@ export default function EmailPage() {
           )}
         </div>
 
-        {/* Composer */}
         <div className="grid lg:grid-cols-2 gap-4">
           <div className={`${card} p-4 space-y-3`}>
             <div className="text-lg font-semibold">Composer</div>
@@ -351,8 +345,7 @@ export default function EmailPage() {
                 className={btnSoft}
                 onClick={() => {
                   if (!dataInvoice) return alert('Tarik data invoice dulu.')
-                  const generated = buildInvoiceEmailTemplate(dataInvoice)
-                  setHtmlBody(generated)
+                  setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
                   alert('Template invoice digenerate ulang.')
                 }}
               >
@@ -365,7 +358,6 @@ export default function EmailPage() {
             </div>
           </div>
 
-          {/* Preview */}
           <div className={`${card} p-4`}>
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Preview Email</div>

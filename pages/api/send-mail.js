@@ -3,22 +3,30 @@ import nodemailer from 'nodemailer'
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim())
 
 export default async function handler(req, res) {
+  // ✅ allow preflight (OPTIONS)
+  if (req.method === 'OPTIONS') {
+    return res.status(200).json({ ok: true })
+  }
+
+  // ✅ quick ping (optional)
+  if (req.method === 'GET') {
+    return res.status(200).json({ ok: true, message: 'send-email endpoint is alive' })
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ ok: false, message: 'Method not allowed' })
+    return res.status(405).json({
+      ok: false,
+      message: 'Method not allowed',
+      debug: { method: req.method },
+    })
   }
 
   try {
     const { to, subject, html, fromEmail } = req.body || {}
 
-    if (!to || !isEmail(to)) {
-      return res.status(400).json({ ok: false, message: 'Email tujuan tidak valid.' })
-    }
-    if (!subject || String(subject).trim().length < 3) {
-      return res.status(400).json({ ok: false, message: 'Subject tidak boleh kosong.' })
-    }
-    if (!html || String(html).trim().length < 20) {
-      return res.status(400).json({ ok: false, message: 'Body email masih kosong.' })
-    }
+    if (!to || !isEmail(to)) return res.status(400).json({ ok: false, message: 'Email tujuan tidak valid.' })
+    if (!subject || String(subject).trim().length < 3) return res.status(400).json({ ok: false, message: 'Subject tidak boleh kosong.' })
+    if (!html || String(html).trim().length < 20) return res.status(400).json({ ok: false, message: 'Body email masih kosong.' })
 
     const host = process.env.SMTP_HOST
     const port = parseInt(process.env.SMTP_PORT || '465', 10)
@@ -33,13 +41,7 @@ export default async function handler(req, res) {
       return res.status(500).json({
         ok: false,
         message: 'ENV SMTP belum lengkap.',
-        debug: {
-          host,
-          port,
-          secure,
-          userExists: !!user,
-          passExists: !!pass,
-        },
+        debug: { host, port, secure, userExists: !!user, passExists: !!pass },
       })
     }
 
@@ -66,7 +68,6 @@ export default async function handler(req, res) {
     })
   } catch (err) {
     console.error('SEND EMAIL ERROR:', err)
-
     return res.status(500).json({
       ok: false,
       message: 'Gagal mengirim email.',
@@ -77,7 +78,6 @@ export default async function handler(req, res) {
         command: err?.command,
         response: err?.response,
         responseCode: err?.responseCode,
-        stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
       },
     })
   }
