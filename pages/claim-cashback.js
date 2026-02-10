@@ -7,6 +7,25 @@ import AsyncCreatableSelect from 'react-select/async-creatable'
 
 const PAGE_SIZE = 20
 
+// ===== UI (samakan gaya Pricelist) =====
+const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
+const label = 'text-xs text-gray-600 mb-1'
+const input =
+  'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white'
+const btn =
+  'border border-gray-200 px-4 py-2 rounded-lg bg-white hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btnTab = (active) =>
+  `px-3 py-2 rounded-lg text-sm border ${
+    active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200 hover:bg-gray-50'
+  }`
+const btnPrimary =
+  'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btnExcelAll =
+  'bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btnExcelTab =
+  'bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+
+// ===== Logic =====
 const emptyForm = () => ({
   kategori: '',
   kategori_baru: '',
@@ -40,12 +59,12 @@ function pickFirst(obj, keys = []) {
 const cleanText = (v) => {
   const s = (v ?? '').toString().trim()
   if (!s) return ''
-  if (s.toUpperCase() === 'EMPTY') return ''
-  if (s.toUpperCase() === 'NULL') return ''
+  const u = s.toUpperCase()
+  if (u === 'EMPTY' || u === 'NULL') return ''
   return s
 }
 
-export default function KinerjaKaryawan() {
+export default function ClaimCashback() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -103,7 +122,7 @@ export default function KinerjaKaryawan() {
     setCategories(cat)
   }
 
-  // ✅ Lookup stok by SN (tanpa created_at)
+  // ===== Lookup stok by SN =====
   async function fetchStokBySN(snUpper) {
     const sn = cleanText(snUpper).toUpperCase()
     if (!sn) return null
@@ -153,7 +172,7 @@ export default function KinerjaKaryawan() {
     setSnFound(true)
   }
 
-  // ✅ Async options (tanpa created_at)
+  // ===== Async options SN =====
   async function loadSNOptions(inputValue) {
     const q = cleanText(inputValue).toUpperCase()
     setSnOptLoading(true)
@@ -428,7 +447,19 @@ export default function KinerjaKaryawan() {
   function exportRowsToExcel(filename, dataRows) {
     const wb = XLSX.utils.book_new()
     const sheet = [
-      ['No', 'Kategori', 'Nama Produk', 'Serial Number', 'IMEI', 'Tanggal Laku', 'Modal Lama', 'Tanggal Beli', 'Modal Baru', 'Selisih Modal', 'Asal Barang'],
+      [
+        'No',
+        'Kategori',
+        'Nama Produk',
+        'Serial Number',
+        'IMEI',
+        'Tanggal Laku',
+        'Modal Lama',
+        'Tanggal Beli',
+        'Modal Baru',
+        'Selisih Modal',
+        'Asal Barang',
+      ],
       ...(dataRows || []).map((r, idx) => [
         idx + 1,
         r.kategori || '',
@@ -458,11 +489,21 @@ export default function KinerjaKaryawan() {
 
   const selectStyles = {
     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+    control: (base) => ({
+      ...base,
+      minHeight: 40,
+      borderColor: '#E5E7EB',
+      boxShadow: 'none',
+      borderRadius: 8,
+    }),
   }
+
+  const showingFrom = totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
+  const showingTo = Math.min(safePage * PAGE_SIZE, totalRows)
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
+      <div className="max-w-6xl mx-auto p-4 md:p-6">
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">Claim Cashback</h1>
           <div className="text-sm text-gray-600">
@@ -470,16 +511,13 @@ export default function KinerjaKaryawan() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5 mb-6">
+        {/* FORM */}
+        <div className={`${card} p-4 md:p-5 mb-6`}>
           <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold text-gray-800">{isEditing ? 'Edit Data' : 'Input Data'}</div>
+            <div className="font-semibold text-gray-900">{isEditing ? 'Edit Data' : 'Input Data'}</div>
+
             {isEditing && (
-              <button
-                type="button"
-                className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"
-                onClick={resetForm}
-                disabled={loading}
-              >
+              <button type="button" className={btn} onClick={resetForm} disabled={loading}>
                 Batal Edit
               </button>
             )}
@@ -488,9 +526,9 @@ export default function KinerjaKaryawan() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <div className="text-xs text-gray-500 mb-1">Kategori</div>
+                <div className={label}>Kategori</div>
                 <select
-                  className="border px-3 py-2 rounded-lg w-full bg-white"
+                  className={input}
                   value={form.kategori}
                   onChange={(e) => setForm({ ...form, kategori: e.target.value })}
                 >
@@ -505,7 +543,7 @@ export default function KinerjaKaryawan() {
 
                 {form.kategori === '__NEW__' && (
                   <input
-                    className="border px-3 py-2 rounded-lg w-full mt-2"
+                    className={`${input} mt-2`}
                     placeholder="Ketik kategori baru"
                     value={form.kategori_baru}
                     onChange={(e) => setForm({ ...form, kategori_baru: e.target.value })}
@@ -514,9 +552,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Nama Produk</div>
+                <div className={label}>Nama Produk</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   placeholder="Nama produk"
                   value={form.nama_produk}
                   readOnly={snFound}
@@ -526,7 +564,7 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">
+                <div className={label}>
                   Serial Number {snOptLoading ? '• Memuat…' : snFound ? '• Auto ✅' : ''}
                 </div>
 
@@ -569,9 +607,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">IMEI</div>
+                <div className={label}>IMEI</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   placeholder="IMEI"
                   value={form.imei}
                   readOnly={snFound}
@@ -580,9 +618,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Tanggal Laku</div>
+                <div className={label}>Tanggal Laku</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   type="date"
                   value={form.tanggal_laku}
                   onChange={(e) => setForm({ ...form, tanggal_laku: e.target.value })}
@@ -590,9 +628,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Asal Barang</div>
+                <div className={label}>Asal Barang</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   placeholder="Asal barang"
                   value={form.asal_barang}
                   readOnly={snFound}
@@ -601,9 +639,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Modal Lama</div>
+                <div className={label}>Modal Lama</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   type="number"
                   placeholder="Modal lama"
                   value={form.modal_lama}
@@ -613,9 +651,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Tanggal Beli</div>
+                <div className={label}>Tanggal Beli</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   type="date"
                   value={form.tanggal_beli}
                   readOnly={snFound}
@@ -624,9 +662,9 @@ export default function KinerjaKaryawan() {
               </div>
 
               <div>
-                <div className="text-xs text-gray-500 mb-1">Modal Baru</div>
+                <div className={label}>Modal Baru</div>
                 <input
-                  className="border px-3 py-2 rounded-lg w-full"
+                  className={input}
                   type="number"
                   placeholder="Modal baru"
                   value={form.modal_baru}
@@ -643,37 +681,30 @@ export default function KinerjaKaryawan() {
                 Selisih Modal: <b>{rupiah(selisihPreview)}</b>
               </div>
 
-              <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl disabled:opacity-60"
-                disabled={loading}
-              >
+              <button type="submit" className={btnPrimary} disabled={loading}>
                 {loading ? 'Memproses…' : isEditing ? 'Update Data' : 'Simpan Data'}
               </button>
             </div>
           </form>
         </div>
 
-        <div className="bg-white rounded-2xl border shadow-sm p-4 md:p-5">
-          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
-            <div className="w-full md:w-[360px]">
-              <div className="text-xs text-gray-500 mb-1">Search</div>
+        {/* LIST */}
+        <div className={`${card} p-4 md:p-5`}>
+          <div className="flex flex-col lg:flex-row gap-3 lg:items-end lg:justify-between mb-4">
+            <div className="w-full lg:w-[360px]">
+              <div className={label}>Search</div>
               <input
                 type="text"
                 placeholder="Cari kategori / produk / SN / IMEI / asal..."
-                className="border px-3 py-2 rounded-lg w-full"
+                className={input}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
 
-            <div className="w-full md:w-[260px]">
-              <div className="text-xs text-gray-500 mb-1">Urutkan</div>
-              <select
-                className="border px-3 py-2 rounded-lg w-full bg-white"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
+            <div className="w-full lg:w-[260px]">
+              <div className={label}>Urutkan</div>
+              <select className={input} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="tanggal_laku_desc">Tanggal Laku (Terbaru)</option>
                 <option value="tanggal_laku_asc">Tanggal Laku (Terlama)</option>
                 <option value="tanggal_beli_desc">Tanggal Beli (Terbaru)</option>
@@ -683,16 +714,18 @@ export default function KinerjaKaryawan() {
               </select>
             </div>
 
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={fetchData} className="border px-4 py-2 rounded-lg hover:bg-gray-50" disabled={loading}>
-                {loading ? 'Memuat…' : 'Refresh'}
-              </button>
-
-              <button onClick={exportAllToExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+            {/* ✅ RAPIIIN tombol download + hapus refresh */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-end w-full lg:w-auto">
+              <button onClick={exportAllToExcel} className={btnExcelAll} type="button" disabled={loading}>
                 Download Excel (Semua)
               </button>
 
-              <button onClick={exportActiveTabToExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg">
+              <button
+                onClick={exportActiveTabToExcel}
+                className={btnExcelTab}
+                type="button"
+                disabled={loading}
+              >
                 Download Excel (Tab)
               </button>
             </div>
@@ -703,9 +736,8 @@ export default function KinerjaKaryawan() {
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className={`border px-3 py-2 rounded-lg text-sm ${
-                  activeTab === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'
-                }`}
+                className={btnTab(activeTab === t)}
+                type="button"
               >
                 {t}
               </button>
@@ -713,51 +745,63 @@ export default function KinerjaKaryawan() {
           </div>
 
           <div className="text-xs text-gray-500 mb-3">
-            Tab: <b className="text-gray-800">{activeTab}</b> • Total: <b className="text-gray-800">{totalRows}</b> • Halaman:{' '}
-            <b className="text-gray-800">{safePage}/{totalPages}</b> • 20 data per halaman
+            Tab: <b className="text-gray-900">{activeTab}</b> • Total: <b className="text-gray-900">{totalRows}</b> •
+            Menampilkan: <b className="text-gray-900">{showingFrom}–{showingTo}</b> • Halaman:{' '}
+            <b className="text-gray-900">
+              {safePage}/{totalPages}
+            </b>
           </div>
 
-          <div className="overflow-x-auto border rounded-2xl">
+          <div className="overflow-x-auto border border-gray-200 rounded-xl">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
-                <tr>
-                  <th className="border-b px-3 py-2 text-left">Tanggal Laku</th>
-                  <th className="border-b px-3 py-2 text-left">Nama Produk</th>
-                  <th className="border-b px-3 py-2 text-left">SN</th>
-                  <th className="border-b px-3 py-2 text-left">IMEI</th>
-                  <th className="border-b px-3 py-2 text-right">Modal Lama</th>
-                  <th className="border-b px-3 py-2 text-left">Tanggal Beli</th>
-                  <th className="border-b px-3 py-2 text-right">Modal Baru</th>
-                  <th className="border-b px-3 py-2 text-right">Selisih</th>
-                  <th className="border-b px-3 py-2 text-left">Asal</th>
-                  <th className="border-b px-3 py-2 text-left">Aksi</th>
+                <tr className="text-gray-600">
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">Tanggal Laku</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">Nama Produk</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">SN</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">IMEI</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-right">Modal Lama</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">Tanggal Beli</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-right">Modal Baru</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-right">Selisih</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">Asal</th>
+                  <th className="border-b border-gray-200 px-4 py-3 text-left">Aksi</th>
                 </tr>
               </thead>
+
               <tbody>
                 {!loading && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
+                    <td colSpan={10} className="px-4 py-10 text-center text-gray-500">
                       Tidak ada data.
                     </td>
                   </tr>
                 )}
 
+                {loading && pageRows.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-10 text-center text-gray-500">
+                      Memuat…
+                    </td>
+                  </tr>
+                )}
+
                 {pageRows.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="border-b px-3 py-2">{r.tanggal_laku || '-'}</td>
-                    <td className="border-b px-3 py-2 font-semibold">{r.nama_produk || '-'}</td>
-                    <td className="border-b px-3 py-2 font-mono text-xs">{r.serial_number || '-'}</td>
-                    <td className="border-b px-3 py-2">{r.imei || '-'}</td>
-                    <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_lama || 0)}</td>
-                    <td className="border-b px-3 py-2">{r.tanggal_beli || '-'}</td>
-                    <td className="border-b px-3 py-2 text-right">{rupiah(r.modal_baru || 0)}</td>
-                    <td className="border-b px-3 py-2 text-right">{rupiah(r.selisih_modal || 0)}</td>
-                    <td className="border-b px-3 py-2">{r.asal_barang || '-'}</td>
-                    <td className="border-b px-3 py-2 whitespace-nowrap">
-                      <button onClick={() => handleEdit(r)} className="text-blue-600 text-xs mr-3">
+                  <tr key={r.id} className="hover:bg-gray-50 border-b border-gray-200">
+                    <td className="px-4 py-3">{r.tanggal_laku || '-'}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{r.nama_produk || '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{r.serial_number || '-'}</td>
+                    <td className="px-4 py-3">{r.imei || '-'}</td>
+                    <td className="px-4 py-3 text-right">{rupiah(r.modal_lama || 0)}</td>
+                    <td className="px-4 py-3">{r.tanggal_beli || '-'}</td>
+                    <td className="px-4 py-3 text-right">{rupiah(r.modal_baru || 0)}</td>
+                    <td className="px-4 py-3 text-right">{rupiah(r.selisih_modal || 0)}</td>
+                    <td className="px-4 py-3">{r.asal_barang || '-'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <button onClick={() => handleEdit(r)} className="text-blue-600 hover:underline text-xs mr-3" type="button">
                         Edit
                       </button>
-                      <button onClick={() => handleDelete(r.id)} className="text-red-600 text-xs">
+                      <button onClick={() => handleDelete(r.id)} className="text-red-600 hover:underline text-xs" type="button">
                         Hapus
                       </button>
                     </td>
@@ -767,23 +811,42 @@ export default function KinerjaKaryawan() {
             </table>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t">
+          {/* Pagination */}
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">
-              Menampilkan <b className="text-gray-800">{totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}</b> dari{' '}
-              <b className="text-gray-800">{totalRows}</b>
+              Menampilkan{' '}
+              <b className="text-gray-900">
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}
+              </b>{' '}
+              dari <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
-              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage(1)} disabled={safePage === 1}>
+              <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
                 « First
               </button>
-              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                type="button"
+              >
                 ‹ Prev
               </button>
-              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+                type="button"
+              >
                 Next ›
               </button>
-              <button className="border px-3 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50" onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>
+              <button
+                className={btn}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+                type="button"
+              >
                 Last »
               </button>
             </div>
