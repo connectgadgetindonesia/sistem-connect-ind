@@ -1,7 +1,9 @@
 import Layout from '@/components/Layout'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
+
+const PAGE_SIZE = 10
 
 const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
 const label = 'text-xs text-gray-600 mb-1'
@@ -42,10 +44,14 @@ export default function RiwayatPenjualan() {
   const [kinerja, setKinerja] = useState([])
   const [kinerjaLabel, setKinerjaLabel] = useState('')
 
+  // ✅ pagination
+  const [page, setPage] = useState(1)
+
   useEffect(() => {
     if (mode === 'harian') {
       setFilter((f) => ({ ...f, tanggal_awal: today, tanggal_akhir: today }))
     }
+    setPage(1) // reset page saat ganti mode
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
@@ -124,9 +130,7 @@ export default function RiwayatPenjualan() {
   async function fetchKinerja() {
     setLoadingKinerja(true)
     try {
-      let q = supabase
-        .from('penjualan_baru')
-        .select('invoice_id,tanggal,dilayani_oleh,referral')
+      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referral')
 
       if (mode === 'harian') {
         const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
@@ -139,9 +143,7 @@ export default function RiwayatPenjualan() {
         setKinerjaLabel(`Periode: ${filter.tanggal_awal || '-'} - ${filter.tanggal_akhir || '-'}`)
       }
 
-      const { data, error } = await q
-        .order('tanggal', { ascending: false })
-        .order('invoice_id', { ascending: false })
+      const { data, error } = await q.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
 
       if (error) {
         console.error('Fetch kinerja error:', error)
@@ -173,9 +175,7 @@ export default function RiwayatPenjualan() {
         )
       }
 
-      const { data, error } = await query
-        .order('tanggal', { ascending: false })
-        .order('invoice_id', { ascending: false })
+      const { data, error } = await query.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
 
       if (error) {
         console.error('Fetch riwayat error:', error)
@@ -184,6 +184,7 @@ export default function RiwayatPenjualan() {
         setRows(groupByInvoice(data || []))
       }
 
+      setPage(1) // ✅ reset page setiap kali fetch (stopper biar tidak nyasar ke page kosong)
       await fetchKinerja()
     } finally {
       setLoading(false)
@@ -196,17 +197,10 @@ export default function RiwayatPenjualan() {
 
     setLoading(true)
     try {
-      const { data: penjualan } = await supabase
-        .from('penjualan_baru')
-        .select('*')
-        .eq('invoice_id', invoice_id)
+      const { data: penjualan } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
 
       for (const item of penjualan || []) {
-        const { data: stokData } = await supabase
-          .from('stok')
-          .select('id')
-          .eq('sn', item.sn_sku)
-          .maybeSingle()
+        const { data: stokData } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
         if (stokData) {
           await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
         }
@@ -220,6 +214,25 @@ export default function RiwayatPenjualan() {
       setLoading(false)
     }
   }
+
+  // ===================== PAGINATION (STOPPER) =====================
+  const totalRows = rows.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+
+  const pageRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE
+    return rows.slice(start, start + PAGE_SIZE)
+  }, [rows, safePage])
+
+  useEffect(() => {
+    // ✅ stopper kalau totalPages berubah (misal filter membuat data lebih sedikit)
+    if (page !== safePage) setPage(safePage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPages])
+
+  const showingFrom = totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
+  const showingTo = Math.min(safePage * PAGE_SIZE, totalRows)
 
   return (
     <Layout>
@@ -291,7 +304,10 @@ export default function RiwayatPenjualan() {
 
               {mode === 'history' && (
                 <button
-                  onClick={() => setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}
+                  onClick={() => {
+                    setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))
+                    setPage(1)
+                  }}
                   className={btn}
                   type="button"
                   disabled={loading}
@@ -368,13 +384,17 @@ export default function RiwayatPenjualan() {
         <div className={`${card} overflow-hidden`}>
           <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
             <div className="font-semibold text-gray-900">Riwayat Transaksi</div>
-            <div className="text-xs text-gray-600">{loading ? 'Memuat…' : `Total: ${rows.length} invoice`}</div>
+            <div className="text-xs text-gray-600">
+              {loading ? 'Memuat…' : `Total: ${rows.length} invoice • Halaman: ${safePage}/${totalPages}`}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr className="text-gray-600">
+                  {/* ✅ INVOICE PINDAH KE PALING KIRI */}
+                  <th className="px-4 py-3 text-left">Invoice</th>
                   <th className="px-4 py-3 text-left">Tanggal</th>
                   <th className="px-4 py-3 text-left">Nama</th>
                   <th className="px-4 py-3 text-left min-w-[320px]">Produk</th>
@@ -382,14 +402,26 @@ export default function RiwayatPenjualan() {
                   <th className="px-4 py-3 text-left">Referral</th>
                   <th className="px-4 py-3 text-right">Harga Jual</th>
                   <th className="px-4 py-3 text-right">Laba</th>
-                  <th className="px-4 py-3 text-left">Invoice</th>
                   <th className="px-4 py-3 text-left w-[140px]">Aksi</th>
                 </tr>
               </thead>
 
               <tbody>
-                {rows.map((item) => (
+                {pageRows.map((item) => (
                   <tr key={item.invoice_id} className="border-t border-gray-200 hover:bg-gray-50">
+                    {/* ✅ invoice column left */}
+                    <td className="px-4 py-3">
+                      <a
+                        href={`/invoice/${item.invoice_id}`}
+                        className="text-blue-600 hover:underline font-semibold"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Unduh
+                      </a>
+                      <div className="text-[11px] text-gray-500 font-mono mt-1">{item.invoice_id}</div>
+                    </td>
+
                     <td className="px-4 py-3">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900">{item.nama_pembeli}</td>
 
@@ -405,25 +437,11 @@ export default function RiwayatPenjualan() {
                     <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
                     <td className="px-4 py-3">{getUniqueText(item.produk, 'referral')}</td>
 
-                    <td className="px-4 py-3 text-right">
-                      Rp {totalHarga(item.produk).toLocaleString('id-ID')}
-                    </td>
+                    <td className="px-4 py-3 text-right">Rp {totalHarga(item.produk).toLocaleString('id-ID')}</td>
                     <td className="px-4 py-3 text-right">
                       <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>
                         Rp {totalLaba(item.produk).toLocaleString('id-ID')}
                       </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <a
-                        href={`/invoice/${item.invoice_id}`}
-                        className="text-blue-600 hover:underline"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Unduh
-                      </a>
-                      <div className="text-[11px] text-gray-500 font-mono mt-1">{item.invoice_id}</div>
                     </td>
 
                     <td className="px-4 py-3">
@@ -456,6 +474,54 @@ export default function RiwayatPenjualan() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* ✅ PAGINATION BAR (STOPPER) */}
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
+            <div className="text-xs text-gray-600">
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
+              <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                className={btn}
+                onClick={() => setPage(1)}
+                disabled={safePage === 1 || loading}
+                type="button"
+              >
+                « First
+              </button>
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1 || loading}
+                type="button"
+              >
+                ‹ Prev
+              </button>
+
+              <div className="px-3 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50">
+                {safePage}/{totalPages}
+              </div>
+
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
+                Next ›
+              </button>
+              <button
+                className={btn}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
+                Last »
+              </button>
+            </div>
           </div>
         </div>
       </div>
