@@ -21,9 +21,10 @@ function formatRupiah(n) {
   return 'Rp ' + x.toLocaleString('id-ID')
 }
 
-// hitung total seperti invoicepdf.jsx
+// hitung total seperti invoicepdf.jsx (kalau field diskon tidak ada -> 0)
 function computeTotals(rows = []) {
   const data = Array.isArray(rows) ? rows : []
+
   const subtotal = data.reduce((acc, r) => {
     const qty = Math.max(1, toInt(r.qty))
     const price = toInt(r.harga_jual)
@@ -176,15 +177,15 @@ function buildInvoiceEmailTemplate(payload) {
 }
 
 export default function EmailPage() {
-  const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
 
-  const [qInvoice, setQInvoice] = useState('')
+  // invoice terpilih
   const [dataInvoice, setDataInvoice] = useState(null)
+  const [htmlBody, setHtmlBody] = useState('')
 
+  // composer
   const [toEmail, setToEmail] = useState('')
   const [subject, setSubject] = useState('Invoice Pembelian – CONNECT.IND')
-  const [htmlBody, setHtmlBody] = useState('')
 
   // Attach other files
   const [extraFiles, setExtraFiles] = useState([])
@@ -205,9 +206,7 @@ export default function EmailPage() {
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
-  const canGenerate = useMemo(() => qInvoice.trim().length >= 3, [qInvoice])
-
-  // Ambil per tanggal (fix timezone)
+  // ✅ ambil H-1 sampai H+1 lalu filter client by YYYY-MM-DD (fix timezone)
   const fetchInvoicesByDate = async (ymd) => {
     const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
     const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
@@ -216,19 +215,25 @@ export default function EmailPage() {
     try {
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi,qty,sn_sku,diskon_item,diskon_invoice,is_bonus')
+        .select('*') // ✅ biar tidak error kalau ada kolom beda
         .gte('tanggal', start)
         .lte('tanggal', end)
         .eq('is_bonus', false)
         .order('tanggal', { ascending: false })
-        .limit(800)
+        .limit(1200)
 
       if (error) throw error
 
       const raw = Array.isArray(data) ? data : []
       const list = raw.filter((r) => r?.tanggal && dayjs(r.tanggal).format('YYYY-MM-DD') === ymd)
 
+      if (list.length === 0) {
+        setPickerRows([])
+        return
+      }
+
       const map = new Map()
+
       for (const r of list) {
         const inv = (r.invoice_id || '').trim()
         if (!inv) continue
@@ -242,10 +247,10 @@ export default function EmailPage() {
             alamat: r.alamat || '',
             no_wa: r.no_wa || '',
             items: [],
+            item_count: 0,
             subtotal: 0,
             discount: 0,
             total: 0,
-            item_count: 0,
           })
         }
 
@@ -268,7 +273,6 @@ export default function EmailPage() {
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
       }
 
-      // hitung total tiap invoice sesuai invoicepdf.jsx
       const grouped = Array.from(map.values()).map((inv) => {
         const { subtotal, discount, total } = computeTotals(inv.items)
         return { ...inv, subtotal, discount, total }
@@ -284,7 +288,7 @@ export default function EmailPage() {
     } catch (e) {
       console.error(e)
       setPickerRows([])
-      alert('Gagal ambil transaksi di tanggal tersebut.')
+      alert('Gagal ambil transaksi: ' + (e?.message || String(e)))
     } finally {
       setPickerLoading(false)
     }
@@ -297,7 +301,7 @@ export default function EmailPage() {
   }
 
   const pickInvoice = (inv) => {
-    setDataInvoice({
+    const payload = {
       invoice_id: inv.invoice_id,
       tanggal: inv.tanggal,
       nama_pembeli: inv.nama_pembeli || '',
@@ -307,66 +311,10 @@ export default function EmailPage() {
       subtotal: inv.subtotal || 0,
       discount: inv.discount || 0,
       total: inv.total || 0,
-    })
-    setQInvoice(inv.invoice_id)
-    setPickerOpen(false)
-  }
-
-  // Cari manual (fallback)
-  const cariInvoiceManual = async () => {
-    const key = qInvoice.trim()
-    if (!key) return
-
-    setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,harga_jual,nama_produk,warna,storage,garansi,qty,sn_sku,diskon_item,diskon_invoice,is_bonus')
-        .eq('invoice_id', key)
-        .eq('is_bonus', false)
-        .order('id', { ascending: true })
-        .limit(300)
-
-      if (error) throw error
-      if (!data || data.length === 0) {
-        setDataInvoice(null)
-        alert('Invoice tidak ditemukan.')
-        return
-      }
-
-      const head = data[0]
-      const items = data.map((r) => ({
-        nama_produk: r.nama_produk,
-        warna: r.warna,
-        storage: r.storage,
-        garansi: r.garansi,
-        harga_jual: r.harga_jual,
-        qty: r.qty,
-        sn_sku: r.sn_sku,
-        diskon_item: r.diskon_item,
-        diskon_invoice: r.diskon_invoice,
-      }))
-
-      const { subtotal, discount, total } = computeTotals(items)
-
-      setDataInvoice({
-        invoice_id: head.invoice_id || key,
-        tanggal: head.tanggal ? dayjs(head.tanggal).format('DD/MM/YYYY') : dayjs().format('DD/MM/YYYY'),
-        nama_pembeli: head.nama_pembeli || '',
-        alamat: head.alamat || '',
-        no_wa: head.no_wa || '',
-        items,
-        subtotal,
-        discount,
-        total,
-      })
-    } catch (e) {
-      console.error(e)
-      alert('Gagal ambil data invoice.')
-      setDataInvoice(null)
-    } finally {
-      setLoading(false)
     }
+
+    setDataInvoice(payload)
+    setPickerOpen(false)
   }
 
   // convert file -> base64
@@ -390,7 +338,6 @@ export default function EmailPage() {
 
     setSending(true)
     try {
-      // extra attachments (optional)
       const attachments = []
       for (const f of extraFiles) {
         const contentBase64 = await fileToBase64(f)
@@ -411,7 +358,7 @@ export default function EmailPage() {
           html: htmlBody,
           fromEmail: FROM_EMAIL,
 
-          // auto attach invoice jpg (SERVER)
+          // auto attach invoice jpg (server)
           invoice_id: dataInvoice.invoice_id,
           attach_invoice_jpg: true,
 
@@ -430,7 +377,7 @@ export default function EmailPage() {
       alert(`✅ Email berhasil dikirim ke ${toEmail}\nLampiran: ${dataInvoice.invoice_id}.jpg`)
     } catch (e) {
       console.error(e)
-      alert('Gagal mengirim email.')
+      alert('Gagal mengirim email: ' + (e?.message || String(e)))
     } finally {
       setSending(false)
     }
@@ -460,7 +407,7 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* PILIH TRANSAKSI + CARI MANUAL (RAPI) */}
+        {/* PILIH TRANSAKSI (RAPI) */}
         <div className={`${card} p-4`}>
           <div className="grid lg:grid-cols-2 gap-3 items-end">
             <div>
@@ -477,47 +424,27 @@ export default function EmailPage() {
                 </button>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                Setelah dipilih, email akan otomatis melampirkan <b>{dataInvoice?.invoice_id || 'INV-...'} .jpg</b>
+                Setelah dipilih, email otomatis melampirkan <b>{dataInvoice?.invoice_id || 'INV-...'}.jpg</b>
               </div>
             </div>
 
-            <div>
-              <div className={label}>Cari manual (opsional)</div>
-              <div className="mt-1 flex gap-2">
-                <input className={input} placeholder="Ketik invoice_id..." value={qInvoice} onChange={(e) => setQInvoice(e.target.value)} />
-                <button
-                  className={btnSoft + ' w-[120px] shrink-0'}
-                  onClick={cariInvoiceManual}
-                  disabled={!canGenerate || loading}
-                  style={{ opacity: !canGenerate || loading ? 0.6 : 1 }}
-                >
-                  {loading ? 'Memuat...' : 'Tarik'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {dataInvoice ? (
-            <div className="mt-4 text-sm text-gray-700">
-              <div className="font-semibold">Ringkasan transaksi:</div>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                <div>Invoice: <b>{dataInvoice.invoice_id}</b></div>
-                <div>Tanggal: <b>{dataInvoice.tanggal}</b></div>
-                <div>Nama: <b>{dataInvoice.nama_pembeli}</b></div>
-                <div>WA: <b>{dataInvoice.no_wa}</b></div>
-                <div>
-                  Subtotal: <b>{formatRupiah(dataInvoice.subtotal)}</b> • Discount: <b>{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</b> •
-                  Total: <b>{formatRupiah(dataInvoice.total)}</b>
+            {dataInvoice ? (
+              <div className="text-sm text-gray-700">
+                <div className="font-semibold">Ringkasan:</div>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                  <div>Subtotal: <b>{formatRupiah(dataInvoice.subtotal)}</b></div>
+                  <div>Discount: <b>{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</b></div>
+                  <div>Total: <b>{formatRupiah(dataInvoice.total)}</b></div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="mt-4 text-sm text-gray-500">Pilih transaksi dulu untuk membangun template email otomatis.</div>
-          )}
+            ) : (
+              <div className="text-sm text-gray-500">Pilih transaksi dulu untuk membangun template email.</div>
+            )}
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-4">
-          {/* Composer (simple) */}
+          {/* Composer */}
           <div className={`${card} p-4 space-y-3`}>
             <div className="text-lg font-semibold">Composer</div>
 
@@ -531,18 +458,46 @@ export default function EmailPage() {
               <input className={input} value={subject} onChange={(e) => setSubject(e.target.value)} />
             </div>
 
+            {/* Attach file */}
             <div>
-              <div className={label}>Attach file lain (opsional)</div>
+              <div className={label}>Lampiran tambahan (opsional)</div>
+
               <input
                 ref={fileRef}
                 type="file"
                 multiple
-                className="block w-full text-sm text-gray-600"
+                className="hidden"
                 onChange={(e) => setExtraFiles(Array.from(e.target.files || []))}
               />
+
+              <div className="flex items-center gap-2">
+                <button
+                  className={btnSoft}
+                  onClick={() => fileRef.current?.click()}
+                  type="button"
+                >
+                  Attach File
+                </button>
+
+                {extraFiles.length > 0 && (
+                  <button
+                    className={btnSoft}
+                    onClick={() => {
+                      setExtraFiles([])
+                      if (fileRef.current) fileRef.current.value = ''
+                    }}
+                    type="button"
+                  >
+                    Hapus Lampiran
+                  </button>
+                )}
+              </div>
+
               {extraFiles.length > 0 && (
-                <div className="text-xs text-gray-500 mt-1">
-                  {extraFiles.length} file dipilih.
+                <div className="mt-2 text-xs text-gray-600">
+                  {extraFiles.map((f, i) => (
+                    <div key={i}>• {f.name}</div>
+                  ))}
                 </div>
               )}
             </div>
@@ -556,17 +511,6 @@ export default function EmailPage() {
               >
                 {sending ? 'Mengirim...' : 'Kirim Email (Auto lampirkan JPG)'}
               </button>
-
-              <button
-                className={btnSoft}
-                onClick={() => {
-                  setExtraFiles([])
-                  if (fileRef.current) fileRef.current.value = ''
-                }}
-                title="Hapus file tambahan"
-              >
-                Clear Attach
-              </button>
             </div>
 
             <div className="text-xs text-gray-500">
@@ -574,7 +518,7 @@ export default function EmailPage() {
             </div>
           </div>
 
-          {/* Preview (tetap tampil, tapi tanpa tombol mode) */}
+          {/* Preview */}
           <div className={`${card} p-4`}>
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Preview Email</div>
