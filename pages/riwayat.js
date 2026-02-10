@@ -1,5 +1,5 @@
 import Layout from '@/components/Layout'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 
@@ -67,7 +67,7 @@ export default function RiwayatPenjualan() {
     const vals = (produk || [])
       .map((p) => (p?.[key] || '').toString().trim())
       .filter(Boolean)
-      .filter((v) => v !== '-') // biar '-' tidak dianggap data
+      .filter((v) => v !== '-')
     const uniq = Array.from(new Set(vals))
     if (uniq.length === 0) return '-'
     return uniq.join(', ')
@@ -95,7 +95,6 @@ export default function RiwayatPenjualan() {
       const dil = (r.dilayani_oleh || '').toString().trim().toUpperCase()
       if (dil && dil !== '-') bucket.dilayani.add(dil)
 
-      // ✅ FIX UTAMA: pakai kolom `referral`
       const ref = (r.referral || '').toString().trim().toUpperCase()
       if (ref && ref !== '-') bucket.referral.add(ref)
     }
@@ -140,7 +139,9 @@ export default function RiwayatPenjualan() {
         setKinerjaLabel(`Periode: ${filter.tanggal_awal || '-'} - ${filter.tanggal_akhir || '-'}`)
       }
 
-      const { data, error } = await q.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
+      const { data, error } = await q
+        .order('tanggal', { ascending: false })
+        .order('invoice_id', { ascending: false })
 
       if (error) {
         console.error('Fetch kinerja error:', error)
@@ -157,7 +158,6 @@ export default function RiwayatPenjualan() {
   async function fetchData() {
     setLoading(true)
     try {
-      // ===== 1) RIWAYAT =====
       let query = supabase.from('penjualan_baru').select('*')
 
       if (mode === 'harian') {
@@ -173,7 +173,9 @@ export default function RiwayatPenjualan() {
         )
       }
 
-      const { data, error } = await query.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
+      const { data, error } = await query
+        .order('tanggal', { ascending: false })
+        .order('invoice_id', { ascending: false })
 
       if (error) {
         console.error('Fetch riwayat error:', error)
@@ -182,7 +184,6 @@ export default function RiwayatPenjualan() {
         setRows(groupByInvoice(data || []))
       }
 
-      // ===== 2) KINERJA =====
       await fetchKinerja()
     } finally {
       setLoading(false)
@@ -195,10 +196,17 @@ export default function RiwayatPenjualan() {
 
     setLoading(true)
     try {
-      const { data: penjualan } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
+      const { data: penjualan } = await supabase
+        .from('penjualan_baru')
+        .select('*')
+        .eq('invoice_id', invoice_id)
 
       for (const item of penjualan || []) {
-        const { data: stokData } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
+        const { data: stokData } = await supabase
+          .from('stok')
+          .select('id')
+          .eq('sn', item.sn_sku)
+          .maybeSingle()
         if (stokData) {
           await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
         }
@@ -212,13 +220,6 @@ export default function RiwayatPenjualan() {
       setLoading(false)
     }
   }
-
-  const ringkasan = useMemo(() => {
-    const totalInvoice = rows.length
-    const totalOmset = rows.reduce((t, inv) => t + totalHarga(inv.produk || []), 0)
-    const totalProfit = rows.reduce((t, inv) => t + totalLaba(inv.produk || []), 0)
-    return { totalInvoice, totalOmset, totalProfit }
-  }, [rows])
 
   return (
     <Layout>
@@ -313,26 +314,6 @@ export default function RiwayatPenjualan() {
               </>
             )}
           </div>
-
-          {/* RINGKASAN */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4">
-            <div className="border border-gray-200 rounded-xl p-3 bg-white">
-              <div className="text-xs text-gray-600">Total Invoice</div>
-              <div className="text-lg font-bold text-gray-900">{ringkasan.totalInvoice}</div>
-            </div>
-            <div className="border border-gray-200 rounded-xl p-3 bg-white">
-              <div className="text-xs text-gray-600">Omset</div>
-              <div className="text-lg font-bold text-gray-900">
-                Rp {ringkasan.totalOmset.toLocaleString('id-ID')}
-              </div>
-            </div>
-            <div className="border border-gray-200 rounded-xl p-3 bg-white">
-              <div className="text-xs text-gray-600">Laba</div>
-              <div className="text-lg font-bold text-gray-900">
-                Rp {ringkasan.totalProfit.toLocaleString('id-ID')}
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* ✅ KINERJA */}
@@ -387,9 +368,7 @@ export default function RiwayatPenjualan() {
         <div className={`${card} overflow-hidden`}>
           <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
             <div className="font-semibold text-gray-900">Riwayat Transaksi</div>
-            <div className="text-xs text-gray-600">
-              {loading ? 'Memuat…' : `Total: ${rows.length} invoice`}
-            </div>
+            <div className="text-xs text-gray-600">{loading ? 'Memuat…' : `Total: ${rows.length} invoice`}</div>
           </div>
 
           <div className="overflow-x-auto">
