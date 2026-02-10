@@ -1,7 +1,28 @@
 import Layout from '@/components/Layout'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
+
+const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
+const label = 'text-xs text-gray-600 mb-1'
+const input =
+  'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
+const btn =
+  'border border-gray-200 px-4 py-2 rounded-lg bg-white hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btnTab = (active) =>
+  `px-3 py-2 rounded-lg text-sm border ${
+    active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200 hover:bg-gray-50'
+  }`
+const btnPrimary =
+  'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btnDanger =
+  'bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-xs disabled:opacity-60 disabled:cursor-not-allowed'
+const badge = (type) =>
+  `inline-flex items-center px-2.5 py-1 rounded-full text-xs border ${
+    type === 'ok'
+      ? 'bg-green-50 text-green-700 border-green-200'
+      : 'bg-amber-50 text-amber-700 border-amber-200'
+  }`
 
 export default function RiwayatPenjualan() {
   const [rows, setRows] = useState([])
@@ -13,6 +34,9 @@ export default function RiwayatPenjualan() {
     tanggal_akhir: today,
     search: '',
   })
+
+  const [loading, setLoading] = useState(false)
+  const [loadingKinerja, setLoadingKinerja] = useState(false)
 
   // ✅ tabel kinerja
   const [kinerja, setKinerja] = useState([])
@@ -57,7 +81,6 @@ export default function RiwayatPenjualan() {
 
   // ✅ hitung kinerja berbasis INVOICE (bukan per baris produk)
   const computeKinerjaFromRows = (data = []) => {
-    // invoice_id -> { dilayani:Set, referral:Set }
     const invMap = new Map()
 
     for (const r of data) {
@@ -72,12 +95,11 @@ export default function RiwayatPenjualan() {
       const dil = (r.dilayani_oleh || '').toString().trim().toUpperCase()
       if (dil && dil !== '-') bucket.dilayani.add(dil)
 
-      // ✅ FIX UTAMA: pakai kolom `referral` (bukan referal)
+      // ✅ FIX UTAMA: pakai kolom `referral`
       const ref = (r.referral || '').toString().trim().toUpperCase()
       if (ref && ref !== '-') bucket.referral.add(ref)
     }
 
-    // employee -> counts
     const emp = new Map()
     for (const [, v] of invMap.entries()) {
       for (const name of v.dilayani) {
@@ -95,274 +117,368 @@ export default function RiwayatPenjualan() {
       total: (x.dilayani || 0) + (x.referral || 0),
     }))
 
-    arr.sort(
-      (a, b) =>
-        b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral
-    )
+    arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral)
     return arr
   }
 
   // ✅ fetch kinerja: Harian = BULAN berjalan, History = sesuai filter tanggal
   async function fetchKinerja() {
-    let q = supabase
-      .from('penjualan_baru')
-      // ✅ FIX UTAMA: select `referral`
-      .select('invoice_id,tanggal,dilayani_oleh,referral')
+    setLoadingKinerja(true)
+    try {
+      let q = supabase
+        .from('penjualan_baru')
+        .select('invoice_id,tanggal,dilayani_oleh,referral')
 
-    if (mode === 'harian') {
-      const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
-      const end = dayjs(today).endOf('month').format('YYYY-MM-DD')
-      q = q.gte('tanggal', start).lte('tanggal', end)
-      setKinerjaLabel(`Bulan: ${dayjs(today).format('MMMM YYYY')}`)
-    } else {
-      if (filter.tanggal_awal) q = q.gte('tanggal', filter.tanggal_awal)
-      if (filter.tanggal_akhir) q = q.lte('tanggal', filter.tanggal_akhir)
-      setKinerjaLabel(`Periode: ${filter.tanggal_awal || '-'} - ${filter.tanggal_akhir || '-'}`)
+      if (mode === 'harian') {
+        const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
+        const end = dayjs(today).endOf('month').format('YYYY-MM-DD')
+        q = q.gte('tanggal', start).lte('tanggal', end)
+        setKinerjaLabel(`Bulan: ${dayjs(today).format('MMMM YYYY')}`)
+      } else {
+        if (filter.tanggal_awal) q = q.gte('tanggal', filter.tanggal_awal)
+        if (filter.tanggal_akhir) q = q.lte('tanggal', filter.tanggal_akhir)
+        setKinerjaLabel(`Periode: ${filter.tanggal_awal || '-'} - ${filter.tanggal_akhir || '-'}`)
+      }
+
+      const { data, error } = await q.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
+
+      if (error) {
+        console.error('Fetch kinerja error:', error)
+        setKinerja([])
+        return
+      }
+
+      setKinerja(computeKinerjaFromRows(data || []))
+    } finally {
+      setLoadingKinerja(false)
     }
-
-    const { data, error } = await q
-      .order('tanggal', { ascending: false })
-      .order('invoice_id', { ascending: false })
-
-    if (error) {
-      console.error('Fetch kinerja error:', error)
-      setKinerja([])
-      return
-    }
-
-    setKinerja(computeKinerjaFromRows(data || []))
   }
 
   async function fetchData() {
-    // ===== 1) RIWAYAT (tabel bawah) =====
-    let query = supabase.from('penjualan_baru').select('*')
+    setLoading(true)
+    try {
+      // ===== 1) RIWAYAT =====
+      let query = supabase.from('penjualan_baru').select('*')
 
-    if (mode === 'harian') {
-      query = query.eq('tanggal', today)
-    } else {
-      if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal)
-      if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
+      if (mode === 'harian') {
+        query = query.eq('tanggal', today)
+      } else {
+        if (filter.tanggal_awal) query = query.gte('tanggal', filter.tanggal_awal)
+        if (filter.tanggal_akhir) query = query.lte('tanggal', filter.tanggal_akhir)
+      }
+
+      if (filter.search) {
+        query = query.or(
+          `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
+        )
+      }
+
+      const { data, error } = await query.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
+
+      if (error) {
+        console.error('Fetch riwayat error:', error)
+        setRows([])
+      } else {
+        setRows(groupByInvoice(data || []))
+      }
+
+      // ===== 2) KINERJA =====
+      await fetchKinerja()
+    } finally {
+      setLoading(false)
     }
-
-    if (filter.search) {
-      query = query.or(
-        `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
-      )
-    }
-
-    const { data, error } = await query
-      .order('tanggal', { ascending: false })
-      .order('invoice_id', { ascending: false })
-
-    if (error) {
-      console.error('Fetch riwayat error:', error)
-      setRows([])
-    } else {
-      setRows(groupByInvoice(data || []))
-    }
-
-    // ===== 2) KINERJA (tabel atas) =====
-    await fetchKinerja()
   }
 
   async function handleDelete(invoice_id) {
     const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
     if (!konfirmasi) return
 
-    const { data: penjualan } = await supabase
-      .from('penjualan_baru')
-      .select('*')
-      .eq('invoice_id', invoice_id)
+    setLoading(true)
+    try {
+      const { data: penjualan } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
 
-    for (const item of penjualan || []) {
-      const { data: stokData } = await supabase
-        .from('stok')
-        .select('id')
-        .eq('sn', item.sn_sku)
-        .maybeSingle()
-      if (stokData) {
-        await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+      for (const item of penjualan || []) {
+        const { data: stokData } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
+        if (stokData) {
+          await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+        }
       }
+
+      await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
+
+      alert('Data berhasil dihapus!')
+      fetchData()
+    } finally {
+      setLoading(false)
     }
-
-    await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
-
-    alert('Data berhasil dihapus!')
-    fetchData()
   }
+
+  const ringkasan = useMemo(() => {
+    const totalInvoice = rows.length
+    const totalOmset = rows.reduce((t, inv) => t + totalHarga(inv.produk || []), 0)
+    const totalProfit = rows.reduce((t, inv) => t + totalLaba(inv.produk || []), 0)
+    return { totalInvoice, totalOmset, totalProfit }
+  }, [rows])
 
   return (
     <Layout>
-      <div className="p-4">
-        <h1 className="text-2xl font-bold mb-4">Riwayat Penjualan CONNECT.IND</h1>
+      <div className="max-w-6xl mx-auto p-4 md:p-6">
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Riwayat Penjualan CONNECT.IND</h1>
+            <div className="text-sm text-gray-600">Mode harian untuk hari ini, mode history untuk periode tertentu.</div>
+          </div>
 
-        {/* Tabs */}
+          <div className="flex items-center gap-2">
+            <button onClick={fetchData} className={btn} type="button" disabled={loading}>
+              {loading ? 'Memuat…' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+
+        {/* TABS */}
         <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => setMode('harian')}
-            className={`px-3 py-1 rounded border ${
-              mode === 'harian' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
-            }`}
-          >
+          <button onClick={() => setMode('harian')} className={btnTab(mode === 'harian')} type="button">
             Harian (Hari ini)
           </button>
-          <button
-            onClick={() => setMode('history')}
-            className={`px-3 py-1 rounded border ${
-              mode === 'history' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white'
-            }`}
-          >
+          <button onClick={() => setMode('history')} className={btnTab(mode === 'history')} type="button">
             History
           </button>
         </div>
 
-        {/* Filter bar */}
-        <div className="flex flex-wrap gap-2 mb-4 items-center">
-          <input
-            type="date"
-            value={filter.tanggal_awal}
-            onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })}
-            className="border p-2"
-            disabled={mode === 'harian'}
-          />
-          <input
-            type="date"
-            value={filter.tanggal_akhir}
-            onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })}
-            className="border p-2"
-            disabled={mode === 'harian'}
-          />
-          <input
-            type="text"
-            placeholder="Cari nama, produk, SN/SKU..."
-            value={filter.search}
-            onChange={(e) => setFilter({ ...filter, search: e.target.value })}
-            className="border p-2 flex-1 min-w-[220px]"
-          />
-          <button onClick={fetchData} className="bg-blue-600 text-white px-4 rounded">
-            Cari
-          </button>
+        {/* FILTER BAR */}
+        <div className={`${card} p-4 md:p-5 mb-4`}>
+          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between">
+            <div className="w-full md:w-[200px]">
+              <div className={label}>Tanggal Awal</div>
+              <input
+                type="date"
+                value={filter.tanggal_awal}
+                onChange={(e) => setFilter({ ...filter, tanggal_awal: e.target.value })}
+                className={input}
+                disabled={mode === 'harian'}
+              />
+            </div>
 
-          {mode === 'history' && (
-            <button onClick={() => setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}>
-              Reset Tanggal
-            </button>
-          )}
+            <div className="w-full md:w-[200px]">
+              <div className={label}>Tanggal Akhir</div>
+              <input
+                type="date"
+                value={filter.tanggal_akhir}
+                onChange={(e) => setFilter({ ...filter, tanggal_akhir: e.target.value })}
+                className={input}
+                disabled={mode === 'harian'}
+              />
+            </div>
 
-          {mode === 'harian' && (
-            <span className="text-sm text-gray-600 ml-2">
-              Menampilkan transaksi tanggal <b>{dayjs(today).format('DD MMM YYYY')}</b>
-            </span>
-          )}
-        </div>
+            <div className="w-full md:flex-1">
+              <div className={label}>Search</div>
+              <input
+                type="text"
+                placeholder="Cari nama, produk, SN/SKU..."
+                value={filter.search}
+                onChange={(e) => setFilter({ ...filter, search: e.target.value })}
+                className={input}
+              />
+            </div>
 
-        {/* ✅ TABEL KINERJA (ATAS) */}
-        <div className="border rounded mb-4 overflow-x-auto">
-          <div className="flex items-center justify-between px-3 py-2 bg-gray-100">
-            <div className="font-semibold">Kinerja Karyawan</div>
-            <div className="text-xs text-gray-700">{kinerjaLabel}</div>
+            <div className="flex gap-2">
+              <button onClick={fetchData} className={btnPrimary} type="button" disabled={loading}>
+                {loading ? 'Memproses…' : 'Cari'}
+              </button>
+
+              {mode === 'history' && (
+                <button
+                  onClick={() => setFilter((f) => ({ ...f, tanggal_awal: '', tanggal_akhir: '' }))}
+                  className={btn}
+                  type="button"
+                  disabled={loading}
+                >
+                  Reset Tanggal
+                </button>
+              )}
+            </div>
           </div>
 
-          <table className="w-full table-auto border">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="border px-2 py-1 text-left">Nama</th>
-                <th className="border px-2 py-1">Dilayani Oleh (Invoice)</th>
-                <th className="border px-2 py-1">Referral (Invoice)</th>
-                <th className="border px-2 py-1">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kinerja.map((k) => (
-                <tr key={k.nama}>
-                  <td className="border px-2 py-1">{k.nama}</td>
-                  <td className="border px-2 py-1 text-center">{k.dilayani}</td>
-                  <td className="border px-2 py-1 text-center">{k.referral}</td>
-                  <td className="border px-2 py-1 text-center font-semibold">{k.total}</td>
-                </tr>
-              ))}
-              {kinerja.length === 0 && (
-                <tr>
-                  <td className="border px-2 py-3 text-center text-gray-500" colSpan={4}>
-                    Belum ada data kinerja pada periode ini.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <div className="mt-3 text-xs text-gray-500">
+            {mode === 'harian' ? (
+              <>
+                Menampilkan transaksi tanggal <b className="text-gray-900">{dayjs(today).format('DD MMM YYYY')}</b>
+              </>
+            ) : (
+              <>
+                Periode: <b className="text-gray-900">{filter.tanggal_awal || '-'}</b> s/d{' '}
+                <b className="text-gray-900">{filter.tanggal_akhir || '-'}</b>
+              </>
+            )}
+          </div>
+
+          {/* RINGKASAN */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4">
+            <div className="border border-gray-200 rounded-xl p-3 bg-white">
+              <div className="text-xs text-gray-600">Total Invoice</div>
+              <div className="text-lg font-bold text-gray-900">{ringkasan.totalInvoice}</div>
+            </div>
+            <div className="border border-gray-200 rounded-xl p-3 bg-white">
+              <div className="text-xs text-gray-600">Omset</div>
+              <div className="text-lg font-bold text-gray-900">
+                Rp {ringkasan.totalOmset.toLocaleString('id-ID')}
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-xl p-3 bg-white">
+              <div className="text-xs text-gray-600">Laba</div>
+              <div className="text-lg font-bold text-gray-900">
+                Rp {ringkasan.totalProfit.toLocaleString('id-ID')}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* TABEL RIWAYAT (BAWAH) */}
-        <table className="w-full table-auto border">
-          <thead>
-            <tr className="bg-gray-200">
-              <th className="border px-2 py-1">Tanggal</th>
-              <th className="border px-2 py-1">Nama</th>
-              <th className="border px-2 py-1">Produk</th>
-              <th className="border px-2 py-1">Dilayani Oleh</th>
-              <th className="border px-2 py-1">Referral</th>
-              <th className="border px-2 py-1">Harga Jual</th>
-              <th className="border px-2 py-1">Laba</th>
-              <th className="border px-2 py-1">Invoice</th>
-              <th className="border px-2 py-1">Aksi</th>
-            </tr>
-          </thead>
+        {/* ✅ KINERJA */}
+        <div className={`${card} mb-4 overflow-hidden`}>
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <div className="font-semibold text-gray-900">Kinerja Karyawan</div>
+            <div className="text-xs text-gray-600">{kinerjaLabel}</div>
+          </div>
 
-          <tbody>
-            {rows.map((item) => (
-              <tr key={item.invoice_id}>
-                <td className="border px-2 py-1">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
-                <td className="border px-2 py-1">{item.nama_pembeli}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr className="text-gray-600">
+                  <th className="px-4 py-3 text-left">Nama</th>
+                  <th className="px-4 py-3 text-center">Dilayani (Invoice)</th>
+                  <th className="px-4 py-3 text-center">Referral (Invoice)</th>
+                  <th className="px-4 py-3 text-center">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingKinerja && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-gray-500" colSpan={4}>
+                      Memuat kinerja…
+                    </td>
+                  </tr>
+                )}
 
-                <td className="border px-2 py-1">
-                  {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
-                </td>
+                {!loadingKinerja &&
+                  kinerja.map((k) => (
+                    <tr key={k.nama} className="border-t border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-semibold text-gray-900">{k.nama}</td>
+                      <td className="px-4 py-3 text-center">{k.dilayani}</td>
+                      <td className="px-4 py-3 text-center">{k.referral}</td>
+                      <td className="px-4 py-3 text-center font-bold text-gray-900">{k.total}</td>
+                    </tr>
+                  ))}
 
-                <td className="border px-2 py-1">
-                  {getUniqueText(item.produk, 'dilayani_oleh')}
-                </td>
+                {!loadingKinerja && kinerja.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-gray-500" colSpan={4}>
+                      Belum ada data kinerja pada periode ini.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-                {/* ✅ FIX UTAMA: tampilkan dari kolom `referral` */}
-                <td className="border px-2 py-1">
-                  {getUniqueText(item.produk, 'referral')}
-                </td>
+        {/* RIWAYAT */}
+        <div className={`${card} overflow-hidden`}>
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <div className="font-semibold text-gray-900">Riwayat Transaksi</div>
+            <div className="text-xs text-gray-600">
+              {loading ? 'Memuat…' : `Total: ${rows.length} invoice`}
+            </div>
+          </div>
 
-                <td className="border px-2 py-1">
-                  Rp {totalHarga(item.produk).toLocaleString('id-ID')}
-                </td>
-                <td className="border px-2 py-1">
-                  Rp {totalLaba(item.produk).toLocaleString('id-ID')}
-                </td>
-                <td className="border px-2 py-1">
-                  <a
-                    href={`/invoice/${item.invoice_id}`}
-                    className="text-blue-600 underline"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Unduh
-                  </a>
-                </td>
-                <td className="border px-2 py-1">
-                  <button
-                    onClick={() => handleDelete(item.invoice_id)}
-                    className="bg-red-600 text-white px-2 py-1 rounded"
-                  >
-                    Hapus
-                  </button>
-                </td>
-              </tr>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr className="text-gray-600">
+                  <th className="px-4 py-3 text-left">Tanggal</th>
+                  <th className="px-4 py-3 text-left">Nama</th>
+                  <th className="px-4 py-3 text-left min-w-[320px]">Produk</th>
+                  <th className="px-4 py-3 text-left">Dilayani</th>
+                  <th className="px-4 py-3 text-left">Referral</th>
+                  <th className="px-4 py-3 text-right">Harga Jual</th>
+                  <th className="px-4 py-3 text-right">Laba</th>
+                  <th className="px-4 py-3 text-left">Invoice</th>
+                  <th className="px-4 py-3 text-left w-[140px]">Aksi</th>
+                </tr>
+              </thead>
 
-            {rows.length === 0 && (
-              <tr>
-                <td className="border px-2 py-4 text-center text-gray-500" colSpan={9}>
-                  Tidak ada data.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              <tbody>
+                {rows.map((item) => (
+                  <tr key={item.invoice_id} className="border-t border-gray-200 hover:bg-gray-50">
+                    <td className="px-4 py-3">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{item.nama_pembeli}</td>
+
+                    <td className="px-4 py-3">
+                      <div className="text-gray-900">
+                        {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Item: <b className="text-gray-900">{item.produk.length}</b>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
+                    <td className="px-4 py-3">{getUniqueText(item.produk, 'referral')}</td>
+
+                    <td className="px-4 py-3 text-right">
+                      Rp {totalHarga(item.produk).toLocaleString('id-ID')}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>
+                        Rp {totalLaba(item.produk).toLocaleString('id-ID')}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <a
+                        href={`/invoice/${item.invoice_id}`}
+                        className="text-blue-600 hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Unduh
+                      </a>
+                      <div className="text-[11px] text-gray-500 font-mono mt-1">{item.invoice_id}</div>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleDelete(item.invoice_id)}
+                        className={btnDanger}
+                        disabled={loading}
+                        type="button"
+                      >
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+                {!loading && rows.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-gray-500" colSpan={9}>
+                      Tidak ada data.
+                    </td>
+                  </tr>
+                )}
+
+                {loading && rows.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-gray-500" colSpan={9}>
+                      Memuat…
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </Layout>
   )
