@@ -2,6 +2,7 @@ import Layout from '@/components/Layout'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
+import InvoiceExportCard, { formatRupiah } from '@/components/InvoiceExportCard'
 
 const card = 'bg-white border border-gray-200 rounded-xl'
 const input = 'border border-gray-200 p-2 rounded-lg w-full'
@@ -12,15 +13,10 @@ const btnSoft = btn + ' bg-gray-100 text-gray-900 hover:bg-gray-200'
 const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
 
 const FROM_EMAIL = 'admin@connectgadgetind.com'
-const FROM_NAME = 'CONNECT.IND' // ✅ biar sender tampil profesional
+const FROM_NAME = 'CONNECT.IND'
 
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
-
-function formatRupiah(n) {
-  const x = typeof n === 'number' ? n : parseInt(String(n || '0'), 10) || 0
-  return 'Rp ' + x.toLocaleString('id-ID')
-}
 
 // hitung total seperti invoicepdf.jsx (kalau field diskon tidak ada -> 0)
 function computeTotals(rows = []) {
@@ -43,17 +39,7 @@ function computeTotals(rows = []) {
 
 // ==== TEMPLATE EMAIL (HTML) ====
 function buildInvoiceEmailTemplate(payload) {
-  const {
-    nama_pembeli,
-    invoice_id,
-    tanggal,
-    no_wa,
-    alamat,
-    items = [],
-    subtotal = 0,
-    discount = 0,
-    total = 0,
-  } = payload || {}
+  const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], subtotal = 0, discount = 0, total = 0 } = payload || {}
 
   const itemsHtml =
     items.length > 0
@@ -97,7 +83,6 @@ function buildInvoiceEmailTemplate(payload) {
       `
       : ''
 
-  // ✅ wrapper max-width + responsive-safe biar email tidak “kepotong” di mobile client
   return `
   <div style="margin:0; padding:0; width:100%; background:#f6f7f9;">
     <div style="padding:24px 12px;">
@@ -139,9 +124,7 @@ function buildInvoiceEmailTemplate(payload) {
                       <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Total</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    ${itemsHtml}
-                  </tbody>
+                  <tbody>${itemsHtml}</tbody>
                 </table>
               </div>
 
@@ -182,161 +165,6 @@ function buildInvoiceEmailTemplate(payload) {
   `
 }
 
-/**
- * ✅ “JPG invoice” dibuat langsung di browser (mirip riwayat.js).
- * Kita render kartu invoice ke div hidden, lalu convert ke JPG base64.
- */
-function InvoiceJpgCard({ data }) {
-  const inv = data || {}
-  const items = Array.isArray(inv.items) ? inv.items : []
-  return (
-    <div
-      style={{
-        width: 1080, // ✅ stabil & rapi untuk JPG (tidak tergantung ukuran layar)
-        padding: 36,
-        background: '#ffffff',
-        fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial',
-        color: '#111',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: 0.3 }}>CONNECT.IND</div>
-          <div style={{ marginTop: 6, fontSize: 13, color: '#555', lineHeight: 1.5 }}>
-            Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145
-            <br />
-            WhatsApp: 0896-3140-0031
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 900, fontSize: 22 }}>INVOICE</div>
-          <div style={{ marginTop: 6, fontSize: 13, color: '#555', lineHeight: 1.5 }}>
-            No: <b>{safe(inv.invoice_id)}</b>
-            <br />
-            Tanggal: <b>{safe(inv.tanggal)}</b>
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          marginTop: 18,
-          border: '1px solid #eee',
-          borderRadius: 16,
-          padding: 16,
-          background: '#fafafa',
-        }}
-      >
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Data Pembeli</div>
-        <div style={{ fontSize: 14, color: '#333', lineHeight: 1.6 }}>
-          Nama: <b>{safe(inv.nama_pembeli)}</b>
-          <br />
-          No. WA: <b>{safe(inv.no_wa)}</b>
-          <br />
-          Alamat: <b>{safe(inv.alamat)}</b>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 18 }}>
-        <div style={{ fontWeight: 800, marginBottom: 10 }}>Detail Item</div>
-
-        <div style={{ border: '1px solid #eee', borderRadius: 16, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: '#f3f4f6' }}>
-                <th style={{ textAlign: 'left', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 60 }}>
-                  No
-                </th>
-                <th style={{ textAlign: 'left', padding: '12px 14px', borderBottom: '1px solid #eaeaea' }}>Item</th>
-                <th style={{ textAlign: 'center', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 80 }}>
-                  Qty
-                </th>
-                <th style={{ textAlign: 'right', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 160 }}>
-                  Price
-                </th>
-                <th style={{ textAlign: 'right', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 180 }}>
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: 14, color: '#666' }}>
-                    (Item belum ditemukan)
-                  </td>
-                </tr>
-              ) : (
-                items.map((it, idx) => {
-                  const qty = Math.max(1, toInt(it.qty))
-                  const unit = toInt(it.harga_jual)
-                  const lineTotal = unit * qty
-                  return (
-                    <tr key={idx}>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0' }}>{idx + 1}</td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0' }}>
-                        <div style={{ fontWeight: 800 }}>{safe(it.nama_produk)}</div>
-                        <div style={{ marginTop: 4, fontSize: 12, color: '#666', lineHeight: 1.45 }}>
-                          {safe(it.warna)}
-                          {it.storage ? ' • ' + safe(it.storage) : ''}
-                          {it.garansi ? ' • ' + safe(it.garansi) : ''}
-                          {it.sn_sku ? (
-                            <>
-                              <br />
-                              SN/SKU: {safe(it.sn_sku)}
-                            </>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', textAlign: 'center' }}>{qty}</td>
-                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', textAlign: 'right' }}>
-                        {formatRupiah(unit)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px 14px',
-                          borderBottom: '1px solid #f0f0f0',
-                          textAlign: 'right',
-                          fontWeight: 900,
-                        }}
-                      >
-                        {formatRupiah(lineTotal)}
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-          <div style={{ minWidth: 360, border: '1px solid #eee', borderRadius: 16, padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
-              <span>Sub Total</span>
-              <span style={{ fontWeight: 900, color: '#111' }}>{formatRupiah(inv.subtotal || 0)}</span>
-            </div>
-            {inv.discount ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666', marginTop: 8 }}>
-                <span>Discount</span>
-                <span style={{ fontWeight: 900, color: '#111' }}>-{formatRupiah(inv.discount || 0)}</span>
-              </div>
-            ) : null}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 15 }}>
-              <span style={{ fontWeight: 900 }}>Total</span>
-              <span style={{ fontWeight: 900 }}>{formatRupiah(inv.total || 0)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
-        Terima kasih telah berbelanja di CONNECT.IND.
-      </div>
-    </div>
-  )
-}
-
 export default function EmailPage() {
   const [sending, setSending] = useState(false)
 
@@ -352,7 +180,7 @@ export default function EmailPage() {
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
 
-  // ✅ hidden render untuk jpg (mirip riwayat.js)
+  // hidden render untuk jpg
   const invoiceRenderRef = useRef(null)
 
   // ====== MODAL PILIH TRANSAKSI ======
@@ -379,7 +207,7 @@ export default function EmailPage() {
     try {
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select('*') // ✅ biar tidak error kalau ada kolom beda
+        .select('*')
         .gte('tanggal', start)
         .lte('tanggal', end)
         .eq('is_bonus', false)
@@ -494,12 +322,12 @@ export default function EmailPage() {
       reader.readAsDataURL(file)
     })
 
-  // ✅ Render DOM -> JPG base64 (tanpa prefix)
+  // Render DOM -> JPG base64 (tanpa prefix)
   const generateInvoiceJpgBase64 = async () => {
     const node = invoiceRenderRef.current
     if (!node) throw new Error('Invoice renderer belum siap.')
 
-    // 1) coba pakai html-to-image (paling mirip “download JPG” biasanya)
+    // 1) coba pakai html-to-image
     try {
       const mod = await import('html-to-image')
       const toJpeg = mod?.toJpeg
@@ -515,7 +343,6 @@ export default function EmailPage() {
         return base64
       }
     } catch (e) {
-      // fallback lanjut
       console.warn('html-to-image tidak tersedia / gagal, fallback html2canvas.', e)
     }
 
@@ -543,7 +370,7 @@ export default function EmailPage() {
     try {
       const attachments = []
 
-      // ✅ 1) auto attach invoice JPG hasil render (persis konsep riwayat.js)
+      // ✅ auto attach invoice JPG (pakai template sama dengan riwayat.js)
       const invoiceJpgBase64 = await generateInvoiceJpgBase64()
       attachments.push({
         filename: `${dataInvoice.invoice_id}.jpg`,
@@ -551,7 +378,7 @@ export default function EmailPage() {
         contentBase64: invoiceJpgBase64,
       })
 
-      // ✅ 2) lampiran tambahan dari user
+      // lampiran tambahan
       for (const f of extraFiles) {
         const contentBase64 = await fileToBase64(f)
         if (!contentBase64) continue
@@ -569,15 +396,10 @@ export default function EmailPage() {
           to: toEmail.trim(),
           subject: subject.trim(),
           html: htmlBody,
-
-          // ✅ sender name biar bukan “alamat email doang”
           fromEmail: FROM_EMAIL,
           fromName: FROM_NAME,
-
-          // ✅ kita kirim attachment JPG dari client, jadi tidak perlu server auto-generate
           attach_invoice_jpg: false,
           invoice_id: dataInvoice.invoice_id,
-
           attachments,
         }),
       })
@@ -622,12 +444,12 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* ✅ HIDDEN RENDER untuk generate JPG */}
+        {/* HIDDEN RENDER untuk generate JPG */}
         <div style={{ position: 'absolute', left: -99999, top: -99999, pointerEvents: 'none' }}>
-          <div ref={invoiceRenderRef}>{dataInvoice ? <InvoiceJpgCard data={dataInvoice} /> : null}</div>
+          <div ref={invoiceRenderRef}>{dataInvoice ? <InvoiceExportCard data={dataInvoice} /> : null}</div>
         </div>
 
-        {/* PILIH TRANSAKSI (RAPI) */}
+        {/* PILIH TRANSAKSI */}
         <div className={`${card} p-4`}>
           <div className="grid lg:grid-cols-2 gap-3 items-end">
             <div>
@@ -688,13 +510,7 @@ export default function EmailPage() {
             <div>
               <div className={label}>Lampiran tambahan (opsional)</div>
 
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => setExtraFiles(Array.from(e.target.files || []))}
-              />
+              <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setExtraFiles(Array.from(e.target.files || []))} />
 
               <div className="flex items-center gap-2">
                 <button className={btnSoft} onClick={() => fileRef.current?.click()} type="button">
@@ -725,12 +541,7 @@ export default function EmailPage() {
             </div>
 
             <div className="pt-2 flex items-center gap-2">
-              <button
-                className={btnPrimary}
-                onClick={sendEmail}
-                disabled={sending || !dataInvoice}
-                style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}
-              >
+              <button className={btnPrimary} onClick={sendEmail} disabled={sending || !dataInvoice} style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}>
                 {sending ? 'Mengirim...' : 'Kirim Email (Auto lampirkan JPG)'}
               </button>
             </div>
@@ -810,12 +621,7 @@ export default function EmailPage() {
 
                     <div className="md:col-span-2">
                       <div className={label}>Search (Nama / Invoice / WA)</div>
-                      <input
-                        className={input}
-                        placeholder="Ketik nama pembeli / invoice / WA..."
-                        value={pickerSearch}
-                        onChange={(e) => setPickerSearch(e.target.value)}
-                      />
+                      <input className={input} placeholder="Ketik nama pembeli / invoice / WA..." value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} />
                       <div className="text-xs text-gray-500 mt-1">List tampil sesuai tanggal. Search hanya untuk memfilter.</div>
                     </div>
                   </div>
@@ -836,11 +642,7 @@ export default function EmailPage() {
                       ) : (
                         <div className="divide-y divide-gray-100">
                           {filteredPickerRows.map((r) => (
-                            <button
-                              key={r.invoice_id}
-                              onClick={() => pickInvoice(r)}
-                              className="w-full text-left p-3 hover:bg-gray-50"
-                            >
+                            <button key={r.invoice_id} onClick={() => pickInvoice(r)} className="w-full text-left p-3 hover:bg-gray-50">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
