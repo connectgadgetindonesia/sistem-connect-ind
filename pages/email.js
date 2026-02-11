@@ -195,7 +195,7 @@ function buildInvoiceEmailTemplate(payload) {
               <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
                 <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
                 <div style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.4;">
-                  Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
+                  Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-31-4000-31
                 </div>
               </td>
             </tr>
@@ -257,7 +257,7 @@ function buildInvoiceEmailTemplate(payload) {
                 <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
                   Halo <b style="color:#111827;">${safe(nama_pembeli) || 'Customer'}</b>,<br/>
                   Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
-                  Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b style="color:#111827;">0896-3140-0031</b>.
+                  Mohon tidak membalas email ini, jika ada pertanyaan hubungi WhatsApp kami di <b style="color:#111827;">0896-31-4000-31</b>.
                 </div>
 
                 <div style="margin-top:18px; color:#6b7280; font-size:12px;">
