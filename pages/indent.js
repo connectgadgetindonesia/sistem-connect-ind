@@ -17,7 +17,7 @@ const emptyItem = () => ({
   storage: '',
   garansi: '',
   qty: 1,
-  harga_item: ''
+  harga_item: '',
 })
 
 // ====== STYLE (samakan feel seperti riwayat.js / email.js) ======
@@ -36,6 +36,265 @@ const btnPrimary =
   'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl w-full disabled:opacity-60 disabled:cursor-not-allowed'
 const pillBase = 'text-xs px-2.5 py-1 rounded-full border'
 
+const btnMiniDark =
+  'bg-gray-900 hover:bg-black text-white px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed'
+
+// ===== helpers =====
+const toNumber = (v) => {
+  if (typeof v === 'number') return v
+  const n = parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10)
+  return Number.isFinite(n) ? n : 0
+}
+const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
+const safe = (v) => String(v ?? '').trim()
+
+function formatInvoiceDateLong(ymdOrIso) {
+  if (!ymdOrIso) return ''
+  const d = new Date(ymdOrIso)
+  if (Number.isNaN(d.getTime())) return String(ymdOrIso)
+  const months = [
+    'January','February','March','April','May','June',
+    'July','August','September','October','November','December',
+  ]
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+}
+
+// ====== build HTML invoice A4 (SAMA FEEL RIWAYAT, MODE INDENT) ======
+function buildIndentInvoiceA4Html({ invoice_id, header, items, totals }) {
+  const BLUE = '#2388ff'
+  const invoiceDateLong = formatInvoiceDateLong(header?.tanggal)
+
+  const itemRows = (items || [])
+    .map((it) => {
+      const qty = Math.max(1, toNumber(it.qty))
+      const unit = toNumber(it.harga_item)
+      const line = unit * qty
+
+      const metaParts = []
+      const warna = safe(it.warna)
+      const storage = safe(it.storage)
+      const garansi = safe(it.garansi)
+      if (warna) metaParts.push(warna)
+      if (storage) metaParts.push(storage)
+      if (garansi) metaParts.push(garansi)
+      const metaTop = metaParts.length ? metaParts.join(' • ') : ''
+
+      return `
+        <tr>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; vertical-align:top;">
+            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">
+              ${safe(it.nama_produk)}
+            </div>
+            ${
+              metaTop
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">${metaTop}</div>`
+                : ''
+            }
+          </td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0b1220;">${qty}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
+            unit
+          )}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
+            line
+          )}</td>
+        </tr>
+      `
+    })
+    .join('')
+
+  const dp = toNumber(header?.dp)
+  const sisa = Math.max(toNumber(header?.harga_jual) - dp, 0)
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet"/>
+  <style>
+    *{ box-sizing:border-box; }
+    body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+  </style>
+</head>
+<body>
+  <div id="invoice-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
+    <div style="padding:56px 56px 42px 56px; height:100%;">
+
+      <!-- TOP ROW -->
+      <div style="display:flex; gap:22px; align-items:flex-start;">
+
+        <!-- LOGO -->
+        <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
+          <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
+        </div>
+
+        <!-- META STACK -->
+        <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
+
+          <!-- INVOICE DATE -->
+          <div style="
+            height:62px;
+            border-radius:8px;
+            border:1px solid #eef2f7;
+            background:#ffffff;
+            padding:12px 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06);
+            overflow:hidden;
+          ">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Date</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; text-align:right;">
+              ${safe(invoiceDateLong)}
+            </div>
+          </div>
+
+          <!-- INVOICE NUMBER -->
+          <div style="
+            height:62px;
+            border-radius:8px;
+            border:1px solid #eef2f7;
+            background:#ffffff;
+            padding:12px 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06);
+            overflow:hidden;
+          ">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
+              ${safe(invoice_id)}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- BILL ROW -->
+      <div style="display:flex; gap:22px; margin-top:22px;">
+        <div style="flex:1;">
+          <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
+          <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">CONNECT.IND</div>
+            <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
+              (+62) 896-31-4000-31<br/>
+              Jl. Srikuncoro Raya Ruko B1-B2,<br/>
+              Kalibanteng Kulon, Kec. Semarang Barat,<br/>
+              Kota Semarang, Jawa Tengah, 50145.
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;">
+          <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
+          <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
+              header?.nama
+            )}</div>
+            <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
+              ${safe(header?.no_wa)}<br/>
+              ${safe(header?.alamat)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLE -->
+      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:8px; overflow:hidden;">
+        <table style="width:100%; border-collapse:separate; border-spacing:0;">
+          <thead>
+            <tr style="background:#f7f9fc;">
+              <th style="text-align:left; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Item</th>
+              <th style="text-align:center; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Quantity</th>
+              <th style="text-align:right; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Price</th>
+              <th style="text-align:right; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Total</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows || ''}</tbody>
+        </table>
+      </div>
+
+      <!-- TOTALS -->
+      <div style="display:flex; justify-content:flex-end; margin-top:24px;">
+        <div style="min-width:320px;">
+          <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Subtotal:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(totals.subtotal)}</div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">DP:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(dp)}</div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:14px;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Sisa Pembayaran:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(sisa)}</div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; gap:18px;">
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">Grand Total:</div>
+            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(totals.total)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NOTES -->
+      <div style="margin-top:22px; border:1px solid #eef2f7; border-radius:12px; background:#f7f9fc; padding:16px 18px;">
+        <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:8px;">Notes:</div>
+        <div style="font-size:12px; font-weight:400; color:#0b1220; line-height:1.6;">
+          Pesanan yang sudah masuk tidak dapat dibatalkan / diubah, maksimal pelunasan H+3 setelah tanggal yang disepakati.<br/>
+          Kekurangan pembayaran sebesar <b>${formatRp(sisa)}</b>.<br/>
+          DP dianggap hangus apabila kekurangan pembayaran telat/pesanan dibatalkan secara sepihak.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BOTTOM BAR -->
+    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
+  </div>
+</body>
+</html>`
+}
+
+// ====== download helpers (ikut riwayat.js) ======
+async function canvasToJpegBlob(canvas, quality = 0.95) {
+  return await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('Gagal convert canvas ke blob'))),
+      'image/jpeg',
+      quality
+    )
+  })
+}
+
+async function saveBlob(filename, blob) {
+  const mod = await import('file-saver')
+  const saveAs = mod.saveAs || mod.default
+  saveAs(blob, filename)
+}
+
+async function renderHtmlToOffscreen(html) {
+  const wrap = document.createElement('div')
+  wrap.style.position = 'fixed'
+  wrap.style.left = '-99999px'
+  wrap.style.top = '0'
+  wrap.style.background = '#ffffff'
+  wrap.style.width = '794px'
+  wrap.style.zIndex = '999999'
+  wrap.innerHTML = html
+
+  document.body.appendChild(wrap)
+  const root = wrap.querySelector('#invoice-a4') || wrap
+  return { wrap, root }
+}
+
 export default function TransaksiIndent() {
   // ===== TAB LIST =====
   const [tab, setTab] = useState('berjalan') // berjalan | diambil
@@ -47,7 +306,7 @@ export default function TransaksiIndent() {
     no_wa: '',
     email: '', // ✅ NEW: email customer (seragam penjualan.js)
     dp: '',
-    tanggal: ''
+    tanggal: '',
   })
 
   // ===== ITEMS (multi produk) =====
@@ -62,6 +321,9 @@ export default function TransaksiIndent() {
 
   // paging
   const [page, setPage] = useState(1)
+
+  // ✅ loading per invoice download
+  const [downloading, setDownloading] = useState({}) // { [id]: true/false }
 
   useEffect(() => {
     fetchList()
@@ -129,7 +391,7 @@ export default function TransaksiIndent() {
         storage: (it.storage || '').trim(),
         garansi: (it.garansi || '').trim(),
         qty: parseInt(it.qty || 1, 10),
-        harga_item: parseInt(it.harga_item || 0, 10)
+        harga_item: parseInt(it.harga_item || 0, 10),
       }))
       .filter((it) => it.nama_produk)
 
@@ -160,11 +422,11 @@ export default function TransaksiIndent() {
           nama: form.nama.trim(),
           alamat: form.alamat.trim(),
           no_wa: form.no_wa.trim(),
-          email: (form.email || '').trim().toLowerCase(), // ✅ NEW
+          email: (form.email || '').trim().toLowerCase(),
           dp: dpNum,
           harga_jual: totalHargaJual,
           sisa_pembayaran: sisaPembayaran,
-          tanggal
+          tanggal,
         })
         .eq('id', editId)
 
@@ -200,13 +462,13 @@ export default function TransaksiIndent() {
         nama: form.nama.trim(),
         alamat: form.alamat.trim(),
         no_wa: form.no_wa.trim(),
-        email: (form.email || '').trim().toLowerCase(), // ✅ NEW
+        email: (form.email || '').trim().toLowerCase(),
         dp: dpNum,
         harga_jual: totalHargaJual,
         sisa_pembayaran: sisaPembayaran,
         tanggal,
         status: 'DP Masuk',
-        invoice_id
+        invoice_id,
       })
       .select('id')
       .single()
@@ -237,9 +499,9 @@ export default function TransaksiIndent() {
       nama: item.nama || '',
       alamat: item.alamat || '',
       no_wa: item.no_wa || '',
-      email: item.email || '', // ✅ NEW
+      email: item.email || '',
       dp: String(item.dp ?? ''),
-      tanggal: item.tanggal || ''
+      tanggal: item.tanggal || '',
     })
 
     if (item.items && item.items.length > 0) {
@@ -250,7 +512,7 @@ export default function TransaksiIndent() {
           storage: it.storage || '',
           garansi: it.garansi || '',
           qty: it.qty ?? 1,
-          harga_item: String(it.harga_item ?? 0)
+          harga_item: String(it.harga_item ?? 0),
         }))
       )
     } else {
@@ -261,8 +523,8 @@ export default function TransaksiIndent() {
           storage: item.storage || '',
           garansi: item.garansi || '',
           qty: 1,
-          harga_item: String(item.harga_jual ?? 0)
-        }
+          harga_item: String(item.harga_jual ?? 0),
+        },
       ])
     }
 
@@ -320,6 +582,77 @@ export default function TransaksiIndent() {
     const start = (safePage - 1) * PAGE_SIZE
     return filtered.slice(start, start + PAGE_SIZE)
   }, [filtered, safePage])
+
+  // ===== DOWNLOAD JPG (SAMAKAN DENGAN RIWAYAT, TANPA LINK PAGE LAIN) =====
+  async function downloadInvoiceIndentJpg(indentId) {
+    if (!indentId) return
+    try {
+      setDownloading((p) => ({ ...p, [indentId]: true }))
+
+      const { data, error } = await supabase
+        .from('transaksi_indent')
+        .select('*, items:transaksi_indent_items(*)')
+        .eq('id', indentId)
+        .single()
+
+      if (error) throw error
+      if (!data) return alert('Invoice tidak ditemukan.')
+
+      const header = data
+      const items = data.items || []
+      if (!items.length) return alert('Item transaksi kosong.')
+
+      const subtotal = items.reduce((acc, it) => {
+        const qty = Math.max(1, toNumber(it.qty))
+        const price = toNumber(it.harga_item)
+        return acc + qty * price
+      }, 0)
+
+      const totals = { subtotal, total: subtotal } // indent tidak pakai diskon
+      const html = buildIndentInvoiceA4Html({
+        invoice_id: header.invoice_id,
+        header,
+        items,
+        totals,
+      })
+
+      const { wrap, root } = await renderHtmlToOffscreen(html)
+
+      // tunggu logo load
+      const imgs = Array.from(wrap.querySelectorAll('img'))
+      await Promise.all(
+        imgs.map(
+          (img) =>
+            new Promise((resolve) => {
+              if (!img) return resolve()
+              if (img.complete) return resolve()
+              img.onload = () => resolve()
+              img.onerror = () => resolve()
+            })
+        )
+      )
+
+      const mod = await import('html2canvas')
+      const html2canvas = mod.default
+
+      const canvas = await html2canvas(root, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: 794,
+      })
+
+      const blob = await canvasToJpegBlob(canvas, 0.95)
+      await saveBlob(`${header.invoice_id}.jpg`, blob)
+
+      wrap.remove()
+    } catch (e) {
+      console.error('downloadInvoiceIndentJpg error:', e)
+      alert('Gagal download invoice indent JPG. Error: ' + (e?.message || String(e)))
+    } finally {
+      setDownloading((p) => ({ ...p, [indentId]: false }))
+    }
+  }
 
   return (
     <Layout>
@@ -565,6 +898,7 @@ export default function TransaksiIndent() {
               const count = arr.length
               const first = arr[0]
               const sisa = Math.max((item.harga_jual || 0) - (item.dp || 0), 0)
+              const busy = !!downloading[item.id]
 
               return (
                 <div key={item.id} className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50">
@@ -575,7 +909,6 @@ export default function TransaksiIndent() {
                         <span className="text-sm font-semibold text-gray-600">({item.tanggal})</span>
                       </div>
 
-                      {/* ✅ seragam: invoice di kiri, jelas */}
                       <div className="text-xs text-gray-500 mt-0.5 space-y-0.5">
                         {item.invoice_id ? (
                           <div>
@@ -601,25 +934,37 @@ export default function TransaksiIndent() {
                         {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 Berjalan'}
                       </span>
 
-                      {/* ✅ ganti label jadi Download / seragam */}
+                      {/* ✅ UBAH: bukan Link ke page lain, tapi langsung Download JPG */}
                       {item.invoice_id && (
+                        <button
+                          type="button"
+                          className={btnMiniDark}
+                          disabled={loading || busy}
+                          onClick={() => downloadInvoiceIndentJpg(item.id)}
+                        >
+                          {busy ? 'Membuat…' : 'Download JPG'}
+                        </button>
+                      )}
+
+                      {/* (opsional) kalau mau tetap ada link preview, boleh aktifkan lagi */}
+                      {/* {item.invoice_id && (
                         <Link
                           href={`/invoice/indent/${item.id}`}
                           target="_blank"
                           className="inline-flex items-center gap-2 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-black"
                         >
-                          ⬇️ Invoice Indent
+                          Preview
                         </Link>
-                      )}
+                      )} */}
 
-                      <button onClick={() => handleEdit(item)} className={btnXs} disabled={loading}>
+                      <button onClick={() => handleEdit(item)} className={btnXs} disabled={loading || busy}>
                         Edit
                       </button>
 
                       <button
                         onClick={() => handleDelete(item.id)}
                         className={`${btnXs} text-red-600 hover:bg-red-50`}
-                        disabled={loading}
+                        disabled={loading || busy}
                       >
                         Hapus
                       </button>
@@ -699,10 +1044,8 @@ export default function TransaksiIndent() {
             </div>
           </div>
 
-          {/* 🔥 NOTE PENTING (biar seragam & aman) */}
           <div className="mt-3 text-[11px] text-gray-500">
-            Catatan: Jika kolom <b>email</b> belum ada di tabel <b>transaksi_indent</b>, tambahkan dulu kolomnya di Supabase
-            (ALTER TABLE ... ADD COLUMN email text).
+            Catatan: Tombol invoice sekarang langsung <b>Download JPG</b> dengan layout yang sama seperti riwayat.js (A4 794x1123).
           </div>
         </div>
       </div>
