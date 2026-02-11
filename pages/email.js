@@ -17,7 +17,6 @@ const FROM_NAME = 'CONNECT.IND'
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
 
-// ===== helpers format =====
 const toNumber = (v) => {
   if (typeof v === 'number') return v
   const n = parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10)
@@ -44,10 +43,12 @@ function computeTotals(rows = []) {
   return { subtotal, discount, total }
 }
 
-// ===== TEMPLATE EMAIL (HTML) =====
-// ✅ FIX: biar tidak kepotong di mobile/email client:
-// - jangan pakai overflow-x / min-width table
-// - pakai table-layout fixed + word-break
+/**
+ * ✅ TEMPLATE EMAIL (TABLE-BASED + RESPONSIVE)
+ * - No flex
+ * - Mobile: item jadi stacked (biar gak huruf turun per huruf)
+ * - Total pakai table (biar gak berdempetan)
+ */
 function buildInvoiceEmailTemplate(payload) {
   const {
     nama_pembeli,
@@ -61,7 +62,9 @@ function buildInvoiceEmailTemplate(payload) {
     total = 0,
   } = payload || {}
 
-  const itemsHtml =
+  const buyerName = safe(nama_pembeli) || 'Customer'
+
+  const itemRowsHtml =
     items.length > 0
       ? items
           .map((it, idx) => {
@@ -69,40 +72,50 @@ function buildInvoiceEmailTemplate(payload) {
             const unit = toInt(it.harga_jual)
             const lineTotal = unit * qty
 
-            const meta = [
-              safe(it.warna),
-              safe(it.storage),
-              safe(it.garansi),
-            ].filter(Boolean).join(' • ')
+            const metaParts = []
+            const warna = safe(it.warna)
+            const storage = safe(it.storage)
+            const garansi = safe(it.garansi)
+            if (warna) metaParts.push(warna)
+            if (storage) metaParts.push(storage)
+            if (garansi) metaParts.push(garansi)
+            const metaTop = metaParts.join(' • ')
+
+            const snsku = safe(it.sn_sku)
 
             return `
-              <tr>
-                <td style="padding:10px 10px; border-bottom:1px solid #eee; width:36px; vertical-align:top;">${idx + 1}</td>
+              <tr class="row">
+                <td class="td td-no">${idx + 1}</td>
+                <td class="td td-item">
+                  <div class="item-title">${safe(it.nama_produk)}</div>
+                  ${
+                    metaTop
+                      ? `<div class="item-meta">${metaTop}</div>`
+                      : ''
+                  }
+                  ${
+                    snsku
+                      ? `<div class="item-meta">SN/SKU: ${snsku}</div>`
+                      : ''
+                  }
 
-                <td style="padding:10px 10px; border-bottom:1px solid #eee; vertical-align:top; word-break:break-word; overflow-wrap:anywhere;">
-                  <div style="font-weight:600; margin-bottom:2px;">${safe(it.nama_produk)}</div>
-                  <div style="color:#666; font-size:12px; line-height:1.4;">
-                    ${meta ? meta + '<br/>' : ''}
-                    ${it.sn_sku ? 'SN/SKU: ' + safe(it.sn_sku) : ''}
+                  <!-- ✅ Mobile stacked -->
+                  <div class="m-stack">
+                    <div class="m-line"><span class="m-lbl">Qty</span><span class="m-val">${qty}</span></div>
+                    <div class="m-line"><span class="m-lbl">Price</span><span class="m-val">${formatRupiah(unit)}</span></div>
+                    <div class="m-line"><span class="m-lbl">Total</span><span class="m-val"><b>${formatRupiah(lineTotal)}</b></span></div>
                   </div>
                 </td>
-
-                <td style="padding:10px 10px; border-bottom:1px solid #eee; text-align:center; width:56px; vertical-align:top;">${qty}</td>
-
-                <td style="padding:10px 10px; border-bottom:1px solid #eee; text-align:right; width:110px; vertical-align:top; white-space:nowrap;">
-                  ${formatRupiah(unit)}
-                </td>
-
-                <td style="padding:10px 10px; border-bottom:1px solid #eee; text-align:right; width:120px; vertical-align:top; font-weight:600; white-space:nowrap;">
-                  ${formatRupiah(lineTotal)}
-                </td>
+                <td class="td td-qty">${qty}</td>
+                <td class="td td-price">${formatRupiah(unit)}</td>
+                <td class="td td-total"><b>${formatRupiah(lineTotal)}</b></td>
               </tr>
             `
           })
           .join('')
       : `
         <tr>
-          <td colspan="5" style="padding:12px; color:#666; border-bottom:1px solid #eee;">
+          <td colspan="5" class="td" style="padding:12px; color:#666;">
             (Item belum ditemukan)
           </td>
         </tr>
@@ -111,101 +124,189 @@ function buildInvoiceEmailTemplate(payload) {
   const discountRow =
     discount > 0
       ? `
-        <div style="display:flex; justify-content:space-between; font-size:13px; color:#666; margin-top:8px;">
-          <span>Discount</span>
-          <span style="font-weight:600; color:#111;">-${formatRupiah(discount)}</span>
-        </div>
+        <tr>
+          <td class="sum-lbl">Discount</td>
+          <td class="sum-val">-${formatRupiah(discount)}</td>
+        </tr>
       `
       : ''
 
-  return `
-  <div style="margin:0; padding:0; width:100%; background:#f6f7f9;">
-    <div style="padding:24px 12px;">
-      <div style="max-width:760px; width:100%; margin:0 auto; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;">
-        <div style="background:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #eaeaea;">
-          <div style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
-            <div style="font-weight:700; letter-spacing:0.3px;">CONNECT.IND</div>
-            <div style="color:#666; font-size:12px; margin-top:4px; line-height:1.4;">
-              Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    /* Reset basic */
+    body { margin:0; padding:0; background:#f6f7f9; }
+    table { border-collapse:collapse; }
+    img { border:0; outline:none; text-decoration:none; }
+    a { color: inherit; }
+
+    /* Container */
+    .wrap { width:100%; background:#f6f7f9; padding:24px 12px; }
+    .container { width:100%; max-width:760px; margin:0 auto; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .card { background:#ffffff; border:1px solid #eaeaea; border-radius:16px; overflow:hidden; }
+
+    .head { padding:18px 20px; border-bottom:1px solid #f0f0f0; }
+    .brand { font-weight:700; letter-spacing:0.3px; color:#111; }
+    .brandSub { color:#666; font-size:12px; margin-top:4px; line-height:1.5; }
+
+    .content { padding:20px; }
+    .h1 { font-size:18px; font-weight:700; color:#111; margin:0; }
+    .meta { margin-top:6px; color:#666; font-size:13px; line-height:1.6; }
+
+    .buyerBox { margin-top:16px; padding:14px; background:#fafafa; border-radius:12px; border:1px solid #efefef; }
+    .buyerTitle { font-weight:700; margin:0 0 6px 0; font-size:13px; color:#111; }
+    .buyerTxt { font-size:13px; color:#333; line-height:1.6; }
+
+    /* Item table */
+    .tblWrap { margin-top:16px; border:1px solid #eaeaea; border-radius:12px; overflow:hidden; }
+    .tbl { width:100%; font-size:13px; table-layout:fixed; }
+    .th { background:#f3f4f6; padding:10px 12px; text-align:left; color:#111; border-bottom:1px solid #eaeaea; font-weight:700; }
+    .th-center { text-align:center; }
+    .th-right { text-align:right; }
+
+    .td { padding:10px 12px; border-bottom:1px solid #eee; vertical-align:top; color:#111; }
+    .td-no { width:44px; }
+    .td-item { width:auto; }
+    .td-qty { width:64px; text-align:center; white-space:nowrap; }
+    .td-price { width:120px; text-align:right; white-space:nowrap; }
+    .td-total { width:130px; text-align:right; white-space:nowrap; }
+
+    .item-title { font-weight:700; color:#111; line-height:1.35; }
+    .item-meta { color:#666; font-size:12px; line-height:1.45; margin-top:4px; }
+    /* ✅ jangan pecah per huruf */
+    .td-item, .item-title, .item-meta { word-break:normal; overflow-wrap:break-word; }
+
+    /* Summary */
+    .sumWrap { margin-top:14px; width:100%; }
+    .sumBox { width:100%; max-width:360px; margin-left:auto; border:1px solid #eee; border-radius:12px; }
+    .sumTbl { width:100%; font-size:13px; }
+    .sumRow td { padding:10px 12px; }
+    .sum-lbl { color:#666; }
+    .sum-val { text-align:right; font-weight:700; color:#111; white-space:nowrap; }
+    .sumGrand .sum-lbl { font-weight:800; color:#111; font-size:14px; }
+    .sumGrand .sum-val { font-weight:800; color:#111; font-size:14px; }
+
+    .foot { margin-top:18px; color:#444; font-size:13px; line-height:1.7; }
+    .sign { margin-top:18px; color:#666; font-size:12px; }
+    .bottomNote { text-align:center; color:#999; font-size:12px; margin-top:12px; }
+
+    /* ✅ Mobile: jadi stacked card, hide kolom Qty/Price/Total */
+    .m-stack { display:none; margin-top:10px; border-top:1px dashed #e5e7eb; padding-top:10px; }
+    .m-line { display:flex; justify-content:space-between; gap:10px; padding:4px 0; }
+    .m-lbl { color:#6b7280; font-size:12px; }
+    .m-val { color:#111; font-size:12px; white-space:nowrap; }
+
+    @media only screen and (max-width: 600px) {
+      .wrap { padding:14px 10px; }
+      .content { padding:16px; }
+      .head { padding:16px; }
+
+      .td-no { width:34px; }
+      .td-qty, .td-price, .td-total { display:none !important; }
+      .th-qty, .th-price, .th-total { display:none !important; }
+
+      .m-stack { display:block !important; }
+      .sumBox { max-width:100% !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="container">
+      <div class="card">
+        <div class="head">
+          <div class="brand">CONNECT.IND</div>
+          <div class="brandSub">
+            Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
+          </div>
+        </div>
+
+        <div class="content">
+          <div class="h1">Invoice Pembelian</div>
+          <div class="meta">
+            Nomor Invoice: <b>${safe(invoice_id)}</b><br/>
+            Tanggal: <b>${safe(tanggal)}</b>
+          </div>
+
+          <div class="buyerBox">
+            <div class="buyerTitle">Data Pembeli</div>
+            <div class="buyerTxt">
+              Nama: <b>${buyerName}</b><br/>
+              No. WA: <b>${safe(no_wa)}</b><br/>
+              Alamat: <b>${safe(alamat)}</b>
             </div>
           </div>
 
-          <div style="padding:20px;">
-            <div style="font-size:18px; font-weight:700;">Invoice Pembelian</div>
-            <div style="margin-top:6px; color:#666; font-size:13px; line-height:1.5;">
-              Nomor Invoice: <b>${safe(invoice_id)}</b><br/>
-              Tanggal: <b>${safe(tanggal)}</b>
-            </div>
+          <div style="margin-top:16px; font-weight:700; color:#111;">Detail Item</div>
 
-            <div style="margin-top:16px; padding:14px; background:#fafafa; border-radius:12px; border:1px solid #efefef;">
-              <div style="font-weight:600; margin-bottom:6px;">Data Pembeli</div>
-              <div style="font-size:13px; color:#333; line-height:1.55;">
-                Nama: <b>${safe(nama_pembeli)}</b><br/>
-                No. WA: <b>${safe(no_wa)}</b><br/>
-                Alamat: <b>${safe(alamat)}</b>
-              </div>
-            </div>
+          <div class="tblWrap">
+            <table class="tbl" cellpadding="0" cellspacing="0">
+              <thead>
+                <tr>
+                  <th class="th th-no">No</th>
+                  <th class="th">Item</th>
+                  <th class="th th-center th-qty">Qty</th>
+                  <th class="th th-right th-price">Price</th>
+                  <th class="th th-right th-total">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemRowsHtml}
+              </tbody>
+            </table>
+          </div>
 
-            <div style="margin-top:16px;">
-              <div style="font-weight:600; margin-bottom:10px;">Detail Item</div>
-
-              <table style="width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed;">
-                <thead>
-                  <tr>
-                    <th style="text-align:left; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:36px;">No</th>
-                    <th style="text-align:left; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Item</th>
-                    <th style="text-align:center; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:56px;">Qty</th>
-                    <th style="text-align:right; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:110px;">Price</th>
-                    <th style="text-align:right; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:120px;">Total</th>
+          <div class="sumWrap">
+            <div class="sumBox">
+              <table class="sumTbl" cellpadding="0" cellspacing="0">
+                <tbody>
+                  <tr class="sumRow">
+                    <td class="sum-lbl">Sub Total</td>
+                    <td class="sum-val">${formatRupiah(subtotal)}</td>
                   </tr>
-                </thead>
-                <tbody>${itemsHtml}</tbody>
-              </table>
-
-              <div style="margin-top:14px; display:block;">
-                <div style="max-width:360px; margin-left:auto; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
-                  <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
-                    <span>Sub Total</span>
-                    <span style="font-weight:700; color:#111;">${formatRupiah(subtotal)}</span>
-                  </div>
                   ${discountRow}
-                  <div style="display:flex; justify-content:space-between; font-size:14px; margin-top:10px;">
-                    <span style="font-weight:700;">Total</span>
-                    <span style="font-weight:700;">${formatRupiah(total)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style="margin-top:18px; color:#444; font-size:13px; line-height:1.6;">
-              Halo <b>${safe(nama_pembeli) || 'Customer'}</b>,<br/>
-              Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
-              Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
-            </div>
-
-            <div style="margin-top:18px; color:#666; font-size:12px;">
-              Hormat kami,<br/>
-              <b>CONNECT.IND</b>
+                  <tr class="sumRow sumGrand">
+                    <td class="sum-lbl">Total</td>
+                    <td class="sum-val">${formatRupiah(total)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
 
-        <div style="text-align:center; color:#999; font-size:12px; margin-top:12px;">
-          Email ini dikirim dari sistem CONNECT.IND.
+          <div class="foot">
+            Halo <b>${buyerName}</b>,<br/>
+            Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
+            Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
+          </div>
+
+          <div class="sign">
+            Hormat kami,<br/>
+            <b>CONNECT.IND</b>
+          </div>
         </div>
+      </div>
+
+      <div class="bottomNote">
+        Email ini dikirim dari sistem CONNECT.IND.
       </div>
     </div>
   </div>
-  `
+</body>
+</html>`
 }
 
-// ====== INVOICE A4 HTML (JPG) - STYLE MODEL CONTOH ======
+// ====== INVOICE A4 HTML (JPG) ======
 function formatInvoiceDateLong(ymdOrIso) {
   if (!ymdOrIso) return ''
   const d = dayjs(ymdOrIso)
   if (!d.isValid()) return String(ymdOrIso)
   return d.format('MMMM D, YYYY')
 }
+
 function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   const BLUE = '#2388ff'
 
@@ -222,7 +323,6 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
     computeTotals(_rows)
 
   const formatRp = (n) => formatRupiah(n)
-
   const first = payload || {}
   const invoiceDateLong = formatInvoiceDateLong(first?.tanggal)
 
@@ -289,22 +389,14 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
         </div>
 
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
-          <div style="
-            height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff;
-            padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
-            box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;
-          ">
+          <div style="height:62px;border-radius:8px;border:1px solid #eef2f7;background:#ffffff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 22px rgba(16,24,40,0.06);overflow:hidden;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Date</div>
             <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; text-align:right;">
               ${safe(invoiceDateLong)}
             </div>
           </div>
 
-          <div style="
-            height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff;
-            padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
-            box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;
-          ">
+          <div style="height:62px;border-radius:8px;border:1px solid #eef2f7;background:#ffffff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 22px rgba(16,24,40,0.06);overflow:hidden;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
             <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
               ${safe(invoice_id || payload?.invoice_id)}
@@ -401,7 +493,6 @@ async function renderHtmlToOffscreen(html) {
 export default function EmailPage() {
   const [sending, setSending] = useState(false)
 
-  // invoice terpilih
   const [dataInvoice, setDataInvoice] = useState(null)
   const [htmlBody, setHtmlBody] = useState('')
 
@@ -409,32 +500,11 @@ export default function EmailPage() {
   const [toEmail, setToEmail] = useState('')
   const [subject, setSubject] = useState('Invoice Pembelian – CONNECT.IND')
 
-  // Attach other files
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
 
-  // ====== PREVIEW SCALE (biar gak kepotong) ======
-  const previewOuterRef = useRef(null)
-  const PREVIEW_BASE_WIDTH = 760
-  const PREVIEW_BASE_HEIGHT = 980
-  const [previewScale, setPreviewScale] = useState(1)
-
-  useEffect(() => {
-    if (!previewOuterRef.current) return
-    const el = previewOuterRef.current
-
-    const calc = () => {
-      const w = el.clientWidth || PREVIEW_BASE_WIDTH
-      const s = Math.min(1, Math.max(0.3, w / PREVIEW_BASE_WIDTH))
-      setPreviewScale(s)
-    }
-
-    calc()
-
-    const ro = new ResizeObserver(() => calc())
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  // Preview iframe
+  const iframeRef = useRef(null)
 
   // ====== MODAL PILIH TRANSAKSI ======
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -451,7 +521,7 @@ export default function EmailPage() {
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
-  // ✅ ambil H-1 sampai H+1 lalu filter client by YYYY-MM-DD (fix timezone)
+  // ✅ fetch invoices by date (group by invoice_id)
   const fetchInvoicesByDate = async (ymd) => {
     const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
     const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
@@ -491,7 +561,7 @@ export default function EmailPage() {
             nama_pembeli: r.nama_pembeli || '',
             alamat: r.alamat || '',
             no_wa: r.no_wa || '',
-            email: (r.email || '').toString().trim(), // ✅ ambil email kalau ada
+            email: r.email || '', // ✅ NEW
             items: [],
             item_count: 0,
             subtotal: 0,
@@ -517,7 +587,7 @@ export default function EmailPage() {
         if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
         if (!it.alamat && r.alamat) it.alamat = r.alamat
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
-        if (!it.email && r.email) it.email = String(r.email || '').trim() // ✅ pick first non-empty
+        if (!it.email && r.email) it.email = r.email
       }
 
       const grouped = Array.from(map.values()).map((inv) => {
@@ -555,7 +625,7 @@ export default function EmailPage() {
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
       no_wa: inv.no_wa || '',
-      email: (inv.email || '').toString().trim(), // ✅ bawa email
+      email: inv.email || '', // ✅ NEW
       items: inv.items || [],
       subtotal: inv.subtotal || 0,
       discount: inv.discount || 0,
@@ -563,14 +633,14 @@ export default function EmailPage() {
     }
 
     setDataInvoice(payload)
-
-    // ✅ AUTO INPUT EMAIL jika terdeteksi (tetap editable)
-    if (payload.email) setToEmail(payload.email)
-
     setPickerOpen(false)
+
+    // ✅ AUTO ISI EMAIL (TETAP EDITABLE)
+    // - kalau toEmail masih kosong → isi dari payload.email
+    // - kalau user sudah isi manual → jangan overwrite
+    setToEmail((prev) => (prev && prev.includes('@') ? prev : (payload.email || '').trim()))
   }
 
-  // convert file -> base64
   const fileToBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -583,7 +653,6 @@ export default function EmailPage() {
       reader.readAsDataURL(file)
     })
 
-  // Render invoice A4 -> JPG base64 (tanpa prefix)
   const generateInvoiceJpgBase64 = async () => {
     if (!dataInvoice?.invoice_id) throw new Error('Invoice belum dipilih.')
 
@@ -726,15 +795,18 @@ export default function EmailPage() {
             {dataInvoice ? (
               <div className="text-sm text-gray-700">
                 <div className="font-semibold">Ringkasan:</div>
-                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                  <div>
-                    Subtotal: <b>{formatRupiah(dataInvoice.subtotal)}</b>
+                <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
+                    <div className="text-xs text-gray-500">Subtotal</div>
+                    <div className="font-bold">{formatRupiah(dataInvoice.subtotal)}</div>
                   </div>
-                  <div>
-                    Discount: <b>{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</b>
+                  <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
+                    <div className="text-xs text-gray-500">Discount</div>
+                    <div className="font-bold">{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</div>
                   </div>
-                  <div>
-                    Total: <b>{formatRupiah(dataInvoice.total)}</b>
+                  <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
+                    <div className="text-xs text-gray-500">Total</div>
+                    <div className="font-bold">{formatRupiah(dataInvoice.total)}</div>
                   </div>
                 </div>
               </div>
@@ -844,45 +916,24 @@ export default function EmailPage() {
                 </div>
               </div>
 
-              {/* ✅ Preview pakai iframe + scale biar tidak kepotong di web */}
-              <div ref={previewOuterRef} className="bg-white">
-                <div
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    background: '#fff',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: PREVIEW_BASE_WIDTH,
-                      transform: `scale(${previewScale})`,
-                      transformOrigin: 'top left',
-                      height: PREVIEW_BASE_HEIGHT,
-                    }}
-                  >
-                    <iframe
-                      title="email-preview"
-                      style={{
-                        width: PREVIEW_BASE_WIDTH,
-                        height: PREVIEW_BASE_HEIGHT,
-                        border: '0',
-                        display: 'block',
-                        background: '#fff',
-                      }}
-                      srcDoc={
-                        htmlBody ||
-                        `<div style="padding:16px; color:#666; font-family:system-ui;">
-                          Pilih transaksi untuk membuat template otomatis.
-                        </div>`
-                      }
-                    />
-                  </div>
-
-                  {/* spacer biar container tinggi mengikuti scale */}
-                  <div style={{ height: Math.max(0, PREVIEW_BASE_HEIGHT * previewScale - PREVIEW_BASE_HEIGHT) }} />
-                </div>
+              {/* ✅ iframe preview biar ukuran normal & tidak kepotong */}
+              <div className="bg-white" style={{ height: 720 }}>
+                <iframe
+                  ref={iframeRef}
+                  title="Email Preview"
+                  style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
+                  srcDoc={
+                    htmlBody ||
+                    `<div style="padding:16px; color:#666; font-family:system-ui;">
+                      Pilih transaksi untuk membuat template otomatis.
+                    </div>`
+                  }
+                />
               </div>
+            </div>
+
+            <div className="text-[11px] text-gray-500 mt-2">
+              Note: Tampilan di email client bisa sedikit beda, tapi struktur mobile sudah aman (stacked).
             </div>
           </div>
         </div>
@@ -936,7 +987,9 @@ export default function EmailPage() {
                       <div>
                         Tanggal: <b>{dayjs(pickerDate).format('DD/MM/YYYY')}</b>
                       </div>
-                      <div className="text-xs text-gray-500">{pickerLoading ? 'Memuat...' : `${filteredPickerRows.length} transaksi`}</div>
+                      <div className="text-xs text-gray-500">
+                        {pickerLoading ? 'Memuat...' : `${filteredPickerRows.length} transaksi`}
+                      </div>
                     </div>
 
                     <div className="max-h-[420px] overflow-auto">
@@ -947,7 +1000,11 @@ export default function EmailPage() {
                       ) : (
                         <div className="divide-y divide-gray-100">
                           {filteredPickerRows.map((r) => (
-                            <button key={r.invoice_id} onClick={() => pickInvoice(r)} className="w-full text-left p-3 hover:bg-gray-50">
+                            <button
+                              key={r.invoice_id}
+                              onClick={() => pickInvoice(r)}
+                              className="w-full text-left p-3 hover:bg-gray-50"
+                            >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
