@@ -4,11 +4,14 @@ import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
 
+const PAGE_SIZE = 20
+
 const toNumber = (v) => {
   if (typeof v === 'number') return v
   return parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
 }
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
+const todayStr = () => new Date().toISOString().slice(0, 10)
 
 async function fetchAllPenjualanByRange({ start, end }) {
   const pageSize = 1000
@@ -19,9 +22,10 @@ async function fetchAllPenjualanByRange({ start, end }) {
   while (keepGoing) {
     const { data, error } = await supabase
       .from('penjualan_baru')
-      .select('tanggal,nama_pembeli,alamat,no_wa,harga_jual,laba,nama_produk,sn_sku,is_bonus', {
-        count: 'exact',
-      })
+      .select(
+        'tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,laba,nama_produk,sn_sku,is_bonus',
+        { count: 'exact' }
+      )
       .gte('tanggal', start)
       .lte('tanggal', end)
       .order('tanggal', { ascending: false })
@@ -39,54 +43,63 @@ async function fetchAllPenjualanByRange({ start, end }) {
   return all
 }
 
-const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
-const label = 'text-xs text-gray-600 mb-1'
-const input =
-  'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
-const btn =
-  'border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
-const btnPrimary =
-  'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed'
-const btnDark =
-  'bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed'
-const btnGreen =
-  'bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed'
+async function fetchAllPenjualanForDirectory() {
+  // Directory ambil SEMUA data (biar edit sinkron ke seluruh riwayat)
+  const pageSize = 1000
+  let from = 0
+  let all = []
+  let keepGoing = true
+
+  while (keepGoing) {
+    const { data, error } = await supabase
+      .from('penjualan_baru')
+      .select('tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,is_bonus', { count: 'exact' })
+      .order('tanggal', { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (error) throw error
+
+    const chunk = data || []
+    all = all.concat(chunk)
+
+    if (chunk.length < pageSize) keepGoing = false
+    from += pageSize
+  }
+
+  return all
+}
 
 export default function DataCustomer() {
-  // mode
+  // ===== MODE RANGE (Top 5) =====
   const [mode, setMode] = useState('bulanan') // bulanan | tahunan | custom
   const now = dayjs()
-
   const [bulan, setBulan] = useState(now.format('YYYY-MM'))
   const [tahun, setTahun] = useState(now.format('YYYY'))
-
   const [tanggalAwal, setTanggalAwal] = useState(now.startOf('month').format('YYYY-MM-DD'))
   const [tanggalAkhir, setTanggalAkhir] = useState(now.endOf('month').format('YYYY-MM-DD'))
 
-  const [loading, setLoading] = useState(false)
-  const [raw, setRaw] = useState([])
+  const [loadingTop, setLoadingTop] = useState(false)
+  const [rawTop, setRawTop] = useState([])
 
-  // search top
-  const [search, setSearch] = useState('')
+  // ===== DIRECTORY (Editable) =====
+  const [loadingDir, setLoadingDir] = useState(false)
+  const [rawDir, setRawDir] = useState([])
 
-  // sort controls (top 5)
+  const [searchTop, setSearchTop] = useState('')
+  const [searchDir, setSearchDir] = useState('')
+
   const [customerMetric, setCustomerMetric] = useState('nominal') // nominal | jumlah
   const [productMetric, setProductMetric] = useState('qty') // qty | nominal
 
-  // ===== CUSTOMER DIRECTORY (customers table) =====
-  const [dirLoading, setDirLoading] = useState(false)
-  const [dir, setDir] = useState([]) // rows from customers
-  const [dirSearch, setDirSearch] = useState('')
-  const [dirPage, setDirPage] = useState(1)
-  const DIR_PAGE_SIZE = 25
+  // paging directory
+  const [page, setPage] = useState(1)
 
-  // edit modal
-  const [editOpen, setEditOpen] = useState(false)
+  // modal edit
+  const [openEdit, setOpenEdit] = useState(false)
+  const [editRow, setEditRow] = useState(null) // { key, nama, alamat, no_wa, email, __match }
   const [savingEdit, setSavingEdit] = useState(false)
-  const [editTarget, setEditTarget] = useState(null) // row customers
-  const [editForm, setEditForm] = useState({ nama: '', no_wa: '', alamat: '', email: '' })
 
-  // auto set range on tab change
+  // set range otomatis saat ganti tab
   useEffect(() => {
     if (mode === 'bulanan') {
       const start = dayjs(bulan + '-01').startOf('month').format('YYYY-MM-DD')
@@ -104,56 +117,51 @@ export default function DataCustomer() {
   }, [mode, bulan, tahun])
 
   useEffect(() => {
-    handleRefresh()
-    fetchDirectory()
+    // initial load
+    handleRefreshTop()
+    handleRefreshDir()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function handleRefresh() {
+  async function handleRefreshTop() {
     if (!tanggalAwal || !tanggalAkhir) return alert('Tanggal belum lengkap.')
-    setLoading(true)
+    setLoadingTop(true)
     try {
       const rows = await fetchAllPenjualanByRange({ start: tanggalAwal, end: tanggalAkhir })
-      setRaw(rows || [])
+      setRawTop(rows || [])
     } catch (e) {
-      console.error('fetch penjualan error:', e)
-      alert('Gagal ambil data dari Supabase. Cek console.')
-      setRaw([])
+      console.error('TOP fetch error:', e)
+      alert('Gagal ambil data Top dari Supabase. Cek console.')
+      setRawTop([])
     } finally {
-      setLoading(false)
+      setLoadingTop(false)
     }
   }
 
-  async function fetchDirectory() {
-    setDirLoading(true)
+  async function handleRefreshDir() {
+    setLoadingDir(true)
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('id,nama,no_wa,alamat,email,updated_at')
-        .order('nama', { ascending: true })
-        .limit(5000)
-      if (error) throw error
-      setDir(data || [])
+      const rows = await fetchAllPenjualanForDirectory()
+      setRawDir(rows || [])
     } catch (e) {
-      console.error('fetch customers error:', e)
-      setDir([])
-      // jangan alert keras biar UI tetap enak; tapi kalau tabel belum ada, akan ketahuan dari console
+      console.error('DIR fetch error:', e)
+      alert('Gagal ambil data Directory dari Supabase. Cek console.')
+      setRawDir([])
     } finally {
-      setDirLoading(false)
+      setLoadingDir(false)
     }
   }
 
-  // quick range
   function setQuickRange(type) {
     setMode('custom')
     if (type === 'today') {
-      const d = dayjs().format('YYYY-MM-DD')
+      const d = todayStr()
       setTanggalAwal(d)
       setTanggalAkhir(d)
       return
     }
     if (type === 'week') {
-      const start = dayjs().startOf('week').add(1, 'day') // Senin
+      const start = dayjs().startOf('week').add(1, 'day')
       const end = start.add(6, 'day')
       setTanggalAwal(start.format('YYYY-MM-DD'))
       setTanggalAkhir(end.format('YYYY-MM-DD'))
@@ -175,14 +183,15 @@ export default function DataCustomer() {
     }
   }
 
-  // ========== cleaned (exclude bonus flag) ==========
-  const cleaned = useMemo(() => {
-    return (raw || [])
+  // ===== Cleaned TOP (exclude bonus for ranking) =====
+  const cleanedTop = useMemo(() => {
+    return (rawTop || [])
       .map((r) => ({
         tanggal: r.tanggal,
         nama_pembeli: (r.nama_pembeli || '').toString().trim(),
         alamat: (r.alamat || '').toString().trim(),
         no_wa: (r.no_wa || '').toString().trim(),
+        email: (r.email || '').toString().trim(),
         nama_produk: (r.nama_produk || '').toString().trim(),
         sn_sku: (r.sn_sku || '').toString().trim(),
         harga_jual: toNumber(r.harga_jual),
@@ -190,53 +199,32 @@ export default function DataCustomer() {
         is_bonus: r?.is_bonus === true || toNumber(r.harga_jual) <= 0,
       }))
       .filter((r) => !!r.tanggal)
-  }, [raw])
+  }, [rawTop])
 
-  // ========== customers (ranking) ==========
-  const customersRank = useMemo(() => {
+  // ===== Top Customers =====
+  const customersTop = useMemo(() => {
     const map = new Map()
-
-    const pickBest = (oldVal, newVal) => {
-      const o = (oldVal || '').trim()
-      const n = (newVal || '').trim()
-      if (!o && n) return n
-      return o
-    }
-
-    for (const r of cleaned) {
+    for (const r of cleanedTop) {
       if (!r.nama_pembeli) continue
       if (r.is_bonus) continue
 
       const nama = r.nama_pembeli.toUpperCase()
-      const key = `${nama}__${(r.no_wa || r.alamat || '').toUpperCase()}`
+      const wa = (r.no_wa || '').trim()
+      const key = `${nama}__${wa || '-'}`
 
       if (!map.has(key)) {
-        map.set(key, {
-          key,
-          nama,
-          alamat: r.alamat || '-',
-          no_wa: r.no_wa || '-',
-          jumlah: 0,
-          nominal: 0,
-        })
+        map.set(key, { key, nama, no_wa: wa || '-', jumlah: 0, nominal: 0 })
       }
-
       const c = map.get(key)
-      c.alamat = pickBest(c.alamat, r.alamat) || '-'
-      c.no_wa = pickBest(c.no_wa, r.no_wa) || '-'
       c.jumlah += 1
       c.nominal += r.harga_jual
       map.set(key, c)
     }
 
-    const s = (search || '').toLowerCase().trim()
+    const s = (searchTop || '').toLowerCase().trim()
     const arr = Array.from(map.values()).filter((c) => {
       if (!s) return true
-      return (
-        c.nama.toLowerCase().includes(s) ||
-        (c.alamat || '').toLowerCase().includes(s) ||
-        (c.no_wa || '').toLowerCase().includes(s)
-      )
+      return c.nama.toLowerCase().includes(s) || String(c.no_wa || '').toLowerCase().includes(s)
     })
 
     arr.sort((a, b) => {
@@ -245,16 +233,14 @@ export default function DataCustomer() {
     })
 
     return arr
-  }, [cleaned, search, customerMetric])
+  }, [cleanedTop, searchTop, customerMetric])
 
-  // ========== products (ranking) ==========
-  const products = useMemo(() => {
+  // ===== Top Products =====
+  const productsTop = useMemo(() => {
     const map = new Map()
-
-    for (const r of cleaned) {
+    for (const r of cleanedTop) {
       if (r.is_bonus) continue
       if (!r.nama_produk) continue
-
       const key = r.nama_produk.toUpperCase()
       if (!map.has(key)) map.set(key, { nama_produk: key, qty: 0, nominal: 0 })
       const p = map.get(key)
@@ -263,7 +249,7 @@ export default function DataCustomer() {
       map.set(key, p)
     }
 
-    const s = (search || '').toLowerCase().trim()
+    const s = (searchTop || '').toLowerCase().trim()
     const arr = Array.from(map.values()).filter((p) => {
       if (!s) return true
       return p.nama_produk.toLowerCase().includes(s)
@@ -275,66 +261,110 @@ export default function DataCustomer() {
     })
 
     return arr
-  }, [cleaned, search, productMetric])
+  }, [cleanedTop, searchTop, productMetric])
 
-  // ========== summary ==========
+  // ===== KPI =====
   const summary = useMemo(() => {
-    const rows = cleaned.filter((r) => !r.is_bonus)
+    const rows = cleanedTop.filter((r) => !r.is_bonus)
     const totalTransaksi = rows.length
-    const totalCustomer = customersRank.length
+    const totalCustomer = customersTop.length
     const rata = totalCustomer > 0 ? totalTransaksi / totalCustomer : 0
     return { totalTransaksi, totalCustomer, rata }
-  }, [cleaned, customersRank])
+  }, [cleanedTop, customersTop])
 
-  const top5Customers = useMemo(() => customersRank.slice(0, 5), [customersRank])
-  const top5Products = useMemo(() => products.slice(0, 5), [products])
+  // ===== Directory from ALL penjualan_baru =====
+  const directory = useMemo(() => {
+    const map = new Map()
 
-  // ========== directory paging + search ==========
-  const directoryRows = useMemo(() => {
-    const q = (dirSearch || '').toLowerCase().trim()
-    const arr = (dir || []).filter((c) => {
-      if (!q) return true
+    const pick = (oldVal, newVal) => {
+      const o = (oldVal || '').trim()
+      const n = (newVal || '').trim()
+      if (!o && n) return n
+      return o
+    }
+
+    for (const r0 of rawDir || []) {
+      const namaRaw = (r0.nama_pembeli || '').toString().trim()
+      if (!namaRaw) continue
+
+      const nama = namaRaw.toUpperCase()
+      const wa = (r0.no_wa || '').toString().trim()
+      const key = `${nama}__${wa || '-'}`
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          nama,
+          alamat: (r0.alamat || '').toString().trim() || '-',
+          no_wa: wa || '-',
+          email: (r0.email || '').toString().trim() || '',
+          trx: 0,
+          nominal: 0,
+          __match: { nama_pembeli: namaRaw, no_wa: wa, alamat: (r0.alamat || '').toString().trim() },
+        })
+      }
+
+      const row = map.get(key)
+      row.alamat = pick(row.alamat, (r0.alamat || '').toString().trim()) || '-'
+      row.no_wa = pick(row.no_wa, wa) || '-'
+      row.email = pick(row.email, (r0.email || '').toString().trim()) || ''
+
+      const isBonus = r0?.is_bonus === true || toNumber(r0.harga_jual) <= 0
+      if (!isBonus) {
+        row.trx += 1
+        row.nominal += toNumber(r0.harga_jual)
+      }
+
+      map.set(key, row)
+    }
+
+    const s = (searchDir || '').toLowerCase().trim()
+    const arr = Array.from(map.values()).filter((c) => {
+      if (!s) return true
       return (
-        (c.nama || '').toLowerCase().includes(q) ||
-        (c.no_wa || '').toLowerCase().includes(q) ||
-        (c.alamat || '').toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q)
+        c.nama.toLowerCase().includes(s) ||
+        (c.alamat || '').toLowerCase().includes(s) ||
+        (c.no_wa || '').toLowerCase().includes(s) ||
+        (c.email || '').toLowerCase().includes(s)
       )
     })
-    return arr
-  }, [dir, dirSearch])
 
-  const dirTotalRows = directoryRows.length
-  const dirTotalPages = Math.max(1, Math.ceil(dirTotalRows / DIR_PAGE_SIZE))
-  const dirSafePage = Math.min(Math.max(1, dirPage), dirTotalPages)
+    // urut: nominal desc biar enak
+    arr.sort((a, b) => b.nominal - a.nominal)
+    return arr
+  }, [rawDir, searchDir])
+
+  // paging directory
+  const totalRows = directory.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
 
   useEffect(() => {
-    setDirPage(1)
-  }, [dirSearch])
+    setPage(1)
+  }, [searchDir])
 
-  const dirPageRows = useMemo(() => {
-    const start = (dirSafePage - 1) * DIR_PAGE_SIZE
-    return directoryRows.slice(start, start + DIR_PAGE_SIZE)
-  }, [directoryRows, dirSafePage])
+  const pageRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE
+    return directory.slice(start, start + PAGE_SIZE)
+  }, [directory, safePage])
 
-  // ========== excel ==========
-  function exportCustomersExcel() {
-    const rows = customersRank.map((c, idx) => ({
+  // ===== Export =====
+  function exportTopCustomersExcel() {
+    const rows = customersTop.slice(0, 9999).map((c, idx) => ({
       No: idx + 1,
       Nama: c.nama,
-      Alamat: c.alamat,
       No_WA: c.no_wa,
-      Jumlah_Transaksi: c.jumlah,
+      Transaksi: c.jumlah,
       Nominal: c.nominal,
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Customer')
-    XLSX.writeFile(wb, `Customer_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'TopCustomer')
+    XLSX.writeFile(wb, `TopCustomer_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
   }
 
-  function exportProductsExcel() {
-    const rows = products.map((p, idx) => ({
+  function exportTopProductsExcel() {
+    const rows = productsTop.slice(0, 9999).map((p, idx) => ({
       No: idx + 1,
       Produk: p.nama_produk,
       Qty: p.qty,
@@ -342,95 +372,64 @@ export default function DataCustomer() {
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Produk')
-    XLSX.writeFile(wb, `Produk_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'TopProduk')
+    XLSX.writeFile(wb, `TopProduk_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
   }
 
-  // ========== edit customer (customers table) ==========
-  function openEditCustomer(c) {
-    setEditTarget(c)
-    setEditForm({
-      nama: String(c.nama || '').trim(),
-      no_wa: String(c.no_wa || '').trim(),
-      alamat: String(c.alamat || '').trim(),
-      email: String(c.email || '').trim(),
-    })
-    setEditOpen(true)
+  // ===== Edit handlers =====
+  const openEditModal = (row) => {
+    setEditRow({ ...row })
+    setOpenEdit(true)
   }
 
-  function closeEdit() {
-    if (savingEdit) return
-    setEditOpen(false)
-    setEditTarget(null)
-    setEditForm({ nama: '', no_wa: '', alamat: '', email: '' })
+  const closeEditModal = () => {
+    setOpenEdit(false)
+    setEditRow(null)
   }
 
-  async function saveEditCustomer() {
-    if (!editTarget?.id) return
-    const nama = String(editForm.nama || '').trim().toUpperCase()
-    if (!nama) return alert('Nama wajib diisi')
-    const no_wa = String(editForm.no_wa || '').trim()
-    const alamat = String(editForm.alamat || '').trim()
-    const email = String(editForm.email || '').trim().toLowerCase()
+  async function saveEdit() {
+    if (!editRow) return
+    if (!editRow.nama?.trim()) return alert('Nama wajib diisi.')
+
+    const newNama = editRow.nama.toString().trim().toUpperCase()
+    const newAlamat = (editRow.alamat || '').toString().trim()
+    const newWa = (editRow.no_wa || '').toString().trim()
+    const newEmail = (editRow.email || '').toString().trim()
+
+    const old = editRow.__match || {}
+    const oldNama = (old.nama_pembeli || editRow.nama || '').toString().trim()
+    const oldWa = (old.no_wa || editRow.no_wa || '').toString().trim()
 
     setSavingEdit(true)
     try {
-      const { error } = await supabase
-        .from('customers')
-        .update({ nama, no_wa, alamat, email, updated_at: new Date().toISOString() })
-        .eq('id', editTarget.id)
+      // Update semua transaksi yang match nama + wa (sinkron ke riwayat.js)
+      let q = supabase.from('penjualan_baru').update({
+        nama_pembeli: newNama,
+        alamat: newAlamat,
+        no_wa: newWa,
+        email: newEmail,
+      })
 
+      // prioritas match by WA
+      if (oldWa) {
+        q = q.eq('no_wa', oldWa).ilike('nama_pembeli', oldNama)
+      } else {
+        // fallback: match by nama + alamat
+        q = q.ilike('nama_pembeli', oldNama).ilike('alamat', old.alamat || '')
+      }
+
+      const { error } = await q
       if (error) throw error
-      await fetchDirectory()
-      closeEdit()
-      alert('Berhasil update customer directory.')
+
+      // refresh directory biar langsung kelihatan
+      await handleRefreshDir()
+      closeEditModal()
+      alert('Berhasil update data customer dan sudah sinkron ke Riwayat Penjualan.')
     } catch (e) {
-      console.error(e)
-      alert(`Gagal update: ${e?.message || 'error'}`)
+      console.error('saveEdit error:', e)
+      alert(`Gagal update: ${e?.message || 'unknown error'}`)
     } finally {
       setSavingEdit(false)
-    }
-  }
-
-  // ========== sync customers from current cleaned data ==========
-  async function syncCustomersFromPenjualan() {
-    const rows = cleaned
-      .filter((r) => !r.is_bonus && r.nama_pembeli)
-      .map((r) => ({
-        nama: r.nama_pembeli.toUpperCase(),
-        no_wa: (r.no_wa || '').toString().trim(),
-        alamat: (r.alamat || '').toString().trim(),
-        email: '', // kosong dulu, nanti di-edit
-        updated_at: new Date().toISOString(),
-      }))
-
-    // unique by nama + wa (fallback alamat)
-    const map = new Map()
-    for (const r of rows) {
-      const key = `${r.nama}__${(r.no_wa || r.alamat || '').toUpperCase()}`
-      if (!map.has(key)) map.set(key, r)
-    }
-    const uniq = Array.from(map.values())
-    if (uniq.length === 0) return alert('Tidak ada data untuk sync.')
-
-    setDirLoading(true)
-    try {
-      // upsert by constraint: sebaiknya bikin unique index di customers (nama, no_wa)
-      // kalau belum ada index, ini tetap insert biasa (bisa duplikat). Tapi minimal jalan.
-      const { error } = await supabase.from('customers').upsert(uniq, {
-        onConflict: 'nama,no_wa',
-        ignoreDuplicates: false,
-      })
-      if (error) throw error
-      await fetchDirectory()
-      alert('Sync selesai. Silakan edit email di directory jika diperlukan.')
-    } catch (e) {
-      console.error(e)
-      alert(
-        'Sync gagal. Biasanya karena tabel customers belum ada atau belum ada unique index (nama,no_wa). Cek console.'
-      )
-    } finally {
-      setDirLoading(false)
     }
   }
 
@@ -442,13 +441,22 @@ export default function DataCustomer() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Data Customer</h1>
             <div className="text-sm text-gray-600">
-              Tanpa grafik • Top 5 customer & top 5 produk • Directory customer (nama, alamat, WA, email) bisa di-edit.
+              Top 5 customer & top 5 produk (tanpa grafik) + Customer Directory editable (sinkron ke Riwayat Penjualan).
             </div>
           </div>
 
           <div className="flex gap-2">
-            <button onClick={handleRefresh} className={btnPrimary}>
-              {loading ? 'Memuat...' : 'Refresh'}
+            <button
+              onClick={handleRefreshTop}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
+              {loadingTop ? 'Memuat...' : 'Refresh (Top)'}
+            </button>
+            <button
+              onClick={handleRefreshDir}
+              className="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm"
+            >
+              {loadingDir ? 'Memuat...' : 'Refresh (Directory)'}
             </button>
           </div>
         </div>
@@ -487,12 +495,12 @@ export default function DataCustomer() {
           </button>
         </div>
 
-        {/* Range Controls */}
-        <div className={`${card} p-4 mb-4`}>
+        {/* Range Controls (Top) */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4 mb-4">
           <div className="flex flex-wrap gap-3 items-end">
             {mode === 'bulanan' && (
               <div>
-                <div className={label}>Pilih Bulan</div>
+                <div className="text-xs text-gray-500 mb-1">Pilih Bulan</div>
                 <input
                   type="month"
                   value={bulan}
@@ -504,7 +512,7 @@ export default function DataCustomer() {
 
             {mode === 'tahunan' && (
               <div>
-                <div className={label}>Pilih Tahun</div>
+                <div className="text-xs text-gray-500 mb-1">Pilih Tahun</div>
                 <input
                   type="number"
                   value={tahun}
@@ -515,7 +523,7 @@ export default function DataCustomer() {
             )}
 
             <div>
-              <div className={label}>Dari</div>
+              <div className="text-xs text-gray-500 mb-1">Dari</div>
               <input
                 type="date"
                 value={tanggalAwal}
@@ -526,7 +534,7 @@ export default function DataCustomer() {
             </div>
 
             <div>
-              <div className={label}>Sampai</div>
+              <div className="text-xs text-gray-500 mb-1">Sampai</div>
               <input
                 type="date"
                 value={tanggalAkhir}
@@ -537,16 +545,28 @@ export default function DataCustomer() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setQuickRange('today')} className={btn}>
+              <button
+                onClick={() => setQuickRange('today')}
+                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
+              >
                 Hari ini
               </button>
-              <button onClick={() => setQuickRange('week')} className={btn}>
+              <button
+                onClick={() => setQuickRange('week')}
+                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
+              >
                 Minggu ini
               </button>
-              <button onClick={() => setQuickRange('month')} className={btn}>
+              <button
+                onClick={() => setQuickRange('month')}
+                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
+              >
                 Bulan ini
               </button>
-              <button onClick={() => setQuickRange('year')} className={btn}>
+              <button
+                onClick={() => setQuickRange('year')}
+                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
+              >
                 Tahun ini
               </button>
             </div>
@@ -554,13 +574,13 @@ export default function DataCustomer() {
             <div className="flex-1" />
 
             <div className="min-w-[280px]">
-              <div className={label}>Search (Top)</div>
+              <div className="text-xs text-gray-500 mb-1">Search (Top)</div>
               <input
                 type="text"
-                placeholder="Cari customer / alamat / WA / produk..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className={input}
+                placeholder="Cari customer / WA / produk..."
+                value={searchTop}
+                onChange={(e) => setSearchTop(e.target.value)}
+                className="border px-3 py-2 rounded-lg w-full"
               />
             </div>
           </div>
@@ -572,36 +592,36 @@ export default function DataCustomer() {
 
         {/* KPI */}
         <div className="grid gap-4 md:grid-cols-3 mb-6">
-          <div className={card + ' p-4'}>
+          <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="text-xs text-gray-500">Total Customer</div>
             <div className="text-2xl font-bold">{summary.totalCustomer}</div>
           </div>
-          <div className={card + ' p-4'}>
+          <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="text-xs text-gray-500">Total Transaksi (non bonus)</div>
             <div className="text-2xl font-bold">{summary.totalTransaksi}</div>
           </div>
-          <div className={card + ' p-4'}>
+          <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="text-xs text-gray-500">Rata-rata Transaksi / Customer</div>
             <div className="text-2xl font-bold">{summary.rata.toFixed(1)}</div>
           </div>
         </div>
 
-        {/* Top 5 controls */}
+        {/* Controls + Export */}
         <div className="flex flex-wrap gap-3 items-end mb-3">
           <div>
-            <div className={label}>Top 5 Customer berdasarkan</div>
+            <div className="text-xs text-gray-500 mb-1">Top 5 Customer berdasarkan</div>
             <select
               className="border px-3 py-2 rounded-lg bg-white"
               value={customerMetric}
               onChange={(e) => setCustomerMetric(e.target.value)}
             >
               <option value="nominal">Nominal</option>
-              <option value="jumlah">Jumlah Transaksi</option>
+              <option value="jumlah">Qty Transaksi</option>
             </select>
           </div>
 
           <div>
-            <div className={label}>Top 5 Produk berdasarkan</div>
+            <div className="text-xs text-gray-500 mb-1">Top 5 Produk berdasarkan</div>
             <select
               className="border px-3 py-2 rounded-lg bg-white"
               value={productMetric}
@@ -615,18 +635,24 @@ export default function DataCustomer() {
           <div className="flex-1" />
 
           <div className="flex gap-2">
-            <button onClick={exportCustomersExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm">
+            <button
+              onClick={exportTopCustomersExcel}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
               Download Excel (Customer)
             </button>
-            <button onClick={exportProductsExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm">
+            <button
+              onClick={exportTopProductsExcel}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
               Download Excel (Produk)
             </button>
           </div>
         </div>
 
-        {/* Top 5 Tables */}
-        <div className="grid gap-6 md:grid-cols-2 mb-8">
-          <div className={`${card} p-4`}>
+        {/* TOP 5 TABLES */}
+        <div className="grid gap-6 md:grid-cols-2 mb-6">
+          <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-gray-800">Top 5 Customer</div>
               <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
@@ -643,7 +669,7 @@ export default function DataCustomer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {top5Customers.map((c) => (
+                  {customersTop.slice(0, 5).map((c) => (
                     <tr key={c.key} className="hover:bg-gray-50">
                       <td className="border-b px-3 py-2 font-bold text-blue-800">{c.nama}</td>
                       <td className="border-b px-3 py-2">{c.no_wa || '-'}</td>
@@ -651,7 +677,7 @@ export default function DataCustomer() {
                       <td className="border-b px-3 py-2 text-right">{formatRp(c.nominal)}</td>
                     </tr>
                   ))}
-                  {top5Customers.length === 0 && (
+                  {customersTop.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-3 py-6 text-center text-gray-500">
                         Tidak ada data.
@@ -663,7 +689,7 @@ export default function DataCustomer() {
             </div>
           </div>
 
-          <div className={`${card} p-4`}>
+          <div className="bg-white rounded-2xl border shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-gray-800">Top 5 Produk</div>
               <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
@@ -679,14 +705,14 @@ export default function DataCustomer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {top5Products.map((p) => (
+                  {productsTop.slice(0, 5).map((p) => (
                     <tr key={p.nama_produk} className="hover:bg-gray-50">
                       <td className="border-b px-3 py-2 font-semibold">{p.nama_produk}</td>
                       <td className="border-b px-3 py-2 text-center">{p.qty}</td>
                       <td className="border-b px-3 py-2 text-right">{formatRp(p.nominal)}</td>
                     </tr>
                   ))}
-                  {top5Products.length === 0 && (
+                  {productsTop.length === 0 && (
                     <tr>
                       <td colSpan={3} className="px-3 py-6 text-center text-gray-500">
                         Tidak ada data.
@@ -697,47 +723,37 @@ export default function DataCustomer() {
               </table>
             </div>
 
-            <div className="text-[11px] text-gray-500 mt-2">
+            <div className="text-xs text-gray-500 mt-2">
               Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).
             </div>
           </div>
         </div>
 
-        {/* ===================== DIRECTORY ===================== */}
-        <div className={`${card} p-4`}>
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-3">
+        {/* DIRECTORY */}
+        <div className="bg-white rounded-2xl border shadow-sm p-4">
+          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
             <div>
-              <div className="text-sm font-semibold text-gray-900">Customer Directory (Editable)</div>
+              <div className="text-sm font-semibold text-gray-800">Customer Directory (Editable)</div>
               <div className="text-xs text-gray-500">
-                Sumber: tabel <b>customers</b> (nama, alamat, WA, email). Untuk isi awal, klik Sync.
+                Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
               </div>
             </div>
 
-            <div className="flex gap-2 items-end">
-              <div className="w-full md:w-[360px]">
-                <div className={label}>Search Directory</div>
-                <input
-                  className={input}
-                  placeholder="Cari nama / WA / email / alamat..."
-                  value={dirSearch}
-                  onChange={(e) => setDirSearch(e.target.value)}
-                />
-              </div>
-
-              <button className={btn} onClick={fetchDirectory} disabled={dirLoading}>
-                {dirLoading ? 'Memuat…' : 'Refresh'}
-              </button>
-
-              <button className={btnGreen} onClick={syncCustomersFromPenjualan} disabled={dirLoading || loading}>
-                {dirLoading ? 'Sync…' : 'Sync dari Penjualan'}
-              </button>
+            <div className="w-full md:w-[360px]">
+              <div className="text-xs text-gray-500 mb-1">Search Directory</div>
+              <input
+                className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                placeholder="Cari nama / WA / email / alamat..."
+                value={searchDir}
+                onChange={(e) => setSearchDir(e.target.value)}
+              />
             </div>
           </div>
 
           <div className="text-xs text-gray-500 mb-3">
-            Total: <b className="text-gray-900">{dirTotalRows}</b> customer • Halaman:{' '}
+            Total: <b className="text-gray-900">{totalRows}</b> customer • Halaman:{' '}
             <b className="text-gray-900">
-              {dirSafePage}/{dirTotalPages}
+              {safePage}/{totalPages}
             </b>
           </div>
 
@@ -749,34 +765,41 @@ export default function DataCustomer() {
                   <th className="border-b px-3 py-2 text-left">Alamat</th>
                   <th className="border-b px-3 py-2 text-left">No WA</th>
                   <th className="border-b px-3 py-2 text-left">Email</th>
-                  <th className="border-b px-3 py-2 text-right">Aksi</th>
+                  <th className="border-b px-3 py-2 text-center">Trx</th>
+                  <th className="border-b px-3 py-2 text-right">Nominal</th>
+                  <th className="border-b px-3 py-2 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {dirLoading && dirPageRows.length === 0 && (
+                {loadingDir && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
                       Memuat…
                     </td>
                   </tr>
                 )}
 
-                {!dirLoading && dirPageRows.length === 0 && (
+                {!loadingDir && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-gray-500">
-                      Tidak ada data. Klik <b>Sync dari Penjualan</b> untuk isi awal.
+                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
+                      Tidak ada data.
                     </td>
                   </tr>
                 )}
 
-                {dirPageRows.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50">
-                    <td className="border-b px-3 py-2 font-bold text-blue-800">{String(c.nama || '').toUpperCase()}</td>
+                {pageRows.map((c) => (
+                  <tr key={c.key} className="hover:bg-gray-50">
+                    <td className="border-b px-3 py-2 font-bold text-blue-800">{c.nama}</td>
                     <td className="border-b px-3 py-2">{c.alamat || '-'}</td>
                     <td className="border-b px-3 py-2">{c.no_wa || '-'}</td>
                     <td className="border-b px-3 py-2">{c.email || '-'}</td>
-                    <td className="border-b px-3 py-2 text-right">
-                      <button className={btnDark} onClick={() => openEditCustomer(c)}>
+                    <td className="border-b px-3 py-2 text-center">{c.trx}</td>
+                    <td className="border-b px-3 py-2 text-right">{formatRp(c.nominal)}</td>
+                    <td className="border-b px-3 py-2 text-center">
+                      <button
+                        onClick={() => openEditModal(c)}
+                        className="border border-gray-200 px-3 py-1.5 rounded-lg text-xs bg-white hover:bg-gray-50"
+                      >
                         Edit
                       </button>
                     </td>
@@ -791,88 +814,107 @@ export default function DataCustomer() {
             <div className="text-xs text-gray-500">
               Menampilkan{' '}
               <b className="text-gray-900">
-                {dirTotalRows === 0 ? 0 : (dirSafePage - 1) * DIR_PAGE_SIZE + 1}–{Math.min(dirSafePage * DIR_PAGE_SIZE, dirTotalRows)}
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, totalRows)}
               </b>{' '}
-              dari <b className="text-gray-900">{dirTotalRows}</b>
+              dari <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
-              <button className={btn} onClick={() => setDirPage(1)} disabled={dirSafePage === 1}>
+              <button
+                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+                onClick={() => setPage(1)}
+                disabled={safePage === 1}
+              >
                 « First
               </button>
-              <button className={btn} onClick={() => setDirPage((p) => Math.max(1, p - 1))} disabled={dirSafePage === 1}>
+              <button
+                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+              >
                 ‹ Prev
               </button>
-              <button className={btn} onClick={() => setDirPage((p) => Math.min(dirTotalPages, p + 1))} disabled={dirSafePage === dirTotalPages}>
+              <button
+                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+              >
                 Next ›
               </button>
-              <button className={btn} onClick={() => setDirPage(dirTotalPages)} disabled={dirSafePage === dirTotalPages}>
+              <button
+                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+              >
                 Last »
               </button>
             </div>
           </div>
         </div>
 
-        {/* ===================== EDIT MODAL ===================== */}
-        {editOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-xl bg-white rounded-2xl border border-gray-200 shadow-xl">
-              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+        {/* EDIT MODAL */}
+        {openEdit && editRow && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white w-full max-w-lg rounded-2xl border shadow-lg p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
-                  <div className="text-sm font-bold text-gray-900">Edit Customer</div>
-                  <div className="text-xs text-gray-500">Simpan ke tabel <b>customers</b>.</div>
+                  <div className="text-lg font-bold text-gray-900">Edit Customer</div>
+                  <div className="text-xs text-gray-500">
+                    Save akan update semua transaksi penjualan_baru yang match Nama+WA.
+                  </div>
                 </div>
-                <button className={btn} onClick={closeEdit} disabled={savingEdit}>
+                <button
+                  onClick={closeEditModal}
+                  className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50"
+                  disabled={savingEdit}
+                >
                   Tutup
                 </button>
               </div>
 
-              <div className="p-4 space-y-3">
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Nama</div>
+                  <input
+                    className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                    value={editRow.nama}
+                    onChange={(e) => setEditRow((p) => ({ ...p, nama: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Alamat</div>
+                  <input
+                    className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                    value={editRow.alamat}
+                    onChange={(e) => setEditRow((p) => ({ ...p, alamat: e.target.value }))}
+                  />
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <div className={label}>Nama</div>
+                    <div className="text-xs text-gray-500 mb-1">No WA</div>
                     <input
-                      className={input}
-                      value={editForm.nama}
-                      onChange={(e) => setEditForm((p) => ({ ...p, nama: e.target.value }))}
-                      placeholder="Nama"
+                      className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                      value={editRow.no_wa}
+                      onChange={(e) => setEditRow((p) => ({ ...p, no_wa: e.target.value }))}
                     />
                   </div>
                   <div>
-                    <div className={label}>No WA</div>
+                    <div className="text-xs text-gray-500 mb-1">Email</div>
                     <input
-                      className={input}
-                      value={editForm.no_wa}
-                      onChange={(e) => setEditForm((p) => ({ ...p, no_wa: e.target.value }))}
-                      placeholder="08xxxxxxxxxx"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className={label}>Alamat</div>
-                    <input
-                      className={input}
-                      value={editForm.alamat}
-                      onChange={(e) => setEditForm((p) => ({ ...p, alamat: e.target.value }))}
-                      placeholder="Alamat"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className={label}>Email</div>
-                    <input
-                      className={input}
-                      value={editForm.email}
-                      onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
-                      placeholder="customer@email.com"
+                      className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                      value={editRow.email || ''}
+                      onChange={(e) => setEditRow((p) => ({ ...p, email: e.target.value }))}
+                      placeholder="contoh: customer@email.com"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="p-4 border-t border-gray-200 flex flex-col md:flex-row gap-2 md:justify-end">
-                <button className={btn} onClick={closeEdit} disabled={savingEdit}>
-                  Batal
-                </button>
-                <button className={btnPrimary} onClick={saveEditCustomer} disabled={savingEdit}>
+                <button
+                  onClick={saveEdit}
+                  disabled={savingEdit}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl w-full disabled:opacity-60"
+                >
                   {savingEdit ? 'Menyimpan…' : 'Simpan Perubahan'}
                 </button>
               </div>
