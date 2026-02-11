@@ -194,6 +194,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       const qty = Math.max(1, toInt(it.qty))
       const unit = toNumber(it.harga_jual)
       const line = unit * qty
+
       const metaParts = []
       const warna = safe(it.warna)
       const storage = safe(it.storage)
@@ -212,12 +213,12 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
             )}</div>
             ${
               metaTop
-                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a;">${metaTop}</div>`
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">${metaTop}</div>`
                 : ''
             }
             ${
               sn
-                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a;">SN/SKU: ${sn}</div>`
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${sn}</div>`
                 : ''
             }
           </td>
@@ -251,38 +252,35 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
 <body>
   <div id="invoice-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
     <div style="padding:56px 56px 42px 56px; height:100%;">
+
       <!-- TOP ROW -->
       <div style="display:flex; gap:22px; align-items:flex-start;">
-        <!-- LOGO CARD -->
-        <div style="
-          width:360px; height:112px; border-radius:18px;
-          background:
-            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18) 0, rgba(255,255,255,0) 55%),
-            radial-gradient(circle at 78% 72%, rgba(255,255,255,0.14) 0, rgba(255,255,255,0) 60%),
-            linear-gradient(135deg, ${BLUE} 0%, #1f78ff 100%);
-          box-shadow: 0 10px 26px rgba(35,136,255,0.25);
-          display:flex; align-items:center; justify-content:center;
-        ">
-          <img src="/logo.png" alt="CONNECT.IND" style="max-width:280px; max-height:64px; width:auto; height:auto; display:block;" />
+
+        <!-- ✅ LOGO ONLY (NO SHAPE/BORDER) -->
+        <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
+          <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
-        <!-- META CARD -->
+        <!-- ✅ META CARD (lebih tinggi + tidak kepotong) -->
         <div style="
-          flex:1; height:112px; border-radius:18px; border:1px solid #eef2f7;
+          flex:1; min-height:132px; border-radius:18px; border:1px solid #eef2f7;
           background:#ffffff; padding:18px 22px;
           display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
           box-shadow: 0 8px 22px rgba(16,24,40,0.06);
+          overflow:visible;
         ">
           <div style="flex:1; min-width:0;">
             <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Date:</div>
-            <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safe(
+            <div style="font-size:12px; font-weight:600; color:#0b1220; line-height:1.45; white-space:nowrap;">${safe(
               invoiceDateLong
             )}</div>
           </div>
-          <div style="width:1px; height:72px; background:#eef2f7;"></div>
+
+          <div style="width:1px; height:92px; background:#eef2f7;"></div>
+
           <div style="flex:1; min-width:0;">
             <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Number:</div>
-            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safe(
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; line-height:1.45; white-space:nowrap;">${safe(
               invoice_id
             )}</div>
           </div>
@@ -290,7 +288,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       </div>
 
       <!-- BILL ROW -->
-      <div style="display:flex; gap:22px; margin-top:28px;">
+      <div style="display:flex; gap:22px; margin-top:22px;">
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
           <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
@@ -319,7 +317,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       </div>
 
       <!-- TABLE -->
-      <div style="margin-top:28px; border:1px solid #eef2f7; border-radius:18px; overflow:hidden;">
+      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:18px; overflow:hidden;">
         <table style="width:100%; border-collapse:separate; border-spacing:0;">
           <thead>
             <tr style="background:#f7f9fc;">
@@ -329,14 +327,12 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
               <th style="text-align:right; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Total</th>
             </tr>
           </thead>
-          <tbody>
-            ${itemRows || ''}
-          </tbody>
+          <tbody>${itemRows || ''}</tbody>
         </table>
       </div>
 
       <!-- TOTALS -->
-      <div style="display:flex; justify-content:flex-end; margin-top:26px;">
+      <div style="display:flex; justify-content:flex-end; margin-top:24px;">
         <div style="min-width:320px;">
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Subtotal:</div>
@@ -360,6 +356,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
 </body>
 </html>`
 }
+
 
 // ====== download helpers ======
 async function canvasToJpegBase64(canvas, quality = 0.95) {
