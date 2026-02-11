@@ -91,6 +91,10 @@ export default function DataCustomer() {
   const [customerMetric, setCustomerMetric] = useState('nominal') // nominal | jumlah
   const [productMetric, setProductMetric] = useState('qty') // qty | nominal
 
+  // ✅ SORT DIRECTORY (default: transaksi terakhir)
+  const [dirSortKey, setDirSortKey] = useState('last') // last | nominal | trx | nama
+  const [dirSortDir, setDirSortDir] = useState('desc') // asc | desc
+
   // paging directory
   const [page, setPage] = useState(1)
 
@@ -291,6 +295,7 @@ export default function DataCustomer() {
       const wa = (r0.no_wa || '').toString().trim()
       const key = `${nama}__${wa || '-'}`
 
+      const tgl = (r0.tanggal || '').toString().trim() // format YYYY-MM-DD (baik untuk compare string)
       if (!map.has(key)) {
         map.set(key, {
           key,
@@ -300,6 +305,7 @@ export default function DataCustomer() {
           email: (r0.email || '').toString().trim() || '',
           trx: 0,
           nominal: 0,
+          last_tanggal: tgl || '', // ✅ simpan transaksi terakhir
           __match: { nama_pembeli: namaRaw, no_wa: wa, alamat: (r0.alamat || '').toString().trim() },
         })
       }
@@ -308,6 +314,9 @@ export default function DataCustomer() {
       row.alamat = pick(row.alamat, (r0.alamat || '').toString().trim()) || '-'
       row.no_wa = pick(row.no_wa, wa) || '-'
       row.email = pick(row.email, (r0.email || '').toString().trim()) || ''
+
+      // ✅ update last transaksi (ambil yg paling baru)
+      if (tgl && (!row.last_tanggal || tgl > row.last_tanggal)) row.last_tanggal = tgl
 
       const isBonus = r0?.is_bonus === true || toNumber(r0.harga_jual) <= 0
       if (!isBonus) {
@@ -329,10 +338,41 @@ export default function DataCustomer() {
       )
     })
 
-    // urut: nominal desc biar enak
-    arr.sort((a, b) => b.nominal - a.nominal)
+    const dirMul = dirSortDir === 'asc' ? 1 : -1
+
+    arr.sort((a, b) => {
+      if (dirSortKey === 'last') {
+        const av = a.last_tanggal || ''
+        const bv = b.last_tanggal || ''
+        if (av !== bv) return (av > bv ? 1 : -1) * dirMul
+        // tie-breaker: nominal desc
+        if (a.nominal !== b.nominal) return (a.nominal - b.nominal) * -1
+        return a.nama.localeCompare(b.nama)
+      }
+
+      if (dirSortKey === 'nominal') {
+        if (a.nominal !== b.nominal) return (a.nominal - b.nominal) * dirMul
+        const av = a.last_tanggal || ''
+        const bv = b.last_tanggal || ''
+        if (av !== bv) return (av > bv ? 1 : -1) * -1
+        return a.nama.localeCompare(b.nama)
+      }
+
+      if (dirSortKey === 'trx') {
+        if (a.trx !== b.trx) return (a.trx - b.trx) * dirMul
+        const av = a.last_tanggal || ''
+        const bv = b.last_tanggal || ''
+        if (av !== bv) return (av > bv ? 1 : -1) * -1
+        return a.nama.localeCompare(b.nama)
+      }
+
+      // nama
+      const res = a.nama.localeCompare(b.nama)
+      return res * dirMul
+    })
+
     return arr
-  }, [rawDir, searchDir])
+  }, [rawDir, searchDir, dirSortKey, dirSortDir])
 
   // paging directory
   const totalRows = directory.length
@@ -341,7 +381,7 @@ export default function DataCustomer() {
 
   useEffect(() => {
     setPage(1)
-  }, [searchDir])
+  }, [searchDir, dirSortKey, dirSortDir])
 
   const pageRows = useMemo(() => {
     const start = (safePage - 1) * PAGE_SIZE
@@ -466,9 +506,7 @@ export default function DataCustomer() {
           <button
             onClick={() => setMode('bulanan')}
             className={`border px-3 py-2 rounded-lg text-sm ${
-              mode === 'bulanan'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white hover:bg-gray-100'
+              mode === 'bulanan' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100'
             }`}
           >
             Bulanan
@@ -476,9 +514,7 @@ export default function DataCustomer() {
           <button
             onClick={() => setMode('tahunan')}
             className={`border px-3 py-2 rounded-lg text-sm ${
-              mode === 'tahunan'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white hover:bg-gray-100'
+              mode === 'tahunan' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100'
             }`}
           >
             Tahunan
@@ -486,9 +522,7 @@ export default function DataCustomer() {
           <button
             onClick={() => setMode('custom')}
             className={`border px-3 py-2 rounded-lg text-sm ${
-              mode === 'custom'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white hover:bg-gray-100'
+              mode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100'
             }`}
           >
             Custom
@@ -723,9 +757,7 @@ export default function DataCustomer() {
               </table>
             </div>
 
-            <div className="text-xs text-gray-500 mt-2">
-              Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).
-            </div>
+            <div className="text-xs text-gray-500 mt-2">Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).</div>
           </div>
         </div>
 
@@ -739,14 +771,42 @@ export default function DataCustomer() {
               </div>
             </div>
 
-            <div className="w-full md:w-[360px]">
-              <div className="text-xs text-gray-500 mb-1">Search Directory</div>
-              <input
-                className="border border-gray-200 px-3 py-2 rounded-lg w-full"
-                placeholder="Cari nama / WA / email / alamat..."
-                value={searchDir}
-                onChange={(e) => setSearchDir(e.target.value)}
-              />
+            {/* ✅ SORT + SEARCH */}
+            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-end">
+              <div className="w-full md:w-[240px]">
+                <div className="text-xs text-gray-500 mb-1">Sort Directory</div>
+                <select
+                  className="border border-gray-200 px-3 py-2 rounded-lg w-full bg-white"
+                  value={dirSortKey}
+                  onChange={(e) => setDirSortKey(e.target.value)}
+                >
+                  <option value="last">Transaksi Terakhir</option>
+                  <option value="nominal">Nominal</option>
+                  <option value="trx">Jumlah Transaksi</option>
+                  <option value="nama">Nama</option>
+                </select>
+              </div>
+
+              <div className="w-full md:w-[140px]">
+                <div className="text-xs text-gray-500 mb-1">Urutan</div>
+                <button
+                  type="button"
+                  onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
+                  className="border border-gray-200 px-3 py-2 rounded-lg w-full text-sm bg-white hover:bg-gray-50"
+                >
+                  {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
+                </button>
+              </div>
+
+              <div className="w-full md:w-[360px]">
+                <div className="text-xs text-gray-500 mb-1">Search Directory</div>
+                <input
+                  className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                  placeholder="Cari nama / WA / email / alamat..."
+                  value={searchDir}
+                  onChange={(e) => setSearchDir(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
@@ -767,13 +827,14 @@ export default function DataCustomer() {
                   <th className="border-b px-3 py-2 text-left">Email</th>
                   <th className="border-b px-3 py-2 text-center">Trx</th>
                   <th className="border-b px-3 py-2 text-right">Nominal</th>
+                  <th className="border-b px-3 py-2 text-left">Terakhir</th>
                   <th className="border-b px-3 py-2 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingDir && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
                       Memuat…
                     </td>
                   </tr>
@@ -781,7 +842,7 @@ export default function DataCustomer() {
 
                 {!loadingDir && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
                       Tidak ada data.
                     </td>
                   </tr>
@@ -795,6 +856,7 @@ export default function DataCustomer() {
                     <td className="border-b px-3 py-2">{c.email || '-'}</td>
                     <td className="border-b px-3 py-2 text-center">{c.trx}</td>
                     <td className="border-b px-3 py-2 text-right">{formatRp(c.nominal)}</td>
+                    <td className="border-b px-3 py-2">{c.last_tanggal ? c.last_tanggal : '-'}</td>
                     <td className="border-b px-3 py-2 text-center">
                       <button
                         onClick={() => openEditModal(c)}
@@ -814,8 +876,7 @@ export default function DataCustomer() {
             <div className="text-xs text-gray-500">
               Menampilkan{' '}
               <b className="text-gray-900">
-                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-                {Math.min(safePage * PAGE_SIZE, totalRows)}
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}
               </b>{' '}
               dari <b className="text-gray-900">{totalRows}</b>
             </div>
@@ -860,9 +921,7 @@ export default function DataCustomer() {
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
                   <div className="text-lg font-bold text-gray-900">Edit Customer</div>
-                  <div className="text-xs text-gray-500">
-                    Save akan update semua transaksi penjualan_baru yang match Nama+WA.
-                  </div>
+                  <div className="text-xs text-gray-500">Save akan update semua transaksi penjualan_baru yang match Nama+WA.</div>
                 </div>
                 <button
                   onClick={closeEditModal}
