@@ -147,48 +147,42 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
 
           <!-- INVOICE DATE -->
-         <div style="
-  height:62px;
-  border-radius:8px;
-  border:1px solid #eef2f7;
-  background:#ffffff;
-  padding:0 16px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  text-align:center;
-  box-shadow:0 8px 22px rgba(16,24,40,0.06);
-  overflow:hidden;
-">
-  <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:6px;">Invoice Date</div>
-  <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap;">
-    ${safe(invoiceDateLong)}
-  </div>
-</div>
-
+          <div style="
+            height:62px;
+            border-radius:8px;
+            border:1px solid #eef2f7;
+            background:#ffffff;
+            padding:12px 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06);
+            overflow:hidden;
+          ">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Date</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; text-align:right;">
+              ${safe(invoiceDateLong)}
+            </div>
+          </div>
 
           <!-- INVOICE NUMBER -->
           <div style="
-  height:62px;
-  border-radius:8px;
-  border:1px solid #eef2f7;
-  background:#ffffff;
-  padding:0 16px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  text-align:center;
-  box-shadow:0 8px 22px rgba(16,24,40,0.06);
-  overflow:hidden;
-">
-  <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:6px;">Invoice Number</div>
-  <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap;">
-    ${safe(invoice_id)}
-  </div>
-</div>
-
+            height:62px;
+            border-radius:8px;
+            border:1px solid #eef2f7;
+            background:#ffffff;
+            padding:12px 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06);
+            overflow:hidden;
+          ">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
+              ${safe(invoice_id)}
+            </div>
+          </div>
 
         </div>
       </div>
@@ -262,6 +256,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 </body>
 </html>`
 }
+
 
 
 
