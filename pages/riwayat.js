@@ -37,101 +37,80 @@ const toNumber = (v) => {
   return Number.isFinite(n) ? n : 0
 }
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
-const up = (s) => (s || '').toString().trim().toUpperCase()
+const safe = (v) => String(v ?? '').trim()
 
-// ====== hitungan total INVOICE (ikut invoicepdf.jsx) ======
+// ====== hitungan total INVOICE ======
 function computeInvoiceTotals(rows = []) {
-  const map = new Map()
-
-  for (const it of rows || []) {
-    const qtyRow = Math.max(1, toNumber(it.qty))
-    const price = toNumber(it.harga_jual)
-
-    const key = [
-      up(it.nama_produk),
-      up(it.sn_sku),
-      up(it.warna),
-      String(price),
-      up(it.storage),
-      up(it.garansi),
-    ].join('||')
-
-    if (!map.has(key)) {
-      map.set(key, {
-        ...it,
-        qty: qtyRow,
-        unit_price: price,
-        total_price: price * qtyRow,
-        diskon_item: toNumber(it.diskon_item),
-      })
-    } else {
-      const cur = map.get(key)
-      const newQty = (cur.qty || 0) + qtyRow
-      cur.qty = newQty
-      cur.total_price = (cur.unit_price || 0) * newQty
-      cur.diskon_item = toNumber(cur.diskon_item) + toNumber(it.diskon_item)
-      map.set(key, cur)
-    }
-  }
-
-  const groupedItems = Array.from(map.values())
-  const subtotal = groupedItems.reduce((acc, item) => acc + toNumber(item.total_price), 0)
+  const subtotal = (rows || []).reduce((acc, r) => {
+    const qty = Math.max(1, toNumber(r.qty))
+    const price = toNumber(r.harga_jual)
+    return acc + price * qty
+  }, 0)
 
   const discountByItems = (rows || []).reduce((acc, item) => acc + toNumber(item.diskon_item), 0)
   const discountByInvoice = (rows || []).reduce((max, item) => Math.max(max, toNumber(item.diskon_invoice)), 0)
 
   const rawDiscount = discountByItems > 0 ? discountByItems : discountByInvoice
   const discount = Math.min(subtotal, rawDiscount)
-
   const total = Math.max(0, subtotal - discount)
 
-  return { groupedItems, subtotal, discount, total }
+  return { subtotal, discount, total }
 }
 
-// ====== build HTML invoice (MODEL BARU sesuai contoh) ======
-function buildInvoiceHtml({ invoice_id, rows, totals }) {
+function formatInvoiceDateLong(ymdOrIso) {
+  if (!ymdOrIso) return ''
+  const d = dayjs(ymdOrIso)
+  if (!d.isValid()) return String(ymdOrIso)
+  return d.format('MMMM D, YYYY')
+}
+
+// ====== build HTML invoice A4 (MODEL CONTOH) ======
+function buildInvoiceA4Html({ invoice_id, rows, totals }) {
+  const BLUE = '#2388ff'
   const first = rows?.[0] || {}
-  const dateObj = first?.tanggal ? dayjs(first.tanggal) : null
+  const invoiceDateLong = formatInvoiceDateLong(first?.tanggal)
 
-  const invoiceDateText = dateObj?.isValid() ? dateObj.format('MMMM D, YYYY') : ''
-  const invoiceDateSmall = dateObj?.isValid() ? dateObj.format('YYYY-MM-DD') : ''
+  const itemRows = (rows || [])
+    .map((it) => {
+      const qty = Math.max(1, toNumber(it.qty))
+      const unit = toNumber(it.harga_jual)
+      const line = unit * qty
 
-  const itemsHtml = (totals.groupedItems || [])
-    .map((item) => {
-      const meta = [
-        item.warna ? String(item.warna) : '',
-        item.storage ? String(item.storage) : '',
-        item.garansi ? String(item.garansi) : '',
-      ]
-        .map((x) => x.trim())
-        .filter(Boolean)
-        .join(' • ')
-
-      const sn = item.sn_sku ? String(item.sn_sku) : ''
+      const metaParts = []
+      const warna = safe(it.warna)
+      const storage = safe(it.storage)
+      const garansi = safe(it.garansi)
+      if (warna) metaParts.push(warna)
+      if (storage) metaParts.push(storage)
+      if (garansi) metaParts.push(garansi)
+      const metaTop = metaParts.length ? metaParts.join(' • ') : ''
 
       return `
         <tr>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; vertical-align:top;">
-            <div style="font-size:12px; font-weight:600; color:#0f172a; letter-spacing:0.2px;">
-              ${String(item.nama_produk || '')}
-            </div>
-            <div style="margin-top:6px; font-size:11px; font-weight:600; color:#64748b; line-height:1.5;">
-              ${meta ? `${meta}<br/>` : ''}
-              ${sn ? `SN/SKU: ${sn}` : ''}
-            </div>
+            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(
+              it.nama_produk
+            )}</div>
+            ${
+              metaTop
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a;">${metaTop}</div>`
+                : ''
+            }
+            ${
+              it.sn_sku
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a;">SN/SKU: ${safe(
+                    it.sn_sku
+                  )}</div>`
+                : ''
+            }
           </td>
-
-          <td style="padding:18px 12px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0f172a;">
-            ${toNumber(item.qty)}
-          </td>
-
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0f172a;">
-            ${formatRp(toNumber(item.unit_price))}
-          </td>
-
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0f172a;">
-            ${formatRp(toNumber(item.total_price))}
-          </td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0b1220;">${qty}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
+            unit
+          )}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
+            line
+          )}</td>
         </tr>
       `
     })
@@ -142,143 +121,117 @@ function buildInvoiceHtml({ invoice_id, rows, totals }) {
   return `<!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
     *{ box-sizing:border-box; }
-    body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    .page{
-      width:794px;               /* A4-ish @ 96dpi */
-      min-height:1123px;
-      margin:0 auto;
-      padding:56px 56px 48px 56px;
-      background:#fff;
-      position:relative;
-    }
-    .row{ display:flex; gap:18px; align-items:stretch; }
-    .card{
-      border:1px solid #e8eef6;
-      border-radius:16px;
-      background:#f8fafc;
-    }
-    .cardWhite{
-      border:1px solid #e8eef6;
-      border-radius:16px;
-      background:#ffffff;
-    }
-    .label{ font-size:12px; font-weight:600; color:#64748b; }
-    .value{ font-size:12px; font-weight:600; color:#0f172a; }
-    .semi{ font-weight:600; }
-    .blue{ color:#2388ff; }
-    .tableWrap{
-      margin-top:26px;
-      border:1px solid #e8eef6;
-      border-radius:16px;
-      overflow:hidden;
-      background:#fff;
-    }
-    table{ width:100%; border-collapse:collapse; }
-    thead th{
-      text-align:left;
-      background:#f6f8fc;
-      padding:16px 18px;
-      font-size:12px;
-      font-weight:600;
-      color:#0f172a;
-      border-bottom:1px solid #eef2f7;
-    }
+    body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
   </style>
 </head>
-
 <body>
-  <div class="page" id="invoice-root">
-    <!-- HEADER -->
-    <div class="row" style="align-items:center; gap:18px;">
-      <div style="flex:1;">
-        <!-- logo tanpa box/border -->
-        <img src="/logo.png" alt="CONNECT.IND" style="display:block; width:280px; max-width:100%; height:auto;" />
+  <div id="invoice-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
+    <div style="padding:56px 56px 42px 56px; height:100%;">
+      <div style="display:flex; gap:22px; align-items:flex-start;">
+        <div style="
+          width:360px; height:112px; border-radius:18px;
+          background:
+            radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18) 0, rgba(255,255,255,0) 55%),
+            radial-gradient(circle at 78% 72%, rgba(255,255,255,0.14) 0, rgba(255,255,255,0) 60%),
+            linear-gradient(135deg, ${BLUE} 0%, #1f78ff 100%);
+          box-shadow: 0 10px 26px rgba(35,136,255,0.25);
+          display:flex; align-items:center; justify-content:center;
+        ">
+          <img src="/logo.png" alt="CONNECT.IND" style="max-width:280px; max-height:64px; width:auto; height:auto; display:block;" />
+        </div>
+
+        <div style="
+          flex:1; height:112px; border-radius:18px; border:1px solid #eef2f7;
+          background:#ffffff; padding:18px 22px;
+          display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
+          box-shadow: 0 8px 22px rgba(16,24,40,0.06);
+        ">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Date:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safe(
+              invoiceDateLong
+            )}</div>
+          </div>
+          <div style="width:1px; height:72px; background:#eef2f7;"></div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Number:</div>
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safe(
+              invoice_id
+            )}</div>
+          </div>
+        </div>
       </div>
 
-      <div class="cardWhite" style="width:340px; padding:18px 18px;">
-        <div style="display:flex; gap:18px;">
-          <div style="flex:1; padding-right:14px; border-right:1px solid #eef2f7;">
-            <div class="label">Invoice Date:</div>
-            <div class="value" style="margin-top:8px; font-size:12px;">${invoiceDateText || invoiceDateSmall}</div>
+      <div style="display:flex; gap:22px; margin-top:28px;">
+        <div style="flex:1;">
+          <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
+          <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">CONNECT.IND</div>
+            <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
+              (+62) 896-31-4000-31<br/>
+              Jl. Srikuncoro Raya Ruko B1-B2,<br/>
+              Kalibanteng Kulon, Kec. Semarang Barat,<br/>
+              Kota Semarang, Jawa Tengah, 50145.
+            </div>
           </div>
-          <div style="flex:1; padding-left:14px;">
-            <div class="label">Invoice Number:</div>
-            <div class="value blue" style="margin-top:8px; font-size:12px; word-break:break-word;">${invoice_id}</div>
+        </div>
+
+        <div style="flex:1;">
+          <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
+          <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
+              first?.nama_pembeli
+            )}</div>
+            <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
+              ${safe(first?.no_wa)}<br/>
+              ${safe(first?.alamat)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:28px; border:1px solid #eef2f7; border-radius:18px; overflow:hidden;">
+        <table style="width:100%; border-collapse:separate; border-spacing:0;">
+          <thead>
+            <tr style="background:#f7f9fc;">
+              <th style="text-align:left; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Item</th>
+              <th style="text-align:center; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Quantity</th>
+              <th style="text-align:right; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Price</th>
+              <th style="text-align:right; padding:16px 18px; font-size:12px; font-weight:600; color:#0b1220;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemRows || ''}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:26px;">
+        <div style="min-width:320px;">
+          <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Subtotal:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(totals.subtotal)}</div>
+          </div>
+          <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:14px;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Discount:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${discountText}</div>
+          </div>
+          <div style="display:flex; justify-content:space-between; gap:18px;">
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">Grand Total:</div>
+            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(totals.total)}</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- BILL FROM / BILL TO -->
-    <div class="row" style="margin-top:34px;">
-      <div style="flex:1;">
-        <div class="label" style="margin-bottom:10px;">Bill from:</div>
-        <div class="card" style="padding:18px 18px;">
-          <div style="font-size:12px; font-weight:600; color:#0f172a;">CONNECT.IND</div>
-          <div style="margin-top:10px; font-size:12px; font-weight:600; color:#64748b; line-height:1.7;">
-            (+62) 896-31-4000-31<br/>
-            Jl. Srikuncoro Raya Ruko B1-B2,<br/>
-            Kalibanteng Kulon, Kec. Semarang Barat,<br/>
-            Kota Semarang, Jawa Tengah, 50145.
-          </div>
-        </div>
-      </div>
-
-      <div style="flex:1;">
-        <div class="label" style="margin-bottom:10px;">Bill to:</div>
-        <div class="card" style="padding:18px 18px;">
-          <div style="font-size:12px; font-weight:600; color:#0f172a;">${String(first?.nama_pembeli || '')}</div>
-          <div style="margin-top:10px; font-size:12px; font-weight:600; color:#64748b; line-height:1.7;">
-            ${String(first?.no_wa || '')}<br/>
-            ${String(first?.alamat || '')}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TABLE -->
-    <div class="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:52%;">Item</th>
-            <th style="width:16%; text-align:center;">Quantity</th>
-            <th style="width:16%; text-align:right;">Price</th>
-            <th style="width:16%; text-align:right;">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml || ''}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- TOTALS -->
-    <div style="display:flex; justify-content:flex-end; margin-top:30px;">
-      <table style="width:360px; border-collapse:collapse;">
-        <tbody>
-          <tr>
-            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#64748b;">Subtotal:</td>
-            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#0f172a; text-align:right;">${formatRp(totals.subtotal)}</td>
-          </tr>
-          <tr>
-            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#64748b;">Discount:</td>
-            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#0f172a; text-align:right;">${discountText}</td>
-          </tr>
-          <tr>
-            <td style="padding:10px 0 0; font-size:14px; font-weight:600; color:#0f172a;">Grand Total:</td>
-            <td style="padding:10px 0 0; font-size:14px; font-weight:600; color:#2388ff; text-align:right;">${formatRp(totals.total)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- BOTTOM BLUE BAR (full, no radius) -->
-    <div style="position:absolute; left:0; right:0; bottom:0; height:10px; background:#2388ff;"></div>
+    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
@@ -308,13 +261,11 @@ async function renderHtmlToOffscreen(html) {
   wrap.style.top = '0'
   wrap.style.background = '#ffffff'
   wrap.style.width = '794px'
-  wrap.style.padding = '0'
-  wrap.style.margin = '0'
   wrap.style.zIndex = '999999'
   wrap.innerHTML = html
 
   document.body.appendChild(wrap)
-  const root = wrap.querySelector('#invoice-root') || wrap
+  const root = wrap.querySelector('#invoice-a4') || wrap
   return { wrap, root }
 }
 
@@ -371,14 +322,13 @@ export default function RiwayatPenjualan() {
     return uniq.join(', ')
   }
 
-  // ✅ TOTAL INVOICE sesuai invoicepdf.jsx
+  // ✅ TOTAL INVOICE
   const totalInvoice = (produk = []) => {
     const { total } = computeInvoiceTotals(produk || [])
     return total
   }
 
-  const totalLaba = (produk = []) =>
-    produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+  const totalLaba = (produk = []) => produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
   const computeKinerjaFromRows = (data = []) => {
     const invMap = new Map()
@@ -387,9 +337,7 @@ export default function RiwayatPenjualan() {
       const inv = (r.invoice_id || '').toString().trim()
       if (!inv) continue
 
-      if (!invMap.has(inv)) {
-        invMap.set(inv, { dilayani: new Set(), referral: new Set() })
-      }
+      if (!invMap.has(inv)) invMap.set(inv, { dilayani: new Set(), referral: new Set() })
       const bucket = invMap.get(inv)
 
       const dil = (r.dilayani_oleh || '').toString().trim().toUpperCase()
@@ -411,11 +359,7 @@ export default function RiwayatPenjualan() {
       }
     }
 
-    const arr = Array.from(emp.values()).map((x) => ({
-      ...x,
-      total: (x.dilayani || 0) + (x.referral || 0),
-    }))
-
+    const arr = Array.from(emp.values()).map((x) => ({ ...x, total: (x.dilayani || 0) + (x.referral || 0) }))
     arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral)
     return arr
   }
@@ -437,7 +381,6 @@ export default function RiwayatPenjualan() {
       }
 
       const { data, error } = await q.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
-
       if (error) {
         console.error('Fetch kinerja error:', error)
         setKinerja([])
@@ -494,9 +437,7 @@ export default function RiwayatPenjualan() {
 
       for (const item of penjualan || []) {
         const { data: stokData } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
-        if (stokData) {
-          await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
-        }
+        if (stokData) await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
       }
 
       await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
@@ -508,7 +449,7 @@ export default function RiwayatPenjualan() {
     }
   }
 
-  // ====== DOWNLOAD JPG invoice langsung dari RIWAYAT (tanpa PDF) ======
+  // ====== DOWNLOAD JPG invoice langsung dari RIWAYAT (A4 MODEL BARU) ======
   async function downloadInvoiceJpg(invoice_id) {
     if (!invoice_id) return
 
@@ -527,8 +468,7 @@ export default function RiwayatPenjualan() {
       if (!rows.length) return alert('Invoice tidak ditemukan.')
 
       const totals = computeInvoiceTotals(rows)
-      const html = buildInvoiceHtml({ invoice_id, rows, totals })
-
+      const html = buildInvoiceA4Html({ invoice_id, rows, totals })
       const { wrap, root } = await renderHtmlToOffscreen(html)
 
       // tunggu logo load
@@ -555,7 +495,7 @@ export default function RiwayatPenjualan() {
         windowWidth: 794,
       })
 
-      const blob = await canvasToJpegBlob(canvas, 0.92)
+      const blob = await canvasToJpegBlob(canvas, 0.95)
       await saveBlob(`${invoice_id}.jpg`, blob)
 
       wrap.remove()
@@ -781,9 +721,7 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3 font-semibold text-gray-900">{item.nama_pembeli}</td>
 
                       <td className="px-4 py-3">
-                        <div className="text-gray-900">
-                          {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
-                        </div>
+                        <div className="text-gray-900">{item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}</div>
                         <div className="text-xs text-gray-500 mt-1">
                           Item: <b className="text-gray-900">{item.produk.length}</b>
                         </div>
@@ -795,18 +733,11 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3 text-right">{formatRp(totalInvoice(item.produk))}</td>
 
                       <td className="px-4 py-3 text-right">
-                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>
-                          {formatRp(totalLaba(item.produk))}
-                        </span>
+                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>{formatRp(totalLaba(item.produk))}</span>
                       </td>
 
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleDelete(inv)}
-                          className={btnDanger}
-                          disabled={loading || busy}
-                          type="button"
-                        >
+                        <button onClick={() => handleDelete(inv)} className={btnDanger} disabled={loading || busy} type="button">
                           Hapus
                         </button>
                       </td>
@@ -844,12 +775,7 @@ export default function RiwayatPenjualan() {
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1 || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
                 ‹ Prev
               </button>
 
@@ -857,20 +783,10 @@ export default function RiwayatPenjualan() {
                 {safePage}/{totalPages}
               </div>
 
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages || loading} type="button">
                 Next ›
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
                 Last »
               </button>
             </div>
