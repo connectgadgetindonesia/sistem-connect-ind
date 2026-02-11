@@ -137,36 +137,74 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 
       <div style="display:flex; gap:22px; align-items:flex-start;">
 
-        <!-- ✅ LOGO ONLY (NO SHAPE/BORDER) -->
-        <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
-          <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
-        </div>
+        <!-- TOP ROW -->
+<div style="display:flex; gap:22px; align-items:flex-start;">
 
-        <!-- ✅ META CARD (lebih tinggi + tidak kepotong) -->
-        <div style="
-          flex:1; min-height:132px; border-radius:8px; border:1px solid #eef2f7;
-          background:#ffffff; padding:18px 22px;
-          display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
-          box-shadow: 0 8px 22px rgba(16,24,40,0.06);
-          overflow:visible;
-        ">
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Date:</div>
-            <div style="font-size:12px; font-weight:600; color:#0b1220; line-height:1.45; white-space:nowrap;">${safe(
-              invoiceDateLong
-            )}</div>
-          </div>
+  <!-- ✅ LOGO -->
+  <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
+    <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
+  </div>
 
-          <div style="width:1px; height:92px; background:#eef2f7;"></div>
-
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Number:</div>
-            <div style="font-size:12px; font-weight:600; color:${BLUE}; line-height:1.45; white-space:nowrap;">${safe(
-              invoice_id
-            )}</div>
-          </div>
-        </div>
+  <!-- ✅ META STACK (FIX WIDTH 360px) -->
+  <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
+    
+    <!-- INVOICE DATE -->
+    <div style="
+      height:62px;
+      border-radius:8px;
+      border:1px solid #eef2f7;
+      background:#ffffff;
+      padding:12px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      box-shadow:0 8px 22px rgba(16,24,40,0.06);
+      overflow:hidden;
+    ">
+      <div style="font-size:12px; font-weight:400; color:#6a768a;">
+        Invoice Date
       </div>
+      <div style="
+        font-size:12px;
+        font-weight:600;
+        color:#0b1220;
+        white-space:nowrap;
+        text-align:right;
+      ">
+        ${safe(invoiceDateLong)}
+      </div>
+    </div>
+
+    <!-- INVOICE NUMBER -->
+    <div style="
+      height:62px;
+      border-radius:8px;
+      border:1px solid #eef2f7;
+      background:#ffffff;
+      padding:12px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      box-shadow:0 8px 22px rgba(16,24,40,0.06);
+      overflow:hidden;
+    ">
+      <div style="font-size:12px; font-weight:400; color:#6a768a;">
+        Invoice Number
+      </div>
+      <div style="
+        font-size:12px;
+        font-weight:600;
+        color:${BLUE};
+        white-space:nowrap;
+        text-align:right;
+      ">
+        ${safe(invoice_id)}
+      </div>
+    </div>
+
+  </div>
+</div>
+
 
       <div style="display:flex; gap:22px; margin-top:22px;">
         <div style="flex:1;">
