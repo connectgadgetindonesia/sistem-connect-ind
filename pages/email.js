@@ -12,6 +12,7 @@ const btnSoft = btn + ' bg-gray-100 text-gray-900 hover:bg-gray-200'
 const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
 
 const FROM_EMAIL = 'admin@connectgadgetind.com'
+const FROM_NAME = 'CONNECT.IND' // ✅ biar sender tampil profesional
 
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
@@ -96,84 +97,244 @@ function buildInvoiceEmailTemplate(payload) {
       `
       : ''
 
+  // ✅ wrapper max-width + responsive-safe biar email tidak “kepotong” di mobile client
   return `
-  <div style="font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#f6f7f9; padding:24px;">
-    <div style="max-width:760px; margin:0 auto;">
-      <div style="background:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #eaeaea;">
-        <div style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
-          <div style="font-weight:800; letter-spacing:0.3px;">CONNECT.IND</div>
-          <div style="color:#666; font-size:12px; margin-top:4px;">
-            Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
-          </div>
-        </div>
-
-        <div style="padding:20px;">
-          <div style="font-size:18px; font-weight:800;">Invoice Pembelian</div>
-          <div style="margin-top:6px; color:#666; font-size:13px;">
-            Nomor Invoice: <b>${safe(invoice_id)}</b><br/>
-            Tanggal: <b>${safe(tanggal)}</b>
-          </div>
-
-          <div style="margin-top:16px; padding:14px; background:#fafafa; border-radius:12px; border:1px solid #efefef;">
-            <div style="font-weight:700; margin-bottom:6px;">Data Pembeli</div>
-            <div style="font-size:13px; color:#333; line-height:1.55;">
-              Nama: <b>${safe(nama_pembeli)}</b><br/>
-              No. WA: <b>${safe(no_wa)}</b><br/>
-              Alamat: <b>${safe(alamat)}</b>
+  <div style="margin:0; padding:0; width:100%; background:#f6f7f9;">
+    <div style="padding:24px 12px;">
+      <div style="max-width:760px; width:100%; margin:0 auto; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;">
+        <div style="background:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #eaeaea;">
+          <div style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
+            <div style="font-weight:800; letter-spacing:0.3px;">CONNECT.IND</div>
+            <div style="color:#666; font-size:12px; margin-top:4px; line-height:1.4;">
+              Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
             </div>
           </div>
 
-          <div style="margin-top:16px;">
-            <div style="font-weight:700; margin-bottom:10px;">Detail Item</div>
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
-              <thead>
-                <tr>
-                  <th style="text-align:left; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">No</th>
-                  <th style="text-align:left; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Item</th>
-                  <th style="text-align:center; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Qty</th>
-                  <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Price</th>
-                  <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHtml}
-              </tbody>
-            </table>
+          <div style="padding:20px;">
+            <div style="font-size:18px; font-weight:800;">Invoice Pembelian</div>
+            <div style="margin-top:6px; color:#666; font-size:13px; line-height:1.5;">
+              Nomor Invoice: <b>${safe(invoice_id)}</b><br/>
+              Tanggal: <b>${safe(tanggal)}</b>
+            </div>
 
-            <div style="margin-top:14px; display:flex; justify-content:flex-end;">
-              <div style="min-width:320px; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
-                <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
-                  <span>Sub Total</span>
-                  <span style="font-weight:800; color:#111;">${formatRupiah(subtotal)}</span>
-                </div>
-                ${discountRow}
-                <div style="display:flex; justify-content:space-between; font-size:14px; margin-top:10px;">
-                  <span style="font-weight:800;">Total</span>
-                  <span style="font-weight:900;">${formatRupiah(total)}</span>
+            <div style="margin-top:16px; padding:14px; background:#fafafa; border-radius:12px; border:1px solid #efefef;">
+              <div style="font-weight:700; margin-bottom:6px;">Data Pembeli</div>
+              <div style="font-size:13px; color:#333; line-height:1.55;">
+                Nama: <b>${safe(nama_pembeli)}</b><br/>
+                No. WA: <b>${safe(no_wa)}</b><br/>
+                Alamat: <b>${safe(alamat)}</b>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;">
+              <div style="font-weight:700; margin-bottom:10px;">Detail Item</div>
+              <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+                <table style="min-width:640px; width:100%; border-collapse:collapse; font-size:13px;">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">No</th>
+                      <th style="text-align:left; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Item</th>
+                      <th style="text-align:center; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Qty</th>
+                      <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Price</th>
+                      <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${itemsHtml}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+                <div style="min-width:320px; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
+                  <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
+                    <span>Sub Total</span>
+                    <span style="font-weight:800; color:#111;">${formatRupiah(subtotal)}</span>
+                  </div>
+                  ${discountRow}
+                  <div style="display:flex; justify-content:space-between; font-size:14px; margin-top:10px;">
+                    <span style="font-weight:800;">Total</span>
+                    <span style="font-weight:900;">${formatRupiah(total)}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div style="margin-top:18px; color:#444; font-size:13px; line-height:1.6;">
-            Halo <b>${safe(nama_pembeli) || 'Customer'}</b>,<br/>
-            Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
-            Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
-          </div>
+            <div style="margin-top:18px; color:#444; font-size:13px; line-height:1.6;">
+              Halo <b>${safe(nama_pembeli) || 'Customer'}</b>,<br/>
+              Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
+              Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
+            </div>
 
-          <div style="margin-top:18px; color:#666; font-size:12px;">
-            Hormat kami,<br/>
-            <b>CONNECT.IND</b>
+            <div style="margin-top:18px; color:#666; font-size:12px;">
+              Hormat kami,<br/>
+              <b>CONNECT.IND</b>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div style="text-align:center; color:#999; font-size:12px; margin-top:12px;">
-        Email ini dikirim dari sistem CONNECT.IND.
+        <div style="text-align:center; color:#999; font-size:12px; margin-top:12px;">
+          Email ini dikirim dari sistem CONNECT.IND.
+        </div>
       </div>
     </div>
   </div>
   `
+}
+
+/**
+ * ✅ “JPG invoice” dibuat langsung di browser (mirip riwayat.js).
+ * Kita render kartu invoice ke div hidden, lalu convert ke JPG base64.
+ */
+function InvoiceJpgCard({ data }) {
+  const inv = data || {}
+  const items = Array.isArray(inv.items) ? inv.items : []
+  return (
+    <div
+      style={{
+        width: 1080, // ✅ stabil & rapi untuk JPG (tidak tergantung ukuran layar)
+        padding: 36,
+        background: '#ffffff',
+        fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial',
+        color: '#111',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: 0.3 }}>CONNECT.IND</div>
+          <div style={{ marginTop: 6, fontSize: 13, color: '#555', lineHeight: 1.5 }}>
+            Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145
+            <br />
+            WhatsApp: 0896-3140-0031
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 900, fontSize: 22 }}>INVOICE</div>
+          <div style={{ marginTop: 6, fontSize: 13, color: '#555', lineHeight: 1.5 }}>
+            No: <b>{safe(inv.invoice_id)}</b>
+            <br />
+            Tanggal: <b>{safe(inv.tanggal)}</b>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 18,
+          border: '1px solid #eee',
+          borderRadius: 16,
+          padding: 16,
+          background: '#fafafa',
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Data Pembeli</div>
+        <div style={{ fontSize: 14, color: '#333', lineHeight: 1.6 }}>
+          Nama: <b>{safe(inv.nama_pembeli)}</b>
+          <br />
+          No. WA: <b>{safe(inv.no_wa)}</b>
+          <br />
+          Alamat: <b>{safe(inv.alamat)}</b>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>Detail Item</div>
+
+        <div style={{ border: '1px solid #eee', borderRadius: 16, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#f3f4f6' }}>
+                <th style={{ textAlign: 'left', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 60 }}>
+                  No
+                </th>
+                <th style={{ textAlign: 'left', padding: '12px 14px', borderBottom: '1px solid #eaeaea' }}>Item</th>
+                <th style={{ textAlign: 'center', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 80 }}>
+                  Qty
+                </th>
+                <th style={{ textAlign: 'right', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 160 }}>
+                  Price
+                </th>
+                <th style={{ textAlign: 'right', padding: '12px 14px', borderBottom: '1px solid #eaeaea', width: 180 }}>
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: 14, color: '#666' }}>
+                    (Item belum ditemukan)
+                  </td>
+                </tr>
+              ) : (
+                items.map((it, idx) => {
+                  const qty = Math.max(1, toInt(it.qty))
+                  const unit = toInt(it.harga_jual)
+                  const lineTotal = unit * qty
+                  return (
+                    <tr key={idx}>
+                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0' }}>{idx + 1}</td>
+                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ fontWeight: 800 }}>{safe(it.nama_produk)}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#666', lineHeight: 1.45 }}>
+                          {safe(it.warna)}
+                          {it.storage ? ' • ' + safe(it.storage) : ''}
+                          {it.garansi ? ' • ' + safe(it.garansi) : ''}
+                          {it.sn_sku ? (
+                            <>
+                              <br />
+                              SN/SKU: {safe(it.sn_sku)}
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', textAlign: 'center' }}>{qty}</td>
+                      <td style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', textAlign: 'right' }}>
+                        {formatRupiah(unit)}
+                      </td>
+                      <td
+                        style={{
+                          padding: '12px 14px',
+                          borderBottom: '1px solid #f0f0f0',
+                          textAlign: 'right',
+                          fontWeight: 900,
+                        }}
+                      >
+                        {formatRupiah(lineTotal)}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+          <div style={{ minWidth: 360, border: '1px solid #eee', borderRadius: 16, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
+              <span>Sub Total</span>
+              <span style={{ fontWeight: 900, color: '#111' }}>{formatRupiah(inv.subtotal || 0)}</span>
+            </div>
+            {inv.discount ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666', marginTop: 8 }}>
+                <span>Discount</span>
+                <span style={{ fontWeight: 900, color: '#111' }}>-{formatRupiah(inv.discount || 0)}</span>
+              </div>
+            ) : null}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 15 }}>
+              <span style={{ fontWeight: 900 }}>Total</span>
+              <span style={{ fontWeight: 900 }}>{formatRupiah(inv.total || 0)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
+        Terima kasih telah berbelanja di CONNECT.IND.
+      </div>
+    </div>
+  )
 }
 
 export default function EmailPage() {
@@ -190,6 +351,9 @@ export default function EmailPage() {
   // Attach other files
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
+
+  // ✅ hidden render untuk jpg (mirip riwayat.js)
+  const invoiceRenderRef = useRef(null)
 
   // ====== MODAL PILIH TRANSAKSI ======
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -330,6 +494,45 @@ export default function EmailPage() {
       reader.readAsDataURL(file)
     })
 
+  // ✅ Render DOM -> JPG base64 (tanpa prefix)
+  const generateInvoiceJpgBase64 = async () => {
+    const node = invoiceRenderRef.current
+    if (!node) throw new Error('Invoice renderer belum siap.')
+
+    // 1) coba pakai html-to-image (paling mirip “download JPG” biasanya)
+    try {
+      const mod = await import('html-to-image')
+      const toJpeg = mod?.toJpeg
+      if (typeof toJpeg === 'function') {
+        const dataUrl = await toJpeg(node, {
+          quality: 0.95,
+          pixelRatio: 2,
+          cacheBust: true,
+          backgroundColor: '#ffffff',
+        })
+        const base64 = String(dataUrl || '').split('base64,')[1] || ''
+        if (!base64) throw new Error('Gagal membuat JPG (html-to-image).')
+        return base64
+      }
+    } catch (e) {
+      // fallback lanjut
+      console.warn('html-to-image tidak tersedia / gagal, fallback html2canvas.', e)
+    }
+
+    // 2) fallback html2canvas
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+      const base64 = String(dataUrl || '').split('base64,')[1] || ''
+      if (!base64) throw new Error('Gagal membuat JPG (html2canvas).')
+      return base64
+    } catch (e) {
+      console.error(e)
+      throw new Error('Gagal render invoice jadi JPG. Pastikan html-to-image / html2canvas terpasang.')
+    }
+  }
+
   const sendEmail = async () => {
     if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
@@ -339,6 +542,16 @@ export default function EmailPage() {
     setSending(true)
     try {
       const attachments = []
+
+      // ✅ 1) auto attach invoice JPG hasil render (persis konsep riwayat.js)
+      const invoiceJpgBase64 = await generateInvoiceJpgBase64()
+      attachments.push({
+        filename: `${dataInvoice.invoice_id}.jpg`,
+        contentType: 'image/jpeg',
+        contentBase64: invoiceJpgBase64,
+      })
+
+      // ✅ 2) lampiran tambahan dari user
       for (const f of extraFiles) {
         const contentBase64 = await fileToBase64(f)
         if (!contentBase64) continue
@@ -356,13 +569,15 @@ export default function EmailPage() {
           to: toEmail.trim(),
           subject: subject.trim(),
           html: htmlBody,
+
+          // ✅ sender name biar bukan “alamat email doang”
           fromEmail: FROM_EMAIL,
+          fromName: FROM_NAME,
 
-          // auto attach invoice jpg (server)
+          // ✅ kita kirim attachment JPG dari client, jadi tidak perlu server auto-generate
+          attach_invoice_jpg: false,
           invoice_id: dataInvoice.invoice_id,
-          attach_invoice_jpg: true,
 
-          // optional extra files
           attachments,
         }),
       })
@@ -403,8 +618,13 @@ export default function EmailPage() {
             <div className="text-sm text-gray-500">Kirim invoice via email (auto lampirkan JPG)</div>
           </div>
           <div className="text-sm text-gray-600">
-            From: <span className="font-semibold">{FROM_EMAIL}</span>
+            From: <span className="font-semibold">{FROM_NAME}</span> &lt;{FROM_EMAIL}&gt;
           </div>
+        </div>
+
+        {/* ✅ HIDDEN RENDER untuk generate JPG */}
+        <div style={{ position: 'absolute', left: -99999, top: -99999, pointerEvents: 'none' }}>
+          <div ref={invoiceRenderRef}>{dataInvoice ? <InvoiceJpgCard data={dataInvoice} /> : null}</div>
         </div>
 
         {/* PILIH TRANSAKSI (RAPI) */}
@@ -432,9 +652,15 @@ export default function EmailPage() {
               <div className="text-sm text-gray-700">
                 <div className="font-semibold">Ringkasan:</div>
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                  <div>Subtotal: <b>{formatRupiah(dataInvoice.subtotal)}</b></div>
-                  <div>Discount: <b>{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</b></div>
-                  <div>Total: <b>{formatRupiah(dataInvoice.total)}</b></div>
+                  <div>
+                    Subtotal: <b>{formatRupiah(dataInvoice.subtotal)}</b>
+                  </div>
+                  <div>
+                    Discount: <b>{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</b>
+                  </div>
+                  <div>
+                    Total: <b>{formatRupiah(dataInvoice.total)}</b>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -471,11 +697,7 @@ export default function EmailPage() {
               />
 
               <div className="flex items-center gap-2">
-                <button
-                  className={btnSoft}
-                  onClick={() => fileRef.current?.click()}
-                  type="button"
-                >
+                <button className={btnSoft} onClick={() => fileRef.current?.click()} type="button">
                   Attach File
                 </button>
 
@@ -527,8 +749,12 @@ export default function EmailPage() {
 
             <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
               <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm">
-                <div><b>To:</b> {toEmail || '(belum diisi)'}</div>
-                <div><b>Subject:</b> {subject}</div>
+                <div>
+                  <b>To:</b> {toEmail || '(belum diisi)'}
+                </div>
+                <div>
+                  <b>Subject:</b> {subject}
+                </div>
                 <div className="mt-1 text-xs text-gray-500">
                   Lampiran otomatis: <b>{dataInvoice?.invoice_id ? `${dataInvoice.invoice_id}.jpg` : '-'}</b>
                   {extraFiles.length ? ` • +${extraFiles.length} file` : ''}

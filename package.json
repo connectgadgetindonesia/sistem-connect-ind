@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.52.0",
     "dayjs": "^1.11.13",
     "file-saver": "^2.0.5",
+    "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.10.3",
     "jszip": "^3.10.1",
