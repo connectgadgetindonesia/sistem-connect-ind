@@ -68,6 +68,7 @@ export default function Penjualan() {
     nama_pembeli: '',
     alamat: '',
     no_wa: '',
+    email: '', // ✅ NEW
     referral: '',
     dilayani_oleh: ''
   })
@@ -138,7 +139,7 @@ export default function Penjualan() {
     async function fetchCustomers() {
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select('nama_pembeli, alamat, no_wa, tanggal')
+        .select('nama_pembeli, alamat, no_wa, email, tanggal') // ✅ NEW: email
         .order('tanggal', { ascending: false })
         .limit(5000)
 
@@ -158,7 +159,8 @@ export default function Penjualan() {
           map.set(key, {
             nama,
             alamat: (r.alamat || '').toString(),
-            no_wa: wa
+            no_wa: wa,
+            email: (r.email || '').toString().trim().toLowerCase() // ✅ NEW
           })
         }
       })
@@ -196,6 +198,7 @@ export default function Penjualan() {
         const nama = (r.nama || r.nama_pembeli || '').toString().trim().toUpperCase()
         const wa = (r.no_wa || '').toString().trim()
         const alamat = (r.alamat || '').toString().trim()
+        const email = (r.email || '').toString().trim().toLowerCase() // ✅ NEW (kalau ada di table indent)
 
         const namaProduk = (r.nama_produk || '').toString().trim()
         const warna = (r.warna || '').toString().trim()
@@ -222,6 +225,7 @@ export default function Penjualan() {
             nama,
             no_wa: wa,
             alamat,
+            email, // ✅ NEW
             raw: r
           }
         }
@@ -242,7 +246,8 @@ export default function Penjualan() {
         ...prev,
         nama_pembeli: c.nama || '',
         alamat: c.alamat || '',
-        no_wa: c.no_wa || ''
+        no_wa: c.no_wa || '',
+        email: c.email || '' // ✅ NEW
       }))
       setSelectedIndent(null)
     } else {
@@ -252,7 +257,8 @@ export default function Penjualan() {
         ...prev,
         nama_pembeli: i.nama || '',
         alamat: i.alamat || '',
-        no_wa: i.no_wa || ''
+        no_wa: i.no_wa || '',
+        email: i.email || '' // ✅ NEW
       }))
       setSelectedCustomer(null)
     }
@@ -513,6 +519,7 @@ export default function Penjualan() {
           nama_pembeli: (formData.nama_pembeli || '').toString().trim().toUpperCase(),
           alamat: (formData.alamat || '').toString().trim(),
           no_wa: (formData.no_wa || '').toString().trim(),
+          email: (formData.email || '').toString().trim().toLowerCase(), // ✅ NEW
           referral: (formData.referral || '').toString().trim().toUpperCase(),
           dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
           sn_sku: item.sn_sku,
@@ -562,7 +569,15 @@ export default function Penjualan() {
 
       alert('Berhasil simpan multi produk!')
 
-      setFormData({ tanggal: '', nama_pembeli: '', alamat: '', no_wa: '', referral: '', dilayani_oleh: '' })
+      setFormData({
+        tanggal: '',
+        nama_pembeli: '',
+        alamat: '',
+        no_wa: '',
+        email: '', // ✅ NEW
+        referral: '',
+        dilayani_oleh: ''
+      })
       setSelectedCustomer(null)
       setSelectedIndent(null)
       setProdukList([])
@@ -692,6 +707,7 @@ export default function Penjualan() {
                     required
                   />
                 </div>
+
                 <div>
                   <div className={label}>No. WA</div>
                   <input
@@ -701,6 +717,19 @@ export default function Penjualan() {
                     required
                   />
                 </div>
+
+                {/* ✅ NEW: EMAIL */}
+                <div className="md:col-span-2">
+                  <div className={label}>Email</div>
+                  <input
+                    className={input}
+                    type="email"
+                    placeholder="customer@email.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                </div>
+
                 <div className="md:col-span-2">
                   <div className={label}>Alamat</div>
                   <input
@@ -727,6 +756,7 @@ export default function Penjualan() {
                     ))}
                   </select>
                 </div>
+
                 <div>
                   <div className={label}>Dilayani Oleh</div>
                   <select
@@ -766,7 +796,6 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                 <div>
                   <div className={label}>Harga Jual</div>
-                  {/* ✅ tampil pakai titik */}
                   <input
                     className={input}
                     inputMode="numeric"
@@ -872,7 +901,6 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
                   <div className={label}>Diskon Invoice (Rp)</div>
-                  {/* ✅ tampil pakai titik */}
                   <input
                     className={input}
                     inputMode="numeric"
@@ -906,7 +934,6 @@ export default function Penjualan() {
                 </div>
                 <div>
                   <div className={label}>Nominal (Rp)</div>
-                  {/* ✅ tampil pakai titik */}
                   <input
                     className={input}
                     inputMode="numeric"
