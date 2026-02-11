@@ -188,12 +188,6 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
   const items = Array.isArray(data.items) ? data.items : []
   const invoiceDateLong = formatInvoiceDateLong(data.tanggal_raw || data.tanggal)
 
-  const LOGO_W = 231
-  const LOGO_H = 100
-  const META_W = 268
-  const META_H = 64
-  const R = 8
-
   const itemRows = items
     .map((it) => {
       const qty = Math.max(1, toInt(it.qty))
@@ -259,42 +253,35 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
     <div style="padding:56px 56px 42px 56px; height:100%;">
 
       <!-- TOP ROW -->
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:22px;">
+      <div style="display:flex; gap:22px; align-items:flex-start;">
 
-        <!-- LOGO -->
-        <div style="width:${LOGO_W}px; height:${LOGO_H}px; display:flex; align-items:center; justify-content:flex-start;">
-          <img src="/logo.png" alt="CONNECT.IND"
-            style="width:${LOGO_W}px; height:${LOGO_H}px; display:block; object-fit:contain;" />
+        <!-- ✅ LOGO ONLY (NO SHAPE/BORDER) -->
+        <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
+          <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
-        <!-- META BOXES -->
-        <div style="display:flex; gap:16px; align-items:flex-start;">
-          <div style="
-            width:${META_W}px; height:${META_H}px;
-            border-radius:${R}px; border:1px solid #eef2f7; background:#ffffff;
-            padding:10px 14px;
-            display:flex; flex-direction:column; justify-content:center;
-            box-shadow: 0 8px 22px rgba(16,24,40,0.06);
-            overflow:hidden;
-          ">
-            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:6px;">Invoice Date:</div>
-            <div style="font-size:12px; font-weight:600; color:#0b1220; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-              ${safe(invoiceDateLong)}
-            </div>
+        <!-- ✅ META CARD (lebih tinggi + tidak kepotong) -->
+        <div style="
+          flex:1; min-height:132px; border-radius:18px; border:1px solid #eef2f7;
+          background:#ffffff; padding:18px 22px;
+          display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
+          box-shadow: 0 8px 22px rgba(16,24,40,0.06);
+          overflow:visible;
+        ">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Date:</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; line-height:1.45; white-space:nowrap;">${safe(
+              invoiceDateLong
+            )}</div>
           </div>
 
-          <div style="
-            width:${META_W}px; height:${META_H}px;
-            border-radius:${R}px; border:1px solid #eef2f7; background:#ffffff;
-            padding:10px 14px;
-            display:flex; flex-direction:column; justify-content:center;
-            box-shadow: 0 8px 22px rgba(16,24,40,0.06);
-            overflow:hidden;
-          ">
-            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:6px;">Invoice Number:</div>
-            <div style="font-size:12px; font-weight:600; color:${BLUE}; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-              ${safe(invoice_id)}
-            </div>
+          <div style="width:1px; height:92px; background:#eef2f7;"></div>
+
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Number:</div>
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; line-height:1.45; white-space:nowrap;">${safe(
+              invoice_id
+            )}</div>
           </div>
         </div>
       </div>
@@ -303,7 +290,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       <div style="display:flex; gap:22px; margin-top:22px;">
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
-          <div style="border:1px solid #eef2f7; border-radius:${R}px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+          <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">CONNECT.IND</div>
             <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
               (+62) 896-31-4000-31<br/>
@@ -316,7 +303,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
 
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
-          <div style="border:1px solid #eef2f7; border-radius:${R}px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+          <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
               data.nama_pembeli
             )}</div>
@@ -329,7 +316,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       </div>
 
       <!-- TABLE -->
-      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:${R}px; overflow:hidden;">
+      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:18px; overflow:hidden;">
         <table style="width:100%; border-collapse:separate; border-spacing:0;">
           <thead>
             <tr style="background:#f7f9fc;">
@@ -362,12 +349,12 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       </div>
     </div>
 
+    <!-- BOTTOM BAR -->
     <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
 }
-
 
 
 
