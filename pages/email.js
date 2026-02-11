@@ -256,7 +256,7 @@ function buildInvoiceEmailTemplate(payload) {
                 <!-- FOOTER TEXT -->
                 <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
                   Halo <b style="color:#111827;">${safe(nama_pembeli) || 'Customer'}</b>,<br/>
-                  Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
+                  Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami lampirkan.<br/>
                   Mohon tidak membalas email ini, jika ada pertanyaan hubungi WhatsApp kami di <b style="color:#111827;">0896-31-4000-31</b>.
                 </div>
 
