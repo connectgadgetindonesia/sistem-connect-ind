@@ -17,10 +17,10 @@ const emptyItem = () => ({
   storage: '',
   garansi: '',
   qty: 1,
-  harga_item: '',
+  harga_item: ''
 })
 
-// ====== STYLE (samakan feel seperti pricelist.js) ======
+// ====== STYLE (samakan feel seperti riwayat.js / email.js) ======
 const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
 const sectionTitle = 'text-sm font-semibold text-gray-800'
 const label = 'text-xs text-gray-600 mb-1'
@@ -45,8 +45,9 @@ export default function TransaksiIndent() {
     nama: '',
     alamat: '',
     no_wa: '',
+    email: '', // ✅ NEW: email customer (seragam penjualan.js)
     dp: '',
-    tanggal: '',
+    tanggal: ''
   })
 
   // ===== ITEMS (multi produk) =====
@@ -128,7 +129,7 @@ export default function TransaksiIndent() {
         storage: (it.storage || '').trim(),
         garansi: (it.garansi || '').trim(),
         qty: parseInt(it.qty || 1, 10),
-        harga_item: parseInt(it.harga_item || 0, 10),
+        harga_item: parseInt(it.harga_item || 0, 10)
       }))
       .filter((it) => it.nama_produk)
 
@@ -159,10 +160,11 @@ export default function TransaksiIndent() {
           nama: form.nama.trim(),
           alamat: form.alamat.trim(),
           no_wa: form.no_wa.trim(),
+          email: (form.email || '').trim().toLowerCase(), // ✅ NEW
           dp: dpNum,
           harga_jual: totalHargaJual,
           sisa_pembayaran: sisaPembayaran,
-          tanggal,
+          tanggal
         })
         .eq('id', editId)
 
@@ -171,10 +173,7 @@ export default function TransaksiIndent() {
         return alert('Gagal update transaksi')
       }
 
-      const { error: delErr } = await supabase
-        .from('transaksi_indent_items')
-        .delete()
-        .eq('indent_id', editId)
+      const { error: delErr } = await supabase.from('transaksi_indent_items').delete().eq('indent_id', editId)
 
       if (delErr) {
         setLoading(false)
@@ -201,12 +200,13 @@ export default function TransaksiIndent() {
         nama: form.nama.trim(),
         alamat: form.alamat.trim(),
         no_wa: form.no_wa.trim(),
+        email: (form.email || '').trim().toLowerCase(), // ✅ NEW
         dp: dpNum,
         harga_jual: totalHargaJual,
         sisa_pembayaran: sisaPembayaran,
         tanggal,
         status: 'DP Masuk',
-        invoice_id,
+        invoice_id
       })
       .select('id')
       .single()
@@ -227,7 +227,7 @@ export default function TransaksiIndent() {
   }
 
   const resetForm = () => {
-    setForm({ nama: '', alamat: '', no_wa: '', dp: '', tanggal: '' })
+    setForm({ nama: '', alamat: '', no_wa: '', email: '', dp: '', tanggal: '' })
     setItems([emptyItem()])
     setEditId(null)
   }
@@ -237,8 +237,9 @@ export default function TransaksiIndent() {
       nama: item.nama || '',
       alamat: item.alamat || '',
       no_wa: item.no_wa || '',
+      email: item.email || '', // ✅ NEW
       dp: String(item.dp ?? ''),
-      tanggal: item.tanggal || '',
+      tanggal: item.tanggal || ''
     })
 
     if (item.items && item.items.length > 0) {
@@ -249,7 +250,7 @@ export default function TransaksiIndent() {
           storage: it.storage || '',
           garansi: it.garansi || '',
           qty: it.qty ?? 1,
-          harga_item: String(it.harga_item ?? 0),
+          harga_item: String(it.harga_item ?? 0)
         }))
       )
     } else {
@@ -260,8 +261,8 @@ export default function TransaksiIndent() {
           storage: item.storage || '',
           garansi: item.garansi || '',
           qty: 1,
-          harga_item: String(item.harga_jual ?? 0),
-        },
+          harga_item: String(item.harga_jual ?? 0)
+        }
       ])
     }
 
@@ -293,7 +294,12 @@ export default function TransaksiIndent() {
   // ===== FILTER + TAB =====
   const filtered = useMemo(() => {
     const q = (search || '').toLowerCase().trim()
-    const bySearch = (list || []).filter((it) => (it.nama || '').toLowerCase().includes(q))
+    const bySearch = (list || []).filter((it) => {
+      const nama = (it.nama || '').toLowerCase()
+      const inv = (it.invoice_id || '').toLowerCase()
+      const wa = (it.no_wa || '').toLowerCase()
+      return nama.includes(q) || inv.includes(q) || wa.includes(q)
+    })
 
     const berjalan = bySearch.filter((it) => it.status !== 'Sudah Diambil')
     const diambil = bySearch.filter((it) => it.status === 'Sudah Diambil')
@@ -321,9 +327,7 @@ export default function TransaksiIndent() {
         {/* Header */}
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900">Transaksi Indent (DP)</h1>
-          <div className="text-sm text-gray-600">
-            Pisahkan transaksi berjalan & sudah diambil. 20 transaksi per halaman.
-          </div>
+          <div className="text-sm text-gray-600">Pisahkan transaksi berjalan & sudah diambil. 20 transaksi per halaman.</div>
         </div>
 
         {/* ===== FORM ===== */}
@@ -367,6 +371,18 @@ export default function TransaksiIndent() {
                   placeholder="No WA"
                   value={form.no_wa}
                   onChange={(e) => setForm({ ...form, no_wa: e.target.value })}
+                />
+              </div>
+
+              {/* ✅ NEW: EMAIL */}
+              <div>
+                <div className={label}>Email</div>
+                <input
+                  className={input}
+                  type="email"
+                  placeholder="customer@email.com"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </div>
 
@@ -420,10 +436,7 @@ export default function TransaksiIndent() {
 
               <div className="space-y-3">
                 {items.map((it, idx) => (
-                  <div
-                    key={idx}
-                    className="border border-gray-200 rounded-xl p-3 md:p-3.5 bg-white"
-                  >
+                  <div key={idx} className="border border-gray-200 rounded-xl p-3 md:p-3.5 bg-white">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                       <input
                         className={`${inputSm} md:col-span-4`}
@@ -481,9 +494,7 @@ export default function TransaksiIndent() {
                 ))}
               </div>
 
-              <div className="text-xs text-gray-500 mt-2">
-                Total otomatis dihitung dari (qty × harga/item).
-              </div>
+              <div className="text-xs text-gray-500 mt-2">Total otomatis dihitung dari (qty × harga/item).</div>
             </div>
 
             <button type="submit" className={btnPrimary} disabled={loading}>
@@ -520,11 +531,11 @@ export default function TransaksiIndent() {
 
             <div className="flex-1" />
 
-            <div className="w-full md:w-[320px]">
-              <div className={label}>Search</div>
+            <div className="w-full md:w-[360px]">
+              <div className={label}>Search (Nama / Invoice / WA)</div>
               <input
                 type="text"
-                placeholder="Cari nama..."
+                placeholder="Cari nama / invoice / WA..."
                 className={input}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -545,13 +556,9 @@ export default function TransaksiIndent() {
 
           {/* list cards */}
           <div className="space-y-3">
-            {loading && pageRows.length === 0 && (
-              <div className="text-center text-gray-500 py-10">Memuat…</div>
-            )}
+            {loading && pageRows.length === 0 && <div className="text-center text-gray-500 py-10">Memuat…</div>}
 
-            {!loading && pageRows.length === 0 && (
-              <div className="text-center text-gray-500 py-10">Tidak ada data.</div>
-            )}
+            {!loading && pageRows.length === 0 && <div className="text-center text-gray-500 py-10">Tidak ada data.</div>}
 
             {pageRows.map((item) => {
               const arr = item.items || []
@@ -560,10 +567,7 @@ export default function TransaksiIndent() {
               const sisa = Math.max((item.harga_jual || 0) - (item.dp || 0), 0)
 
               return (
-                <div
-                  key={item.id}
-                  className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50"
-                >
+                <div key={item.id} className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50">
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
                     <div>
                       <div className="text-lg font-bold text-gray-900">
@@ -571,11 +575,19 @@ export default function TransaksiIndent() {
                         <span className="text-sm font-semibold text-gray-600">({item.tanggal})</span>
                       </div>
 
-                      {item.invoice_id && (
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          Invoice: <span className="font-mono">{item.invoice_id}</span>
-                        </div>
-                      )}
+                      {/* ✅ seragam: invoice di kiri, jelas */}
+                      <div className="text-xs text-gray-500 mt-0.5 space-y-0.5">
+                        {item.invoice_id ? (
+                          <div>
+                            Invoice: <span className="font-mono">{item.invoice_id}</span>
+                          </div>
+                        ) : null}
+                        {item.email ? (
+                          <div>
+                            Email: <span className="font-mono">{String(item.email)}</span>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 items-center">
@@ -589,21 +601,18 @@ export default function TransaksiIndent() {
                         {item.status === 'Sudah Diambil' ? '✅ Sudah Diambil' : '🕐 Berjalan'}
                       </span>
 
+                      {/* ✅ ganti label jadi Download / seragam */}
                       {item.invoice_id && (
                         <Link
                           href={`/invoice/indent/${item.id}`}
                           target="_blank"
                           className="inline-flex items-center gap-2 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-black"
                         >
-                          🧾 Cetak Invoice
+                          ⬇️ Invoice Indent
                         </Link>
                       )}
 
-                      <button
-                        onClick={() => handleEdit(item)}
-                        className={btnXs}
-                        disabled={loading}
-                      >
+                      <button onClick={() => handleEdit(item)} className={btnXs} disabled={loading}>
                         Edit
                       </button>
 
@@ -624,9 +633,7 @@ export default function TransaksiIndent() {
                         {first?.warna ? ` - ${first.warna}` : ''}
                         {first?.storage ? ` - ${first.storage}` : ''}
                         {first?.garansi ? ` - Garansi: ${first.garansi}` : ''}
-                        {count > 1 ? (
-                          <span className="text-gray-500"> • + {count - 1} produk</span>
-                        ) : null}
+                        {count > 1 ? <span className="text-gray-500"> • + {count - 1} produk</span> : null}
                       </>
                     ) : (
                       <>
@@ -654,13 +661,7 @@ export default function TransaksiIndent() {
                     </div>
                     <div className="border border-gray-200 rounded-xl p-3 bg-white">
                       <div className="text-xs text-gray-600">Sisa</div>
-                      <div
-                        className={`font-bold ${
-                          sisa > 0 ? 'text-amber-700' : 'text-green-700'
-                        }`}
-                      >
-                        {rupiah(sisa)}
-                      </div>
+                      <div className={`font-bold ${sisa > 0 ? 'text-amber-700' : 'text-green-700'}`}>{rupiah(sisa)}</div>
                     </div>
                   </div>
                 </div>
@@ -673,25 +674,16 @@ export default function TransaksiIndent() {
             <div className="text-xs text-gray-500">
               Menampilkan{' '}
               <b className="text-gray-900">
-                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-                {Math.min(safePage * PAGE_SIZE, totalRows)}
+                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}
               </b>{' '}
               dari <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
-              <button
-                className={btn}
-                onClick={() => setPage(1)}
-                disabled={safePage === 1}
-              >
+              <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1}>
                 « First
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1}
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
                 ‹ Prev
               </button>
               <button
@@ -701,14 +693,16 @@ export default function TransaksiIndent() {
               >
                 Next ›
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages}
-              >
+              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>
                 Last »
               </button>
             </div>
+          </div>
+
+          {/* 🔥 NOTE PENTING (biar seragam & aman) */}
+          <div className="mt-3 text-[11px] text-gray-500">
+            Catatan: Jika kolom <b>email</b> belum ada di tabel <b>transaksi_indent</b>, tambahkan dulu kolomnya di Supabase
+            (ALTER TABLE ... ADD COLUMN email text).
           </div>
         </div>
       </div>
