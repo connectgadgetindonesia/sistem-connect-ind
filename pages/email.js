@@ -2,8 +2,8 @@ import Layout from '@/components/Layout'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
-import InvoiceExportCard, { formatRupiah } from '@/components/InvoiceExportCard'
 
+// ================= UI =================
 const card = 'bg-white border border-gray-200 rounded-xl'
 const input = 'border border-gray-200 p-2 rounded-lg w-full'
 const label = 'text-sm text-gray-600'
@@ -12,34 +12,209 @@ const btnPrimary = btn + ' bg-black text-white hover:bg-gray-800'
 const btnSoft = btn + ' bg-gray-100 text-gray-900 hover:bg-gray-200'
 const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
 
+// ================= EMAIL SENDER =================
 const FROM_EMAIL = 'admin@connectgadgetind.com'
 const FROM_NAME = 'CONNECT.IND'
+
+// ================= HELPERS (SAMA SEPERTI RIWAYAT.JS) =================
+const toNumber = (v) => {
+  if (typeof v === 'number') return v
+  const n = parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10)
+  return Number.isFinite(n) ? n : 0
+}
+const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
+const up = (s) => (s || '').toString().trim().toUpperCase()
 
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
 
-// hitung total seperti invoicepdf.jsx (kalau field diskon tidak ada -> 0)
-function computeTotals(rows = []) {
-  const data = Array.isArray(rows) ? rows : []
-
-  const subtotal = data.reduce((acc, r) => {
-    const qty = Math.max(1, toInt(r.qty))
-    const price = toInt(r.harga_jual)
-    return acc + price * qty
-  }, 0)
-
-  const discountByItems = data.reduce((acc, r) => acc + toInt(r.diskon_item), 0)
-  const discountByInvoice = data.reduce((max, r) => Math.max(max, toInt(r.diskon_invoice)), 0)
-  const rawDiscount = discountByItems > 0 ? discountByItems : discountByInvoice
-  const discount = Math.min(subtotal, rawDiscount)
-  const total = Math.max(0, subtotal - discount)
-
-  return { subtotal, discount, total }
+function formatRupiah(n) {
+  const x = typeof n === 'number' ? n : parseInt(String(n || '0'), 10) || 0
+  return 'Rp ' + x.toLocaleString('id-ID')
 }
 
-// ==== TEMPLATE EMAIL (HTML) ====
+// ====== hitungan total INVOICE (ikut invoicepdf.jsx) ======
+function computeInvoiceTotals(rows = []) {
+  const map = new Map()
+
+  for (const it of rows || []) {
+    const qtyRow = Math.max(1, toNumber(it.qty))
+    const price = toNumber(it.harga_jual)
+
+    const key = [
+      up(it.nama_produk),
+      up(it.sn_sku),
+      up(it.warna),
+      String(price),
+      up(it.storage),
+      up(it.garansi),
+    ].join('||')
+
+    if (!map.has(key)) {
+      map.set(key, {
+        ...it,
+        qty: qtyRow,
+        unit_price: price,
+        total_price: price * qtyRow,
+        diskon_item: toNumber(it.diskon_item),
+      })
+    } else {
+      const cur = map.get(key)
+      const newQty = (cur.qty || 0) + qtyRow
+      cur.qty = newQty
+      cur.total_price = (cur.unit_price || 0) * newQty
+      cur.diskon_item = toNumber(cur.diskon_item) + toNumber(it.diskon_item)
+      map.set(key, cur)
+    }
+  }
+
+  const groupedItems = Array.from(map.values())
+  const subtotal = groupedItems.reduce((acc, item) => acc + toNumber(item.total_price), 0)
+
+  const discountByItems = (rows || []).reduce((acc, item) => acc + toNumber(item.diskon_item), 0)
+  const discountByInvoice = (rows || []).reduce((max, item) => Math.max(max, toNumber(item.diskon_invoice)), 0)
+
+  const rawDiscount = discountByItems > 0 ? discountByItems : discountByInvoice
+  const discount = Math.min(subtotal, rawDiscount)
+
+  const total = Math.max(0, subtotal - discount)
+
+  return { groupedItems, subtotal, discount, total }
+}
+
+// ====== build HTML invoice (SAMA PERSIS RIWAYAT.JS) ======
+function buildInvoiceHtml({ invoice_id, rows, totals }) {
+  const first = rows?.[0] || {}
+  const tanggal = first?.tanggal ? String(first.tanggal) : ''
+
+  const itemsHtml = (totals.groupedItems || [])
+    .map((item) => {
+      const storageLine = item.storage ? `<span style="color:#7b88a8">Storage: ${item.storage}<br/></span>` : ''
+      const garansiLine = item.garansi ? `<span style="color:#7b88a8">Garansi: ${item.garansi}</span>` : ''
+      return `
+        <tr>
+          <td style="padding:8px; vertical-align:top;">
+            <strong>${String(item.nama_produk || '')}</strong><br/>
+            <span style="color:#7b88a8">SN: ${String(item.sn_sku || '')}</span><br/>
+            <span style="color:#7b88a8">Warna: ${String(item.warna || '')}</span><br/>
+            ${storageLine}
+            ${garansiLine}
+          </td>
+          <td style="text-align:left; vertical-align:top;">${toNumber(item.qty)}</td>
+          <td style="text-align:left; vertical-align:top;">${formatRp(toNumber(item.unit_price))}</td>
+          <td style="text-align:left; vertical-align:top;">${formatRp(toNumber(item.total_price))}</td>
+        </tr>
+      `
+    })
+    .join('')
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family: Inter, Arial, sans-serif; background:#ffffff; }
+  </style>
+</head>
+<body>
+  <div id="invoice-root"
+    style="width:595px; min-height:842px; margin:0 auto; background:#fff; padding:32px; border-radius:20px;">
+    <div style="position:relative; width:100%; height:130px; border-radius:20px; overflow:hidden; margin-bottom:10px;">
+      <img src="/head-new.png" alt="Header Background" style="display:block; margin:0 auto; max-width:100%;" />
+    </div>
+
+    <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:20px; margin-top:10px; gap:16px;">
+      <div>
+        <strong>Invoice Details</strong><br/>
+        Invoice number:<br/>
+        ${invoice_id}<br/>
+        Invoice date:<br/>
+        ${tanggal}
+      </div>
+
+      <div style="text-align:left;">
+        <strong>CONNECT.IND</strong><br/>
+        (+62) 896-31-4000-31<br/>
+        Jl. Srikuncoro Raya Ruko B2<br/>
+        Kalibanteng Kulon, Semarang Barat<br/>
+        Kota Semarang, Jawa Tengah<br/>
+        50145
+      </div>
+
+      <div style="text-align:right;">
+        <strong>Invoice To:</strong><br/>
+        ${String(first?.nama_pembeli || '')}<br/>
+        ${String(first?.alamat || '')}<br/>
+        ${String(first?.no_wa || '')}
+      </div>
+    </div>
+
+    <table style="width:100%; font-size:11px; border-collapse:separate; border-spacing:0; margin-bottom:24px; overflow:hidden;">
+      <thead>
+        <tr style="background:#f3f6fd;">
+          <th style="text-align:left; padding:8px; border-top-left-radius:8px;">Item</th>
+          <th style="text-align:left;">Qty</th>
+          <th style="text-align:left;">Price</th>
+          <th style="text-align:left; border-top-right-radius:8px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHtml}
+      </tbody>
+    </table>
+
+    <div style="width:100%; display:flex; justify-content:flex-end; margin-bottom:16px;">
+      <table style="font-size:11px; line-height:1.8; text-align:left;">
+        <tbody>
+          <tr>
+            <td style="color:#7b88a8; text-align:left;">Sub Total:</td>
+            <td style="padding-left:20px;">${formatRp(totals.subtotal)}</td>
+          </tr>
+          <tr>
+            <td style="color:#7b88a8; text-align:left;">Discount:</td>
+            <td style="padding-left:20px;">${totals.discount > 0 ? formatRp(totals.discount) : '-'}</td>
+          </tr>
+          <tr>
+            <td style="text-align:left;"><strong>Total:</strong></td>
+            <td style="padding-left:20px;"><strong>${formatRp(totals.total)}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="font-size:10px; background:#f3f6fd; padding:10px 16px; border-radius:10px;">
+      <strong>Notes:</strong><br/>
+      Terima kasih telah berbelanja di CONNECT.IND. Invoice ini berlaku sebagai bukti pembelian resmi.
+    </div>
+  </div>
+</body>
+</html>`
+}
+
+// ===== render html to offscreen (SAMA SEPERTI RIWAYAT.JS) =====
+async function renderHtmlToOffscreen(html) {
+  const wrap = document.createElement('div')
+  wrap.style.position = 'fixed'
+  wrap.style.left = '-99999px'
+  wrap.style.top = '0'
+  wrap.style.background = '#ffffff'
+  wrap.style.width = '595px'
+  wrap.style.padding = '0'
+  wrap.style.margin = '0'
+  wrap.style.zIndex = '999999'
+  wrap.innerHTML = html
+
+  document.body.appendChild(wrap)
+  const root = wrap.querySelector('#invoice-root') || wrap
+  return { wrap, root }
+}
+
+// ====== TEMPLATE EMAIL (HTML) ======
 function buildInvoiceEmailTemplate(payload) {
-  const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], subtotal = 0, discount = 0, total = 0 } = payload || {}
+  const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], subtotal = 0, discount = 0, total = 0 } =
+    payload || {}
 
   const itemsHtml =
     items.length > 0
@@ -60,7 +235,9 @@ function buildInvoiceEmailTemplate(payload) {
                 </td>
                 <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:center;">${qty}</td>
                 <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:right;">${formatRupiah(unit)}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:right; font-weight:700;">${formatRupiah(lineTotal)}</td>
+                <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:right; font-weight:700;">${formatRupiah(
+                  lineTotal
+                )}</td>
               </tr>
             `
           })
@@ -180,9 +357,6 @@ export default function EmailPage() {
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
 
-  // hidden render untuk jpg
-  const invoiceRenderRef = useRef(null)
-
   // ====== MODAL PILIH TRANSAKSI ======
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerDate, setPickerDate] = useState(dayjs().format('YYYY-MM-DD'))
@@ -265,8 +439,19 @@ export default function EmailPage() {
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
       }
 
+      // total untuk preview (email summary)
       const grouped = Array.from(map.values()).map((inv) => {
-        const { subtotal, discount, total } = computeTotals(inv.items)
+        // ini cuma untuk ringkasan di halaman email (bukan jpg)
+        const subtotal = (inv.items || []).reduce((acc, r) => {
+          const qty = Math.max(1, toInt(r.qty))
+          const price = toInt(r.harga_jual)
+          return acc + price * qty
+        }, 0)
+        const discountByItems = (inv.items || []).reduce((acc, r) => acc + toInt(r.diskon_item), 0)
+        const discountByInvoice = (inv.items || []).reduce((max, r) => Math.max(max, toInt(r.diskon_invoice)), 0)
+        const rawDiscount = discountByItems > 0 ? discountByItems : discountByInvoice
+        const discount = Math.min(subtotal, rawDiscount)
+        const total = Math.max(0, subtotal - discount)
         return { ...inv, subtotal, discount, total }
       })
 
@@ -322,42 +507,56 @@ export default function EmailPage() {
       reader.readAsDataURL(file)
     })
 
-  // Render DOM -> JPG base64 (tanpa prefix)
-  const generateInvoiceJpgBase64 = async () => {
-    const node = invoiceRenderRef.current
-    if (!node) throw new Error('Invoice renderer belum siap.')
+  // ✅ generate JPG base64 pakai TEMPLATE RIWAYAT.JS (agar sama persis)
+  const generateInvoiceJpgBase64SameAsRiwayat = async (invoice_id) => {
+    const { data, error } = await supabase
+      .from('penjualan_baru')
+      .select('*')
+      .eq('invoice_id', invoice_id)
+      .eq('is_bonus', false)
+      .order('id', { ascending: true })
 
-    // 1) coba pakai html-to-image
+    if (error) throw error
+    const rows = data || []
+    if (!rows.length) throw new Error('Invoice tidak ditemukan.')
+
+    const totals = computeInvoiceTotals(rows)
+    const html = buildInvoiceHtml({ invoice_id, rows, totals })
+
+    const { wrap, root } = await renderHtmlToOffscreen(html)
+
     try {
-      const mod = await import('html-to-image')
-      const toJpeg = mod?.toJpeg
-      if (typeof toJpeg === 'function') {
-        const dataUrl = await toJpeg(node, {
-  quality: 0.85,
-  pixelRatio: 1.3,
-  cacheBust: true,
-  backgroundColor: '#ffffff',
-})
+      // tunggu image header load
+      const imgs = Array.from(wrap.querySelectorAll('img'))
+      await Promise.all(
+        imgs.map(
+          (img) =>
+            new Promise((resolve) => {
+              if (!img) return resolve()
+              if (img.complete) return resolve()
+              img.onload = () => resolve()
+              img.onerror = () => resolve()
+            })
+        )
+      )
 
-        const base64 = String(dataUrl || '').split('base64,')[1] || ''
-        if (!base64) throw new Error('Gagal membuat JPG (html-to-image).')
-        return base64
-      }
-    } catch (e) {
-      console.warn('html-to-image tidak tersedia / gagal, fallback html2canvas.', e)
-    }
+      const mod = await import('html2canvas')
+      const html2canvas = mod.default
 
-    // 2) fallback html2canvas
-    try {
-      const { default: html2canvas } = await import('html2canvas')
-      const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+      const canvas = await html2canvas(root, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: 595,
+      })
+
+      // base64 tanpa prefix
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
       const base64 = String(dataUrl || '').split('base64,')[1] || ''
-      if (!base64) throw new Error('Gagal membuat JPG (html2canvas).')
+      if (!base64) throw new Error('Gagal membuat JPG.')
       return base64
-    } catch (e) {
-      console.error(e)
-      throw new Error('Gagal render invoice jadi JPG. Pastikan html-to-image / html2canvas terpasang.')
+    } finally {
+      wrap.remove()
     }
   }
 
@@ -371,8 +570,8 @@ export default function EmailPage() {
     try {
       const attachments = []
 
-      // ✅ auto attach invoice JPG (pakai template sama dengan riwayat.js)
-      const invoiceJpgBase64 = await generateInvoiceJpgBase64()
+      // ✅ auto attach invoice JPG (SAMA PERSIS RIWAYAT.JS)
+      const invoiceJpgBase64 = await generateInvoiceJpgBase64SameAsRiwayat(dataInvoice.invoice_id)
       attachments.push({
         filename: `${dataInvoice.invoice_id}.jpg`,
         contentType: 'image/jpeg',
@@ -399,8 +598,6 @@ export default function EmailPage() {
           html: htmlBody,
           fromEmail: FROM_EMAIL,
           fromName: FROM_NAME,
-          attach_invoice_jpg: false,
-          invoice_id: dataInvoice.invoice_id,
           attachments,
         }),
       })
@@ -445,11 +642,6 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* HIDDEN RENDER untuk generate JPG */}
-        <div style={{ position: 'absolute', left: -99999, top: -99999, pointerEvents: 'none' }}>
-          <div ref={invoiceRenderRef}>{dataInvoice ? <InvoiceExportCard data={dataInvoice} /> : null}</div>
-        </div>
-
         {/* PILIH TRANSAKSI */}
         <div className={`${card} p-4`}>
           <div className="grid lg:grid-cols-2 gap-3 items-end">
@@ -467,7 +659,7 @@ export default function EmailPage() {
                 </button>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                Setelah dipilih, email otomatis melampirkan <b>{dataInvoice?.invoice_id || 'INV-...'}.jpg</b>
+                Setelah dipilih, email otomatis melampirkan <b>{dataInvoice?.invoice_id || 'INV-...'}.jpg</b> (format sama seperti Riwayat)
               </div>
             </div>
 
@@ -511,7 +703,13 @@ export default function EmailPage() {
             <div>
               <div className={label}>Lampiran tambahan (opsional)</div>
 
-              <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setExtraFiles(Array.from(e.target.files || []))} />
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => setExtraFiles(Array.from(e.target.files || []))}
+              />
 
               <div className="flex items-center gap-2">
                 <button className={btnSoft} onClick={() => fileRef.current?.click()} type="button">
@@ -622,7 +820,12 @@ export default function EmailPage() {
 
                     <div className="md:col-span-2">
                       <div className={label}>Search (Nama / Invoice / WA)</div>
-                      <input className={input} placeholder="Ketik nama pembeli / invoice / WA..." value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} />
+                      <input
+                        className={input}
+                        placeholder="Ketik nama pembeli / invoice / WA..."
+                        value={pickerSearch}
+                        onChange={(e) => setPickerSearch(e.target.value)}
+                      />
                       <div className="text-xs text-gray-500 mt-1">List tampil sesuai tanggal. Search hanya untuk memfilter.</div>
                     </div>
                   </div>
@@ -643,7 +846,11 @@ export default function EmailPage() {
                       ) : (
                         <div className="divide-y divide-gray-100">
                           {filteredPickerRows.map((r) => (
-                            <button key={r.invoice_id} onClick={() => pickInvoice(r)} className="w-full text-left p-3 hover:bg-gray-50">
+                            <button
+                              key={r.invoice_id}
+                              onClick={() => pickInvoice(r)}
+                              className="w-full text-left p-3 hover:bg-gray-50"
+                            >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
