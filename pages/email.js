@@ -333,11 +333,12 @@ export default function EmailPage() {
       const toJpeg = mod?.toJpeg
       if (typeof toJpeg === 'function') {
         const dataUrl = await toJpeg(node, {
-          quality: 0.95,
-          pixelRatio: 2,
-          cacheBust: true,
-          backgroundColor: '#ffffff',
-        })
+  quality: 0.85,
+  pixelRatio: 1.3,
+  cacheBust: true,
+  backgroundColor: '#ffffff',
+})
+
         const base64 = String(dataUrl || '').split('base64,')[1] || ''
         if (!base64) throw new Error('Gagal membuat JPG (html-to-image).')
         return base64

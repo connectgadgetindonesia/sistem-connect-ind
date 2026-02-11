@@ -2,6 +2,14 @@ import nodemailer from 'nodemailer'
 import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '15mb',
+    },
+  },
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function json(res, status, payload) {

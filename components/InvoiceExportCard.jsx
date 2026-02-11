@@ -17,7 +17,7 @@ export default function InvoiceExportCard({ data }) {
     <div
       style={{
         width: 1200, // stabil untuk JPG
-        padding: 44,
+        padding: 36,
         background: '#ffffff',
         fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial',
         color: '#111',
