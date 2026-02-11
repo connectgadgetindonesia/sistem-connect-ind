@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 
-const card = 'bg-white border border-gray-200 rounded-xl'
-const input = 'border border-gray-200 p-2 rounded-lg w-full'
+const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
+const input =
+  'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
 const label = 'text-sm text-gray-600'
-const btn = 'px-4 py-2 rounded-lg font-semibold'
+const btn = 'px-4 py-2 rounded-lg font-semibold text-sm'
 const btnPrimary = btn + ' bg-black text-white hover:bg-gray-800'
 const btnSoft = btn + ' bg-gray-100 text-gray-900 hover:bg-gray-200'
 const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
@@ -44,10 +45,9 @@ function computeTotals(rows = []) {
 }
 
 /**
- * ✅ TEMPLATE EMAIL (TABLE-BASED + RESPONSIVE)
- * - No flex
- * - Mobile: item jadi stacked (biar gak huruf turun per huruf)
- * - Total pakai table (biar gak berdempetan)
+ * ✅ TEMPLATE EMAIL (HTML) — MOBILE SAFE
+ * - tidak pakai tabel 5 kolom (penyebab teks jadi vertikal di Gmail mobile)
+ * - item jadi card per item, info qty/price/total di bawah (stacked)
  */
 function buildInvoiceEmailTemplate(payload) {
   const {
@@ -62,10 +62,8 @@ function buildInvoiceEmailTemplate(payload) {
     total = 0,
   } = payload || {}
 
-  const buyerName = safe(nama_pembeli) || 'Customer'
-
-  const itemRowsHtml =
-    items.length > 0
+  const itemCards =
+    Array.isArray(items) && items.length
       ? items
           .map((it, idx) => {
             const qty = Math.max(1, toInt(it.qty))
@@ -79,227 +77,232 @@ function buildInvoiceEmailTemplate(payload) {
             if (warna) metaParts.push(warna)
             if (storage) metaParts.push(storage)
             if (garansi) metaParts.push(garansi)
-            const metaTop = metaParts.join(' • ')
 
-            const snsku = safe(it.sn_sku)
+            const meta = metaParts.length ? metaParts.join(' • ') : ''
+            const sn = safe(it.sn_sku)
 
             return `
-              <tr class="row">
-                <td class="td td-no">${idx + 1}</td>
-                <td class="td td-item">
-                  <div class="item-title">${safe(it.nama_produk)}</div>
-                  ${
-                    metaTop
-                      ? `<div class="item-meta">${metaTop}</div>`
-                      : ''
-                  }
-                  ${
-                    snsku
-                      ? `<div class="item-meta">SN/SKU: ${snsku}</div>`
-                      : ''
-                  }
+              <tr>
+                <td style="padding:0 0 12px 0;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                    style="border:1px solid #eaeaea; border-radius:14px; overflow:hidden; background:#ffffff;">
+                    <tr>
+                      <td style="padding:14px 14px 10px 14px;">
+                        <div style="font-size:12px; color:#9aa3af; font-weight:600; letter-spacing:.2px;">
+                          ITEM ${idx + 1}
+                        </div>
+                        <div style="margin-top:6px; font-size:14px; font-weight:800; color:#111827; line-height:1.35; word-break:break-word;">
+                          ${safe(it.nama_produk)}
+                        </div>
+                        ${
+                          meta
+                            ? `<div style="margin-top:6px; font-size:12px; color:#6b7280; line-height:1.45; word-break:break-word;">
+                                ${meta}
+                              </div>`
+                            : ''
+                        }
+                        ${
+                          sn
+                            ? `<div style="margin-top:6px; font-size:12px; color:#6b7280; line-height:1.45; word-break:break-word;">
+                                SN/SKU: <b style="color:#111827;">${sn}</b>
+                              </div>`
+                            : ''
+                        }
+                      </td>
+                    </tr>
 
-                  <!-- ✅ Mobile stacked -->
-                  <div class="m-stack">
-                    <div class="m-line"><span class="m-lbl">Qty</span><span class="m-val">${qty}</span></div>
-                    <div class="m-line"><span class="m-lbl">Price</span><span class="m-val">${formatRupiah(unit)}</span></div>
-                    <div class="m-line"><span class="m-lbl">Total</span><span class="m-val"><b>${formatRupiah(lineTotal)}</b></span></div>
-                  </div>
+                    <tr>
+                      <td style="padding:10px 14px 14px 14px; border-top:1px solid #f0f0f0; background:#fafafa;">
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                          <tr>
+                            <td style="font-size:12px; color:#6b7280; padding:2px 0;">Qty</td>
+                            <td style="font-size:12px; color:#111827; font-weight:700; text-align:right; white-space:nowrap;">
+                              ${qty}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="font-size:12px; color:#6b7280; padding:2px 0;">Price</td>
+                            <td style="font-size:12px; color:#111827; font-weight:700; text-align:right; white-space:nowrap;">
+                              ${formatRupiah(unit)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="font-size:12px; color:#6b7280; padding:2px 0;">Total</td>
+                            <td style="font-size:13px; color:#111827; font-weight:900; text-align:right; white-space:nowrap;">
+                              ${formatRupiah(lineTotal)}
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
-                <td class="td td-qty">${qty}</td>
-                <td class="td td-price">${formatRupiah(unit)}</td>
-                <td class="td td-total"><b>${formatRupiah(lineTotal)}</b></td>
               </tr>
             `
           })
           .join('')
       : `
         <tr>
-          <td colspan="5" class="td" style="padding:12px; color:#666;">
+          <td style="padding:12px; color:#6b7280; border:1px dashed #e5e7eb; border-radius:12px;">
             (Item belum ditemukan)
           </td>
         </tr>
       `
 
-  const discountRow =
+  const discountLine =
     discount > 0
       ? `
         <tr>
-          <td class="sum-lbl">Discount</td>
-          <td class="sum-val">-${formatRupiah(discount)}</td>
+          <td style="padding:6px 0; font-size:12px; color:#6b7280;">Discount</td>
+          <td style="padding:6px 0; font-size:12px; font-weight:800; color:#111827; text-align:right; white-space:nowrap;">
+            -${formatRupiah(discount)}
+          </td>
         </tr>
       `
-      : ''
+      : `
+        <tr>
+          <td style="padding:6px 0; font-size:12px; color:#6b7280;">Discount</td>
+          <td style="padding:6px 0; font-size:12px; font-weight:800; color:#111827; text-align:right; white-space:nowrap;">
+            -
+          </td>
+        </tr>
+      `
 
-  return `<!doctype html>
+  return `
+<!doctype html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    /* Reset basic */
-    body { margin:0; padding:0; background:#f6f7f9; }
-    table { border-collapse:collapse; }
-    img { border:0; outline:none; text-decoration:none; }
-    a { color: inherit; }
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <style>
+      /* Gmail mobile aman */
+      @media screen and (max-width: 600px) {
+        .wrapPad { padding: 14px 10px !important; }
+        .container { width: 100% !important; }
+        .cardPad { padding: 14px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0; padding:0; background:#f6f7f9;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+      <tr>
+        <td class="wrapPad" style="padding:24px 12px;">
+          <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
+            style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
+            
+            <!-- HEADER -->
+            <tr>
+              <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
+                <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
+                <div style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.4;">
+                  Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
+                </div>
+              </td>
+            </tr>
 
-    /* Container */
-    .wrap { width:100%; background:#f6f7f9; padding:24px 12px; }
-    .container { width:100%; max-width:760px; margin:0 auto; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-    .card { background:#ffffff; border:1px solid #eaeaea; border-radius:16px; overflow:hidden; }
+            <!-- BODY -->
+            <tr>
+              <td class="cardPad" style="padding:20px;">
+                <div style="font-size:18px; font-weight:900; color:#111827;">Invoice Pembelian</div>
+                <div style="margin-top:6px; color:#6b7280; font-size:13px; line-height:1.55;">
+                  Nomor Invoice: <b style="color:#111827;">${safe(invoice_id)}</b><br/>
+                  Tanggal: <b style="color:#111827;">${safe(tanggal)}</b>
+                </div>
 
-    .head { padding:18px 20px; border-bottom:1px solid #f0f0f0; }
-    .brand { font-weight:700; letter-spacing:0.3px; color:#111; }
-    .brandSub { color:#666; font-size:12px; margin-top:4px; line-height:1.5; }
-
-    .content { padding:20px; }
-    .h1 { font-size:18px; font-weight:700; color:#111; margin:0; }
-    .meta { margin-top:6px; color:#666; font-size:13px; line-height:1.6; }
-
-    .buyerBox { margin-top:16px; padding:14px; background:#fafafa; border-radius:12px; border:1px solid #efefef; }
-    .buyerTitle { font-weight:700; margin:0 0 6px 0; font-size:13px; color:#111; }
-    .buyerTxt { font-size:13px; color:#333; line-height:1.6; }
-
-    /* Item table */
-    .tblWrap { margin-top:16px; border:1px solid #eaeaea; border-radius:12px; overflow:hidden; }
-    .tbl { width:100%; font-size:13px; table-layout:fixed; }
-    .th { background:#f3f4f6; padding:10px 12px; text-align:left; color:#111; border-bottom:1px solid #eaeaea; font-weight:700; }
-    .th-center { text-align:center; }
-    .th-right { text-align:right; }
-
-    .td { padding:10px 12px; border-bottom:1px solid #eee; vertical-align:top; color:#111; }
-    .td-no { width:44px; }
-    .td-item { width:auto; }
-    .td-qty { width:64px; text-align:center; white-space:nowrap; }
-    .td-price { width:120px; text-align:right; white-space:nowrap; }
-    .td-total { width:130px; text-align:right; white-space:nowrap; }
-
-    .item-title { font-weight:700; color:#111; line-height:1.35; }
-    .item-meta { color:#666; font-size:12px; line-height:1.45; margin-top:4px; }
-    /* ✅ jangan pecah per huruf */
-    .td-item, .item-title, .item-meta { word-break:normal; overflow-wrap:break-word; }
-
-    /* Summary */
-    .sumWrap { margin-top:14px; width:100%; }
-    .sumBox { width:100%; max-width:360px; margin-left:auto; border:1px solid #eee; border-radius:12px; }
-    .sumTbl { width:100%; font-size:13px; }
-    .sumRow td { padding:10px 12px; }
-    .sum-lbl { color:#666; }
-    .sum-val { text-align:right; font-weight:700; color:#111; white-space:nowrap; }
-    .sumGrand .sum-lbl { font-weight:800; color:#111; font-size:14px; }
-    .sumGrand .sum-val { font-weight:800; color:#111; font-size:14px; }
-
-    .foot { margin-top:18px; color:#444; font-size:13px; line-height:1.7; }
-    .sign { margin-top:18px; color:#666; font-size:12px; }
-    .bottomNote { text-align:center; color:#999; font-size:12px; margin-top:12px; }
-
-    /* ✅ Mobile: jadi stacked card, hide kolom Qty/Price/Total */
-    .m-stack { display:none; margin-top:10px; border-top:1px dashed #e5e7eb; padding-top:10px; }
-    .m-line { display:flex; justify-content:space-between; gap:10px; padding:4px 0; }
-    .m-lbl { color:#6b7280; font-size:12px; }
-    .m-val { color:#111; font-size:12px; white-space:nowrap; }
-
-    @media only screen and (max-width: 600px) {
-      .wrap { padding:14px 10px; }
-      .content { padding:16px; }
-      .head { padding:16px; }
-
-      .td-no { width:34px; }
-      .td-qty, .td-price, .td-total { display:none !important; }
-      .th-qty, .th-price, .th-total { display:none !important; }
-
-      .m-stack { display:block !important; }
-      .sumBox { max-width:100% !important; }
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="container">
-      <div class="card">
-        <div class="head">
-          <div class="brand">CONNECT.IND</div>
-          <div class="brandSub">
-            Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-3140-0031
-          </div>
-        </div>
-
-        <div class="content">
-          <div class="h1">Invoice Pembelian</div>
-          <div class="meta">
-            Nomor Invoice: <b>${safe(invoice_id)}</b><br/>
-            Tanggal: <b>${safe(tanggal)}</b>
-          </div>
-
-          <div class="buyerBox">
-            <div class="buyerTitle">Data Pembeli</div>
-            <div class="buyerTxt">
-              Nama: <b>${buyerName}</b><br/>
-              No. WA: <b>${safe(no_wa)}</b><br/>
-              Alamat: <b>${safe(alamat)}</b>
-            </div>
-          </div>
-
-          <div style="margin-top:16px; font-weight:700; color:#111;">Detail Item</div>
-
-          <div class="tblWrap">
-            <table class="tbl" cellpadding="0" cellspacing="0">
-              <thead>
-                <tr>
-                  <th class="th th-no">No</th>
-                  <th class="th">Item</th>
-                  <th class="th th-center th-qty">Qty</th>
-                  <th class="th th-right th-price">Price</th>
-                  <th class="th th-right th-total">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemRowsHtml}
-              </tbody>
-            </table>
-          </div>
-
-          <div class="sumWrap">
-            <div class="sumBox">
-              <table class="sumTbl" cellpadding="0" cellspacing="0">
-                <tbody>
-                  <tr class="sumRow">
-                    <td class="sum-lbl">Sub Total</td>
-                    <td class="sum-val">${formatRupiah(subtotal)}</td>
+                <!-- BUYER BOX -->
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
+                  <tr>
+                    <td style="padding:14px; background:#fafafa; border-radius:14px; border:1px solid #efefef;">
+                      <div style="font-weight:800; margin-bottom:6px; color:#111827;">Data Pembeli</div>
+                      <div style="font-size:13px; color:#374151; line-height:1.6;">
+                        Nama: <b style="color:#111827;">${safe(nama_pembeli)}</b><br/>
+                        No. WA: <b style="color:#111827;">${safe(no_wa)}</b><br/>
+                        Alamat: <b style="color:#111827;">${safe(alamat)}</b>
+                      </div>
+                    </td>
                   </tr>
-                  ${discountRow}
-                  <tr class="sumRow sumGrand">
-                    <td class="sum-lbl">Total</td>
-                    <td class="sum-val">${formatRupiah(total)}</td>
+                </table>
+
+                <!-- ITEMS -->
+                <div style="margin-top:16px; font-weight:900; color:#111827;">Detail Item</div>
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
+                  ${itemCards}
+                </table>
+
+                <!-- TOTAL BOX -->
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
+                  <tr>
+                    <td></td>
+                    <td style="width:320px; max-width:100%; padding:14px; border:1px solid #eaeaea; border-radius:14px; background:#ffffff;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="padding:6px 0; font-size:12px; color:#6b7280;">Sub Total</td>
+                          <td style="padding:6px 0; font-size:12px; font-weight:900; color:#111827; text-align:right; white-space:nowrap;">
+                            ${formatRupiah(subtotal)}
+                          </td>
+                        </tr>
+                        ${discountLine}
+                        <tr>
+                          <td style="padding:10px 0 0 0; font-size:14px; font-weight:900; color:#111827;">Total</td>
+                          <td style="padding:10px 0 0 0; font-size:14px; font-weight:900; color:#111827; text-align:right; white-space:nowrap;">
+                            ${formatRupiah(total)}
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
                   </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </table>
 
-          <div class="foot">
-            Halo <b>${buyerName}</b>,<br/>
-            Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
-            Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b>0896-3140-0031</b>.
-          </div>
+                <!-- FOOTER TEXT -->
+                <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
+                  Halo <b style="color:#111827;">${safe(nama_pembeli) || 'Customer'}</b>,<br/>
+                  Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami siapkan.<br/>
+                  Jika ada pertanyaan, silakan balas email ini atau hubungi WhatsApp kami di <b style="color:#111827;">0896-3140-0031</b>.
+                </div>
 
-          <div class="sign">
-            Hormat kami,<br/>
-            <b>CONNECT.IND</b>
-          </div>
-        </div>
-      </div>
+                <div style="margin-top:18px; color:#6b7280; font-size:12px;">
+                  Hormat kami,<br/>
+                  <b style="color:#111827;">CONNECT.IND</b>
+                </div>
+              </td>
+            </tr>
 
-      <div class="bottomNote">
-        Email ini dikirim dari sistem CONNECT.IND.
-      </div>
-    </div>
-  </div>
-</body>
-</html>`
+            <!-- OUTRO -->
+            <tr>
+              <td style="text-align:center; color:#9ca3af; font-size:12px; padding:14px 16px; border-top:1px solid #f0f0f0;">
+                Email ini dikirim dari sistem CONNECT.IND.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+  `
 }
 
-// ====== INVOICE A4 HTML (JPG) ======
+// ====== download helpers (tetap) ======
+async function canvasToJpegBase64(canvas, quality = 0.95) {
+  const dataUrl = canvas.toDataURL('image/jpeg', quality)
+  return String(dataUrl || '').split('base64,')[1] || ''
+}
+
+async function renderHtmlToOffscreen(html) {
+  const wrap = document.createElement('div')
+  wrap.style.position = 'fixed'
+  wrap.style.left = '-99999px'
+  wrap.style.top = '0'
+  wrap.style.background = '#ffffff'
+  wrap.style.width = '794px'
+  wrap.style.zIndex = '999999'
+  wrap.innerHTML = html
+  document.body.appendChild(wrap)
+  const root = wrap.querySelector('#invoice-a4') || wrap
+  return { wrap, root }
+}
+
+// ====== INVOICE A4 HTML (JPG) — biarkan seperti punya Pak Erick (tidak diubah) ======
 function formatInvoiceDateLong(ymdOrIso) {
   if (!ymdOrIso) return ''
   const d = dayjs(ymdOrIso)
@@ -307,18 +310,15 @@ function formatInvoiceDateLong(ymdOrIso) {
   return d.format('MMMM D, YYYY')
 }
 
+// ⬇️ (bagian buildInvoiceA4Html Anda TIDAK saya ubah, karena sudah “benar”)
+// Pastikan tetap pakai buildInvoiceA4Html versi Anda sebelumnya.
 function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   const BLUE = '#2388ff'
-
   const _rows = Array.isArray(rows) ? rows : Array.isArray(payload?.items) ? payload.items : []
   const _totals =
     totals ||
     (payload
-      ? {
-          subtotal: toNumber(payload.subtotal),
-          discount: toNumber(payload.discount),
-          total: toNumber(payload.total),
-        }
+      ? { subtotal: toNumber(payload.subtotal), discount: toNumber(payload.discount), total: toNumber(payload.total) }
       : null) ||
     computeTotals(_rows)
 
@@ -389,14 +389,14 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
         </div>
 
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
-          <div style="height:62px;border-radius:8px;border:1px solid #eef2f7;background:#ffffff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 22px rgba(16,24,40,0.06);overflow:hidden;">
+          <div style="height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Date</div>
             <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; text-align:right;">
               ${safe(invoiceDateLong)}
             </div>
           </div>
 
-          <div style="height:62px;border-radius:8px;border:1px solid #eef2f7;background:#ffffff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 22px rgba(16,24,40,0.06);overflow:hidden;">
+          <div style="height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
             <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
               ${safe(invoice_id || payload?.invoice_id)}
@@ -462,49 +462,28 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
         </div>
       </div>
     </div>
-
     <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
 }
 
-// ====== download helpers ======
-async function canvasToJpegBase64(canvas, quality = 0.95) {
-  const dataUrl = canvas.toDataURL('image/jpeg', quality)
-  return String(dataUrl || '').split('base64,')[1] || ''
-}
-
-async function renderHtmlToOffscreen(html) {
-  const wrap = document.createElement('div')
-  wrap.style.position = 'fixed'
-  wrap.style.left = '-99999px'
-  wrap.style.top = '0'
-  wrap.style.background = '#ffffff'
-  wrap.style.width = '794px'
-  wrap.style.zIndex = '999999'
-  wrap.innerHTML = html
-  document.body.appendChild(wrap)
-  const root = wrap.querySelector('#invoice-a4') || wrap
-  return { wrap, root }
-}
-
 // ===== PAGE =====
 export default function EmailPage() {
   const [sending, setSending] = useState(false)
 
+  // invoice terpilih
   const [dataInvoice, setDataInvoice] = useState(null)
   const [htmlBody, setHtmlBody] = useState('')
 
   // composer
   const [toEmail, setToEmail] = useState('')
+  const [toEmailTouched, setToEmailTouched] = useState(false)
   const [subject, setSubject] = useState('Invoice Pembelian – CONNECT.IND')
 
+  // Attach other files
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
-
-  // Preview iframe
-  const iframeRef = useRef(null)
 
   // ====== MODAL PILIH TRANSAKSI ======
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -521,7 +500,7 @@ export default function EmailPage() {
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
 
-  // ✅ fetch invoices by date (group by invoice_id)
+  // ✅ ambil H-1 sampai H+1 lalu filter client by YYYY-MM-DD (fix timezone)
   const fetchInvoicesByDate = async (ymd) => {
     const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
     const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
@@ -561,7 +540,7 @@ export default function EmailPage() {
             nama_pembeli: r.nama_pembeli || '',
             alamat: r.alamat || '',
             no_wa: r.no_wa || '',
-            email: r.email || '', // ✅ NEW
+            email: r.email || '', // ✅ ambil email dari transaksi
             items: [],
             item_count: 0,
             subtotal: 0,
@@ -587,7 +566,7 @@ export default function EmailPage() {
         if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
         if (!it.alamat && r.alamat) it.alamat = r.alamat
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
-        if (!it.email && r.email) it.email = r.email
+        if (!it.email && r.email) it.email = r.email // ✅ ambil email pertama yg ada
       }
 
       const grouped = Array.from(map.values()).map((inv) => {
@@ -625,7 +604,7 @@ export default function EmailPage() {
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
       no_wa: inv.no_wa || '',
-      email: inv.email || '', // ✅ NEW
+      email: inv.email || '', // ✅ simpan email
       items: inv.items || [],
       subtotal: inv.subtotal || 0,
       discount: inv.discount || 0,
@@ -635,10 +614,13 @@ export default function EmailPage() {
     setDataInvoice(payload)
     setPickerOpen(false)
 
-    // ✅ AUTO ISI EMAIL (TETAP EDITABLE)
-    // - kalau toEmail masih kosong → isi dari payload.email
-    // - kalau user sudah isi manual → jangan overwrite
-    setToEmail((prev) => (prev && prev.includes('@') ? prev : (payload.email || '').trim()))
+    // ✅ AUTO ISI EMAIL (tapi tetap editable)
+    setToEmailTouched(false)
+    if (payload.email && String(payload.email).includes('@')) {
+      setToEmail(String(payload.email).trim())
+    } else {
+      setToEmail('')
+    }
   }
 
   const fileToBase64 = (file) =>
@@ -758,10 +740,32 @@ export default function EmailPage() {
     })
   }, [pickerRows, pickerSearch])
 
+  const summaryCards = useMemo(() => {
+    if (!dataInvoice) return null
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+          <div className="text-[11px] text-gray-500">Subtotal</div>
+          <div className="text-sm font-bold">{formatRupiah(dataInvoice.subtotal)}</div>
+        </div>
+        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+          <div className="text-[11px] text-gray-500">Discount</div>
+          <div className="text-sm font-bold">
+            {dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}
+          </div>
+        </div>
+        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+          <div className="text-[11px] text-gray-500">Total</div>
+          <div className="text-sm font-bold">{formatRupiah(dataInvoice.total)}</div>
+        </div>
+      </div>
+    )
+  }, [dataInvoice])
+
   return (
     <Layout>
       <div className="p-5 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div>
             <div className="text-xl font-bold">Email Perusahaan</div>
             <div className="text-sm text-gray-500">Kirim invoice via email (auto lampirkan JPG)</div>
@@ -773,7 +777,7 @@ export default function EmailPage() {
 
         {/* PILIH TRANSAKSI */}
         <div className={`${card} p-4`}>
-          <div className="grid lg:grid-cols-2 gap-3 items-end">
+          <div className="grid lg:grid-cols-2 gap-3 items-start">
             <div>
               <div className={label}>Pilih transaksi</div>
               <div className="mt-1 flex gap-2">
@@ -783,7 +787,7 @@ export default function EmailPage() {
                   placeholder="Belum pilih transaksi"
                   readOnly
                 />
-                <button className={btnPrimary + ' shrink-0'} onClick={openPicker}>
+                <button className={btnPrimary + ' shrink-0'} onClick={openPicker} type="button">
                   Pilih Transaksi
                 </button>
               </div>
@@ -793,22 +797,9 @@ export default function EmailPage() {
             </div>
 
             {dataInvoice ? (
-              <div className="text-sm text-gray-700">
-                <div className="font-semibold">Ringkasan:</div>
-                <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
-                    <div className="text-xs text-gray-500">Subtotal</div>
-                    <div className="font-bold">{formatRupiah(dataInvoice.subtotal)}</div>
-                  </div>
-                  <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
-                    <div className="text-xs text-gray-500">Discount</div>
-                    <div className="font-bold">{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</div>
-                  </div>
-                  <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
-                    <div className="text-xs text-gray-500">Total</div>
-                    <div className="font-bold">{formatRupiah(dataInvoice.total)}</div>
-                  </div>
-                </div>
+              <div>
+                <div className="text-sm text-gray-700 font-semibold mb-2">Ringkasan:</div>
+                {summaryCards}
               </div>
             ) : (
               <div className="text-sm text-gray-500">Pilih transaksi dulu untuk membangun template email.</div>
@@ -827,11 +818,16 @@ export default function EmailPage() {
                 className={input}
                 placeholder="customer@email.com"
                 value={toEmail}
-                onChange={(e) => setToEmail(e.target.value)}
+                onChange={(e) => {
+                  setToEmailTouched(true)
+                  setToEmail(e.target.value)
+                }}
               />
-              <div className="text-xs text-gray-500 mt-1">
-                Jika invoice punya email, akan otomatis terisi (tetap bisa diedit).
-              </div>
+              {dataInvoice?.email && String(dataInvoice.email).includes('@') && !toEmailTouched && (
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Email terisi otomatis dari transaksi (tetap bisa diedit).
+                </div>
+              )}
             </div>
 
             <div>
@@ -885,6 +881,7 @@ export default function EmailPage() {
                 onClick={sendEmail}
                 disabled={sending || !dataInvoice}
                 style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}
+                type="button"
               >
                 {sending ? 'Mengirim...' : 'Kirim Email (Auto lampirkan JPG)'}
               </button>
@@ -899,7 +896,7 @@ export default function EmailPage() {
           <div className={`${card} p-4`}>
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Preview Email</div>
-              <div className="text-xs text-gray-500">Safe View (Lock Size)</div>
+              <div className="text-xs text-gray-500">Render HTML</div>
             </div>
 
             <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
@@ -916,24 +913,18 @@ export default function EmailPage() {
                 </div>
               </div>
 
-              {/* ✅ iframe preview biar ukuran normal & tidak kepotong */}
-              <div className="bg-white" style={{ height: 720 }}>
-                <iframe
-                  ref={iframeRef}
-                  title="Email Preview"
-                  style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
-                  srcDoc={
-                    htmlBody ||
-                    `<div style="padding:16px; color:#666; font-family:system-ui;">
-                      Pilih transaksi untuk membuat template otomatis.
-                    </div>`
-                  }
+              {/* ✅ FIX: preview jangan dipotong, bikin scroll */}
+              <div style={{ maxHeight: 720, overflow: 'auto', background: '#fff' }}>
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      htmlBody ||
+                      `<div style="padding:16px; color:#666; font-family:system-ui;">
+                        Pilih transaksi untuk membuat template otomatis.
+                      </div>`,
+                  }}
                 />
               </div>
-            </div>
-
-            <div className="text-[11px] text-gray-500 mt-2">
-              Note: Tampilan di email client bisa sedikit beda, tapi struktur mobile sudah aman (stacked).
             </div>
           </div>
         </div>
@@ -949,7 +940,7 @@ export default function EmailPage() {
                     <div className="text-lg font-bold">Pilih Transaksi</div>
                     <div className="text-xs text-gray-500">Pilih tanggal, lalu klik salah satu invoice.</div>
                   </div>
-                  <button className={btnSoft} onClick={() => setPickerOpen(false)}>
+                  <button className={btnSoft} onClick={() => setPickerOpen(false)} type="button">
                     Tutup
                   </button>
                 </div>
@@ -978,7 +969,9 @@ export default function EmailPage() {
                         value={pickerSearch}
                         onChange={(e) => setPickerSearch(e.target.value)}
                       />
-                      <div className="text-xs text-gray-500 mt-1">List tampil sesuai tanggal. Search hanya untuk memfilter.</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        List tampil sesuai tanggal. Search hanya untuk memfilter.
+                      </div>
                     </div>
                   </div>
 
@@ -1004,6 +997,7 @@ export default function EmailPage() {
                               key={r.invoice_id}
                               onClick={() => pickInvoice(r)}
                               className="w-full text-left p-3 hover:bg-gray-50"
+                              type="button"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -1013,12 +1007,12 @@ export default function EmailPage() {
                                   </div>
                                   <div className="text-xs text-gray-500 mt-0.5">
                                     WA: <b>{r.no_wa || '-'}</b>
+                                    {r.email ? (
+                                      <>
+                                        {' '}• Email: <b>{String(r.email)}</b>
+                                      </>
+                                    ) : null}
                                   </div>
-                                  {r.email ? (
-                                    <div className="text-xs text-gray-500 mt-0.5">
-                                      Email: <b>{r.email}</b>
-                                    </div>
-                                  ) : null}
                                 </div>
                                 <div className="text-right shrink-0">
                                   <div className="font-bold">{formatRupiah(r.total)}</div>
@@ -1036,10 +1030,10 @@ export default function EmailPage() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <button className={btnSoft} onClick={() => fetchInvoicesByDate(pickerDate)}>
+                    <button className={btnSoft} onClick={() => fetchInvoicesByDate(pickerDate)} type="button">
                       Refresh
                     </button>
-                    <button className={btnDanger} onClick={() => setPickerOpen(false)}>
+                    <button className={btnDanger} onClick={() => setPickerOpen(false)} type="button">
                       Batal
                     </button>
                   </div>
