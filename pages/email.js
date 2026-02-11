@@ -262,7 +262,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
 
         <!-- ✅ META CARD (lebih tinggi + tidak kepotong) -->
         <div style="
-          flex:1; min-height:132px; border-radius:18px; border:1px solid #eef2f7;
+          flex:1; min-height:132px; border-radius:8px; border:1px solid #eef2f7;
           background:#ffffff; padding:18px 22px;
           display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
           box-shadow: 0 8px 22px rgba(16,24,40,0.06);
@@ -290,7 +290,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       <div style="display:flex; gap:22px; margin-top:22px;">
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
-          <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+          <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">CONNECT.IND</div>
             <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
               (+62) 896-31-4000-31<br/>
@@ -303,7 +303,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
 
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
-          <div style="border:1px solid #eef2f7; border-radius:18px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
+          <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
               data.nama_pembeli
             )}</div>
@@ -316,7 +316,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       </div>
 
       <!-- TABLE -->
-      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:18px; overflow:hidden;">
+      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:8px; overflow:hidden;">
         <table style="width:100%; border-collapse:separate; border-spacing:0;">
           <thead>
             <tr style="background:#f7f9fc;">
