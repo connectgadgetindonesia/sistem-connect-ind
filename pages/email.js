@@ -182,12 +182,31 @@ function formatInvoiceDateLong(ymdOrIso) {
   if (!d.isValid()) return String(ymdOrIso)
   return d.format('MMMM D, YYYY')
 }
-function buildInvoiceA4Html({ invoice_id, rows, totals }) {
+function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   const BLUE = '#2388ff'
-  const first = rows?.[0] || {}
+
+  // ✅ mapping aman: pakai payload dulu, kalau tidak ada baru fallback ke param rows/totals
+  const _rows = Array.isArray(rows) ? rows : Array.isArray(payload?.items) ? payload.items : []
+  const _totals =
+    totals ||
+    (payload
+      ? {
+          subtotal: toNumber(payload.subtotal),
+          discount: toNumber(payload.discount),
+          total: toNumber(payload.total),
+        }
+      : null) ||
+    computeTotals(_rows)
+
+  // ✅ FIX: function yang kamu pakai di dalam HTML tapi belum didefinisikan
+  const formatRp = (n) => formatRupiah(n)
+
+  // ✅ ambil "first" dari payload transaksi (kalau ada)
+  // karena itemnya tidak selalu punya tanggal/nama/no_wa/alamat, jadi ambil dari payload
+  const first = payload || {}
   const invoiceDateLong = formatInvoiceDateLong(first?.tanggal)
 
-  const itemRows = (rows || [])
+  const itemRows = (_rows || [])
     .map((it) => {
       const qty = Math.max(1, toNumber(it.qty))
       const unit = toNumber(it.harga_jual)
@@ -205,9 +224,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
       return `
         <tr>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; vertical-align:top;">
-            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(
-              it.nama_produk
-            )}</div>
+            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(it.nama_produk)}</div>
             ${
               metaTop
                 ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">${metaTop}</div>`
@@ -215,25 +232,19 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
             }
             ${
               it.sn_sku
-                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(
-                    it.sn_sku
-                  )}</div>`
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(it.sn_sku)}</div>`
                 : ''
             }
           </td>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0b1220;">${qty}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
-            unit
-          )}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
-            line
-          )}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(unit)}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(line)}</td>
         </tr>
       `
     })
     .join('')
 
-  const discountText = totals.discount > 0 ? formatRp(totals.discount) : '-'
+  const discountText = _totals.discount > 0 ? '-' + formatRp(_totals.discount) : '-'
 
   return `<!doctype html>
 <html>
@@ -297,7 +308,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
           ">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
             <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
-              ${safe(invoice_id)}
+              ${safe(invoice_id || payload?.invoice_id)}
             </div>
           </div>
 
@@ -322,9 +333,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
           <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
-            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
-              first?.nama_pembeli
-            )}</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(first?.nama_pembeli)}</div>
             <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
               ${safe(first?.no_wa)}<br/>
               ${safe(first?.alamat)}
@@ -353,7 +362,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
         <div style="min-width:320px;">
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Subtotal:</div>
-            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(totals.subtotal)}</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(_totals.subtotal)}</div>
           </div>
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:14px;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Discount:</div>
@@ -361,7 +370,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
           </div>
           <div style="display:flex; justify-content:space-between; gap:18px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220;">Grand Total:</div>
-            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(totals.total)}</div>
+            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(_totals.total)}</div>
           </div>
         </div>
       </div>
@@ -373,6 +382,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 </body>
 </html>`
 }
+
 
 
 
