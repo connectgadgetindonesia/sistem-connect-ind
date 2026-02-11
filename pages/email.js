@@ -182,15 +182,14 @@ function formatInvoiceDateLong(ymdOrIso) {
   if (!d.isValid()) return String(ymdOrIso)
   return d.format('MMMM D, YYYY')
 }
-function buildInvoiceA4Html({ invoice_id, payload }) {
+function buildInvoiceA4Html({ invoice_id, rows, totals }) {
   const BLUE = '#2388ff'
-  const data = payload || {}
-  const items = Array.isArray(data.items) ? data.items : []
-  const invoiceDateLong = formatInvoiceDateLong(data.tanggal_raw || data.tanggal)
+  const first = rows?.[0] || {}
+  const invoiceDateLong = formatInvoiceDateLong(first?.tanggal)
 
-  const itemRows = items
+  const itemRows = (rows || [])
     .map((it) => {
-      const qty = Math.max(1, toInt(it.qty))
+      const qty = Math.max(1, toNumber(it.qty))
       const unit = toNumber(it.harga_jual)
       const line = unit * qty
 
@@ -202,7 +201,6 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       if (storage) metaParts.push(storage)
       if (garansi) metaParts.push(garansi)
       const metaTop = metaParts.length ? metaParts.join(' • ') : ''
-      const sn = safe(it.sn_sku)
 
       return `
         <tr>
@@ -216,16 +214,18 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
                 : ''
             }
             ${
-              sn
-                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${sn}</div>`
+              it.sn_sku
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(
+                    it.sn_sku
+                  )}</div>`
                 : ''
             }
           </td>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0b1220;">${qty}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRupiah(
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
             unit
           )}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRupiah(
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
             line
           )}</td>
         </tr>
@@ -233,7 +233,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
     })
     .join('')
 
-  const discountText = data.discount > 0 ? formatRupiah(data.discount) : '-'
+  const discountText = totals.discount > 0 ? formatRp(totals.discount) : '-'
 
   return `<!doctype html>
 <html>
@@ -255,34 +255,52 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
       <!-- TOP ROW -->
       <div style="display:flex; gap:22px; align-items:flex-start;">
 
-        <!-- ✅ LOGO ONLY (NO SHAPE/BORDER) -->
+        <!-- ✅ LOGO (WIDTH FIX 360, HEIGHT 132) -->
         <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
           <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
-        <!-- ✅ META CARD (lebih tinggi + tidak kepotong) -->
-        <div style="
-          flex:1; min-height:132px; border-radius:8px; border:1px solid #eef2f7;
-          background:#ffffff; padding:18px 22px;
-          display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
-          box-shadow: 0 8px 22px rgba(16,24,40,0.06);
-          overflow:visible;
-        ">
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Date:</div>
-            <div style="font-size:12px; font-weight:600; color:#0b1220; line-height:1.45; white-space:nowrap;">${safe(
-              invoiceDateLong
-            )}</div>
+        <!-- ✅ META STACK (FIX WIDTH 360, TOTAL HEIGHT 132) -->
+        <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
+
+          <!-- INVOICE DATE -->
+          <div style="
+            height:62px;
+            border-radius:8px;
+            border:1px solid #eef2f7;
+            background:#ffffff;
+            padding:12px 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06);
+            overflow:hidden;
+          ">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Date</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; text-align:right;">
+              ${safe(invoiceDateLong)}
+            </div>
           </div>
 
-          <div style="width:1px; height:92px; background:#eef2f7;"></div>
-
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Invoice Number:</div>
-            <div style="font-size:12px; font-weight:600; color:${BLUE}; line-height:1.45; white-space:nowrap;">${safe(
-              invoice_id
-            )}</div>
+          <!-- INVOICE NUMBER -->
+          <div style="
+            height:62px;
+            border-radius:8px;
+            border:1px solid #eef2f7;
+            background:#ffffff;
+            padding:12px 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06);
+            overflow:hidden;
+          ">
+            <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
+              ${safe(invoice_id)}
+            </div>
           </div>
+
         </div>
       </div>
 
@@ -305,11 +323,11 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
           <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
-              data.nama_pembeli
+              first?.nama_pembeli
             )}</div>
             <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
-              ${safe(data.no_wa)}<br/>
-              ${safe(data.alamat)}
+              ${safe(first?.no_wa)}<br/>
+              ${safe(first?.alamat)}
             </div>
           </div>
         </div>
@@ -335,7 +353,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
         <div style="min-width:320px;">
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Subtotal:</div>
-            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRupiah(data.subtotal || 0)}</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220;">${formatRp(totals.subtotal)}</div>
           </div>
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:14px;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Discount:</div>
@@ -343,7 +361,7 @@ function buildInvoiceA4Html({ invoice_id, payload }) {
           </div>
           <div style="display:flex; justify-content:space-between; gap:18px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220;">Grand Total:</div>
-            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRupiah(data.total || 0)}</div>
+            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(totals.total)}</div>
           </div>
         </div>
       </div>
