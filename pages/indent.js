@@ -248,7 +248,7 @@ function buildIndentInvoiceA4Html({ invoice_id, header, items, totals }) {
       <div style="margin-top:22px; border:1px solid #eef2f7; border-radius:12px; background:#f7f9fc; padding:16px 18px;">
         <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:8px;">Notes:</div>
         <div style="font-size:12px; font-weight:400; color:#0b1220; line-height:1.6;">
-          Pesanan yang sudah masuk tidak dapat dibatalkan / diubah, maksimal pelunasan H+3 setelah tanggal yang disepakati.<br/>
+          Pesanan yang sudah masuk tidak dapat dibatalkan / diubah, maksimal pelunasan H+3 setelah invoice dikirim.<br/>
           Kekurangan pembayaran sebesar <b>${formatRp(sisa)}</b>.<br/>
           DP dianggap hangus apabila kekurangan pembayaran telat/pesanan dibatalkan secara sepihak.
         </div>
