@@ -144,7 +144,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 
         <!-- ✅ META CARD (lebih tinggi + tidak kepotong) -->
         <div style="
-          flex:1; min-height:132px; border-radius:8px; border:1px solid #eef2f7;
+          flex:1; min-height:100px; border-radius:8px; border:1px solid #eef2f7;
           background:#ffffff; padding:18px 22px;
           display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
           box-shadow: 0 8px 22px rgba(16,24,40,0.06);
