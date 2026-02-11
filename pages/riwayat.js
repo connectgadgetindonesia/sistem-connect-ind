@@ -88,45 +88,50 @@ function computeInvoiceTotals(rows = []) {
   return { groupedItems, subtotal, discount, total }
 }
 
-// ====== NEW: build HTML invoice (layout A4 model gambar) ======
-function buildInvoiceHtmlA4({ invoice_id, rows, totals }) {
+// ====== build HTML invoice (MODEL BARU sesuai contoh) ======
+function buildInvoiceHtml({ invoice_id, rows, totals }) {
   const first = rows?.[0] || {}
-  const tanggalIso = first?.tanggal ? String(first.tanggal) : ''
-  const invoiceDate = tanggalIso ? dayjs(tanggalIso).format('MMMM D, YYYY') : dayjs().format('MMMM D, YYYY')
+  const dateObj = first?.tanggal ? dayjs(first.tanggal) : null
 
-  const billToName = String(first?.nama_pembeli || '')
-  const billToWa = String(first?.no_wa || '')
-  const billToAlamat = String(first?.alamat || '')
+  const invoiceDateText = dateObj?.isValid() ? dateObj.format('MMMM D, YYYY') : ''
+  const invoiceDateSmall = dateObj?.isValid() ? dateObj.format('YYYY-MM-DD') : ''
 
   const itemsHtml = (totals.groupedItems || [])
     .map((item) => {
       const meta = [
-        item.warna ? `${String(item.warna)}` : '',
-        item.storage ? `${String(item.storage)}` : '',
-        item.garansi ? `${String(item.garansi)}` : '',
-      ].filter(Boolean)
+        item.warna ? String(item.warna) : '',
+        item.storage ? String(item.storage) : '',
+        item.garansi ? String(item.garansi) : '',
+      ]
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .join(' • ')
 
-      const metaLine = meta.length ? meta.join(' • ') : ''
-      const snLine = item.sn_sku ? `SN/SKU: ${String(item.sn_sku)}` : ''
+      const sn = item.sn_sku ? String(item.sn_sku) : ''
 
       return `
         <tr>
-          <td style="padding:16px 18px; border-top:1px solid #eef2f7; font-weight:700; color:#0f172a;">
-            ${String(item.nama_produk || '')}
-            <div style="margin-top:6px; font-weight:500; color:#64748b; font-size:12px; line-height:1.5;">
-              ${metaLine ? `<div>${metaLine}</div>` : ''}
-              ${snLine ? `<div>${snLine}</div>` : ''}
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; vertical-align:top;">
+            <div style="font-size:12px; font-weight:600; color:#0f172a; letter-spacing:0.2px;">
+              ${String(item.nama_produk || '')}
+            </div>
+            <div style="margin-top:6px; font-size:11px; font-weight:600; color:#64748b; line-height:1.5;">
+              ${meta ? `${meta}<br/>` : ''}
+              ${sn ? `SN/SKU: ${sn}` : ''}
             </div>
           </td>
-          <td style="padding:16px 18px; border-top:1px solid #eef2f7; text-align:center; color:#0f172a;">${toNumber(
-            item.qty
-          )}</td>
-          <td style="padding:16px 18px; border-top:1px solid #eef2f7; text-align:right; color:#0f172a;">${formatRp(
-            toNumber(item.unit_price)
-          )}</td>
-          <td style="padding:16px 18px; border-top:1px solid #eef2f7; text-align:right; font-weight:800; color:#0f172a;">${formatRp(
-            toNumber(item.total_price)
-          )}</td>
+
+          <td style="padding:18px 12px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0f172a;">
+            ${toNumber(item.qty)}
+          </td>
+
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0f172a;">
+            ${formatRp(toNumber(item.unit_price))}
+          </td>
+
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0f172a;">
+            ${formatRp(toNumber(item.total_price))}
+          </td>
         </tr>
       `
     })
@@ -141,126 +146,146 @@ function buildInvoiceHtmlA4({ invoice_id, rows, totals }) {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     *{ box-sizing:border-box; }
-    body{ margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#ffffff; }
-    .page{ width:794px; min-height:1123px; margin:0 auto; background:#fff; padding:44px 44px 0 44px; position:relative; }
-    .shadow{ box-shadow:0 10px 30px rgba(2,8,23,0.12); }
-    .radius{ border-radius:28px; }
-    .muted{ color:#64748b; }
-    .card{ background:#f8fafc; border:1px solid #eef2f7; border-radius:18px; }
-    .tableWrap{ border:1px solid #eef2f7; border-radius:18px; overflow:hidden; background:#fff; }
-    .thead{ background:#f5f7fb; color:#0f172a; font-weight:700; font-size:13px; }
+    body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .page{
+      width:794px;               /* A4-ish @ 96dpi */
+      min-height:1123px;
+      margin:0 auto;
+      padding:56px 56px 48px 56px;
+      background:#fff;
+      position:relative;
+    }
+    .row{ display:flex; gap:18px; align-items:stretch; }
+    .card{
+      border:1px solid #e8eef6;
+      border-radius:16px;
+      background:#f8fafc;
+    }
+    .cardWhite{
+      border:1px solid #e8eef6;
+      border-radius:16px;
+      background:#ffffff;
+    }
+    .label{ font-size:12px; font-weight:600; color:#64748b; }
+    .value{ font-size:12px; font-weight:600; color:#0f172a; }
+    .semi{ font-weight:600; }
+    .blue{ color:#2388ff; }
+    .tableWrap{
+      margin-top:26px;
+      border:1px solid #e8eef6;
+      border-radius:16px;
+      overflow:hidden;
+      background:#fff;
+    }
+    table{ width:100%; border-collapse:collapse; }
+    thead th{
+      text-align:left;
+      background:#f6f8fc;
+      padding:16px 18px;
+      font-size:12px;
+      font-weight:600;
+      color:#0f172a;
+      border-bottom:1px solid #eef2f7;
+    }
   </style>
 </head>
 
 <body>
-  <div class="page shadow radius">
-
+  <div class="page" id="invoice-root">
     <!-- HEADER -->
-    <div style="display:flex; gap:18px; align-items:stretch;">
-      <div style="
-        flex:1;
-        min-height:130px;
-        border-radius:22px;
-        background: linear-gradient(135deg, #2f7cf8 0%, #2c8cff 45%, #1f66ff 100%);
-        position:relative;
-        overflow:hidden;
-        padding:22px 24px;
-      ">
-        <div style="position:absolute; right:-40px; top:-40px; width:200px; height:200px; background:rgba(255,255,255,0.18); border-radius:999px;"></div>
-        <div style="position:absolute; left:-60px; bottom:-60px; width:220px; height:220px; background:rgba(255,255,255,0.14); border-radius:999px;"></div>
-
-        <div style="height:100%; display:flex; align-items:center; justify-content:center;">
-          <img src="/logo.png" alt="CONNECT.IND" style="max-height:72px; max-width:100%; object-fit:contain;" />
-        </div>
+    <div class="row" style="align-items:center; gap:18px;">
+      <div style="flex:1;">
+        <!-- logo tanpa box/border -->
+        <img src="/logo.png" alt="CONNECT.IND" style="display:block; width:280px; max-width:100%; height:auto;" />
       </div>
 
-      <div class="card" style="width:340px; padding:18px 18px;">
-        <div style="display:flex; gap:16px;">
-          <div style="flex:1;">
-            <div class="muted" style="font-size:12px; margin-bottom:6px;">Invoice Date:</div>
-            <div style="font-weight:800; font-size:16px; color:#0f172a;">${invoiceDate}</div>
+      <div class="cardWhite" style="width:340px; padding:18px 18px;">
+        <div style="display:flex; gap:18px;">
+          <div style="flex:1; padding-right:14px; border-right:1px solid #eef2f7;">
+            <div class="label">Invoice Date:</div>
+            <div class="value" style="margin-top:8px; font-size:12px;">${invoiceDateText || invoiceDateSmall}</div>
           </div>
-          <div style="width:1px; background:#eef2f7;"></div>
-          <div style="flex:1;">
-            <div class="muted" style="font-size:12px; margin-bottom:6px;">Invoice Number:</div>
-            <div style="font-weight:900; font-size:16px; color:#2563eb;">${invoice_id}</div>
+          <div style="flex:1; padding-left:14px;">
+            <div class="label">Invoice Number:</div>
+            <div class="value blue" style="margin-top:8px; font-size:12px; word-break:break-word;">${invoice_id}</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- BILL FROM / TO -->
-    <div style="display:flex; gap:18px; margin-top:26px;">
+    <!-- BILL FROM / BILL TO -->
+    <div class="row" style="margin-top:34px;">
       <div style="flex:1;">
-        <div class="muted" style="font-size:12px; margin-bottom:10px;">Bill from:</div>
-        <div class="card" style="padding:18px 18px; min-height:130px;">
-          <div style="font-weight:900; font-size:18px; color:#0f172a;">CONNECT.IND</div>
-          <div class="muted" style="font-size:13px; margin-top:10px; line-height:1.65;">
+        <div class="label" style="margin-bottom:10px;">Bill from:</div>
+        <div class="card" style="padding:18px 18px;">
+          <div style="font-size:12px; font-weight:600; color:#0f172a;">CONNECT.IND</div>
+          <div style="margin-top:10px; font-size:12px; font-weight:600; color:#64748b; line-height:1.7;">
             (+62) 896-31-4000-31<br/>
             Jl. Srikuncoro Raya Ruko B1-B2,<br/>
-            Kalibanteng Kulon, Kec.<br/>
-            Semarang Barat, Kota Semarang,<br/>
-            Jawa Tengah. 50145.
+            Kalibanteng Kulon, Kec. Semarang Barat,<br/>
+            Kota Semarang, Jawa Tengah, 50145.
           </div>
         </div>
       </div>
 
       <div style="flex:1;">
-        <div class="muted" style="font-size:12px; margin-bottom:10px;">Bill to:</div>
-        <div class="card" style="padding:18px 18px; min-height:130px;">
-          <div style="font-weight:900; font-size:18px; color:#0f172a;">${billToName}</div>
-          <div class="muted" style="font-size:13px; margin-top:10px; line-height:1.65;">
-            ${billToWa ? `${billToWa}<br/>` : ''}
-            ${billToAlamat ? `${billToAlamat}` : ''}
+        <div class="label" style="margin-bottom:10px;">Bill to:</div>
+        <div class="card" style="padding:18px 18px;">
+          <div style="font-size:12px; font-weight:600; color:#0f172a;">${String(first?.nama_pembeli || '')}</div>
+          <div style="margin-top:10px; font-size:12px; font-weight:600; color:#64748b; line-height:1.7;">
+            ${String(first?.no_wa || '')}<br/>
+            ${String(first?.alamat || '')}
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ITEMS TABLE -->
-    <div class="tableWrap" style="margin-top:26px;">
-      <table style="width:100%; border-collapse:separate; border-spacing:0; font-size:13px;">
-        <thead class="thead">
+    <!-- TABLE -->
+    <div class="tableWrap">
+      <table>
+        <thead>
           <tr>
-            <th style="text-align:left; padding:16px 18px;">Item</th>
-            <th style="text-align:center; padding:16px 18px; width:110px;">Quantity</th>
-            <th style="text-align:right; padding:16px 18px; width:150px;">Price</th>
-            <th style="text-align:right; padding:16px 18px; width:160px;">Total</th>
+            <th style="width:52%;">Item</th>
+            <th style="width:16%; text-align:center;">Quantity</th>
+            <th style="width:16%; text-align:right;">Price</th>
+            <th style="width:16%; text-align:right;">Total</th>
           </tr>
         </thead>
         <tbody>
-          ${itemsHtml}
+          ${itemsHtml || ''}
         </tbody>
       </table>
     </div>
 
     <!-- TOTALS -->
-    <div style="display:flex; justify-content:flex-end; margin-top:22px;">
-      <div style="width:320px; text-align:left;">
-        <div style="display:flex; justify-content:space-between; margin-top:6px;">
-          <div class="muted">Subtotal:</div>
-          <div style="font-weight:700; color:#0f172a;">${formatRp(totals.subtotal)}</div>
-        </div>
-        <div style="display:flex; justify-content:space-between; margin-top:6px;">
-          <div class="muted">Discount:</div>
-          <div style="font-weight:700; color:#0f172a;">${discountText}</div>
-        </div>
-        <div style="display:flex; justify-content:space-between; margin-top:10px;">
-          <div style="font-weight:900; font-size:16px; color:#0f172a;">Grand Total:</div>
-          <div style="font-weight:900; font-size:16px; color:#2563eb;">${formatRp(totals.total)}</div>
-        </div>
-      </div>
+    <div style="display:flex; justify-content:flex-end; margin-top:30px;">
+      <table style="width:360px; border-collapse:collapse;">
+        <tbody>
+          <tr>
+            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#64748b;">Subtotal:</td>
+            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#0f172a; text-align:right;">${formatRp(totals.subtotal)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#64748b;">Discount:</td>
+            <td style="padding:6px 0; font-size:12px; font-weight:600; color:#0f172a; text-align:right;">${discountText}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0 0; font-size:14px; font-weight:600; color:#0f172a;">Grand Total:</td>
+            <td style="padding:10px 0 0; font-size:14px; font-weight:600; color:#2388ff; text-align:right;">${formatRp(totals.total)}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <!-- FOOTER LINE -->
-    <div style="position:absolute; left:0; right:0; bottom:0; height:10px; background:#1f66ff; border-bottom-left-radius:28px; border-bottom-right-radius:28px;"></div>
+    <!-- BOTTOM BLUE BAR (full, no radius) -->
+    <div style="position:absolute; left:0; right:0; bottom:0; height:10px; background:#2388ff;"></div>
   </div>
 </body>
 </html>`
 }
 
 // ====== download helpers (ikut pricelist.js) ======
-async function canvasToJpegBlob(canvas, quality = 0.9) {
+async function canvasToJpegBlob(canvas, quality = 0.95) {
   return await new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('Gagal convert canvas ke blob'))),
@@ -289,7 +314,7 @@ async function renderHtmlToOffscreen(html) {
   wrap.innerHTML = html
 
   document.body.appendChild(wrap)
-  const root = wrap.querySelector('.page') || wrap
+  const root = wrap.querySelector('#invoice-root') || wrap
   return { wrap, root }
 }
 
@@ -352,7 +377,8 @@ export default function RiwayatPenjualan() {
     return total
   }
 
-  const totalLaba = (produk = []) => produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+  const totalLaba = (produk = []) =>
+    produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
   const computeKinerjaFromRows = (data = []) => {
     const invMap = new Map()
@@ -482,7 +508,7 @@ export default function RiwayatPenjualan() {
     }
   }
 
-  // ====== DOWNLOAD JPG invoice langsung dari RIWAYAT (A4 model baru) ======
+  // ====== DOWNLOAD JPG invoice langsung dari RIWAYAT (tanpa PDF) ======
   async function downloadInvoiceJpg(invoice_id) {
     if (!invoice_id) return
 
@@ -501,11 +527,11 @@ export default function RiwayatPenjualan() {
       if (!rows.length) return alert('Invoice tidak ditemukan.')
 
       const totals = computeInvoiceTotals(rows)
-      const html = buildInvoiceHtmlA4({ invoice_id, rows, totals })
+      const html = buildInvoiceHtml({ invoice_id, rows, totals })
 
       const { wrap, root } = await renderHtmlToOffscreen(html)
 
-      // tunggu image load (logo)
+      // tunggu logo load
       const imgs = Array.from(wrap.querySelectorAll('img'))
       await Promise.all(
         imgs.map(
@@ -775,7 +801,12 @@ export default function RiwayatPenjualan() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <button onClick={() => handleDelete(inv)} className={btnDanger} disabled={loading || busy} type="button">
+                        <button
+                          onClick={() => handleDelete(inv)}
+                          className={btnDanger}
+                          disabled={loading || busy}
+                          type="button"
+                        >
                           Hapus
                         </button>
                       </td>
@@ -834,7 +865,12 @@ export default function RiwayatPenjualan() {
               >
                 Next ›
               </button>
-              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Last »
               </button>
             </div>
