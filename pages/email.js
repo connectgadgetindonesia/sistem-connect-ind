@@ -45,9 +45,21 @@ function computeTotals(rows = []) {
 }
 
 // ===== TEMPLATE EMAIL (HTML) =====
+// ✅ FIX: biar tidak kepotong di mobile/email client:
+// - jangan pakai overflow-x / min-width table
+// - pakai table-layout fixed + word-break
 function buildInvoiceEmailTemplate(payload) {
-  const { nama_pembeli, invoice_id, tanggal, no_wa, alamat, items = [], subtotal = 0, discount = 0, total = 0 } =
-    payload || {}
+  const {
+    nama_pembeli,
+    invoice_id,
+    tanggal,
+    no_wa,
+    alamat,
+    items = [],
+    subtotal = 0,
+    discount = 0,
+    total = 0,
+  } = payload || {}
 
   const itemsHtml =
     items.length > 0
@@ -56,21 +68,34 @@ function buildInvoiceEmailTemplate(payload) {
             const qty = Math.max(1, toInt(it.qty))
             const unit = toInt(it.harga_jual)
             const lineTotal = unit * qty
+
+            const meta = [
+              safe(it.warna),
+              safe(it.storage),
+              safe(it.garansi),
+            ].filter(Boolean).join(' • ')
+
             return `
               <tr>
-                <td style="padding:10px 12px; border-bottom:1px solid #eee;">${idx + 1}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #eee;">
-                  <div style="font-weight:600;">${safe(it.nama_produk)}</div>
+                <td style="padding:10px 10px; border-bottom:1px solid #eee; width:36px; vertical-align:top;">${idx + 1}</td>
+
+                <td style="padding:10px 10px; border-bottom:1px solid #eee; vertical-align:top; word-break:break-word; overflow-wrap:anywhere;">
+                  <div style="font-weight:600; margin-bottom:2px;">${safe(it.nama_produk)}</div>
                   <div style="color:#666; font-size:12px; line-height:1.4;">
-                    ${safe(it.warna)}${it.storage ? ' • ' + safe(it.storage) : ''}${it.garansi ? ' • ' + safe(it.garansi) : ''}<br/>
+                    ${meta ? meta + '<br/>' : ''}
                     ${it.sn_sku ? 'SN/SKU: ' + safe(it.sn_sku) : ''}
                   </div>
                 </td>
-                <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:center;">${qty}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:right;">${formatRupiah(unit)}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">${formatRupiah(
-                  lineTotal
-                )}</td>
+
+                <td style="padding:10px 10px; border-bottom:1px solid #eee; text-align:center; width:56px; vertical-align:top;">${qty}</td>
+
+                <td style="padding:10px 10px; border-bottom:1px solid #eee; text-align:right; width:110px; vertical-align:top; white-space:nowrap;">
+                  ${formatRupiah(unit)}
+                </td>
+
+                <td style="padding:10px 10px; border-bottom:1px solid #eee; text-align:right; width:120px; vertical-align:top; font-weight:600; white-space:nowrap;">
+                  ${formatRupiah(lineTotal)}
+                </td>
               </tr>
             `
           })
@@ -123,23 +148,22 @@ function buildInvoiceEmailTemplate(payload) {
 
             <div style="margin-top:16px;">
               <div style="font-weight:600; margin-bottom:10px;">Detail Item</div>
-              <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
-                <table style="min-width:640px; width:100%; border-collapse:collapse; font-size:13px;">
-                  <thead>
-                    <tr>
-                      <th style="text-align:left; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">No</th>
-                      <th style="text-align:left; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Item</th>
-                      <th style="text-align:center; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Qty</th>
-                      <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Price</th>
-                      <th style="text-align:right; padding:10px 12px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>${itemsHtml}</tbody>
-                </table>
-              </div>
 
-              <div style="margin-top:14px; display:flex; justify-content:flex-end;">
-                <div style="min-width:320px; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
+              <table style="width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:36px;">No</th>
+                    <th style="text-align:left; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea;">Item</th>
+                    <th style="text-align:center; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:56px;">Qty</th>
+                    <th style="text-align:right; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:110px;">Price</th>
+                    <th style="text-align:right; padding:10px 10px; background:#f3f4f6; border-bottom:1px solid #eaeaea; width:120px;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>${itemsHtml}</tbody>
+              </table>
+
+              <div style="margin-top:14px; display:block;">
+                <div style="max-width:360px; margin-left:auto; padding:14px; border:1px solid #eee; border-radius:12px; background:#fff;">
                   <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
                     <span>Sub Total</span>
                     <span style="font-weight:700; color:#111;">${formatRupiah(subtotal)}</span>
@@ -185,7 +209,6 @@ function formatInvoiceDateLong(ymdOrIso) {
 function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   const BLUE = '#2388ff'
 
-  // ✅ mapping aman: pakai payload dulu, kalau tidak ada baru fallback ke param rows/totals
   const _rows = Array.isArray(rows) ? rows : Array.isArray(payload?.items) ? payload.items : []
   const _totals =
     totals ||
@@ -198,11 +221,8 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
       : null) ||
     computeTotals(_rows)
 
-  // ✅ FIX: function yang kamu pakai di dalam HTML tapi belum didefinisikan
   const formatRp = (n) => formatRupiah(n)
 
-  // ✅ ambil "first" dari payload transaksi (kalau ada)
-  // karena itemnya tidak selalu punya tanggal/nama/no_wa/alamat, jadi ambil dari payload
   const first = payload || {}
   const invoiceDateLong = formatInvoiceDateLong(first?.tanggal)
 
@@ -263,29 +283,16 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   <div id="invoice-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
     <div style="padding:56px 56px 42px 56px; height:100%;">
 
-      <!-- TOP ROW -->
       <div style="display:flex; gap:22px; align-items:flex-start;">
-
-        <!-- ✅ LOGO (WIDTH FIX 360, HEIGHT 132) -->
         <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
           <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
-        <!-- ✅ META STACK (FIX WIDTH 360, TOTAL HEIGHT 132) -->
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
-
-          <!-- INVOICE DATE -->
           <div style="
-            height:62px;
-            border-radius:8px;
-            border:1px solid #eef2f7;
-            background:#ffffff;
-            padding:12px 16px;
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            box-shadow:0 8px 22px rgba(16,24,40,0.06);
-            overflow:hidden;
+            height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff;
+            padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;
           ">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Date</div>
             <div style="font-size:12px; font-weight:600; color:#0b1220; white-space:nowrap; text-align:right;">
@@ -293,29 +300,19 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
             </div>
           </div>
 
-          <!-- INVOICE NUMBER -->
           <div style="
-            height:62px;
-            border-radius:8px;
-            border:1px solid #eef2f7;
-            background:#ffffff;
-            padding:12px 16px;
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            box-shadow:0 8px 22px rgba(16,24,40,0.06);
-            overflow:hidden;
+            height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff;
+            padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
+            box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;
           ">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
             <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
               ${safe(invoice_id || payload?.invoice_id)}
             </div>
           </div>
-
         </div>
       </div>
 
-      <!-- BILL ROW -->
       <div style="display:flex; gap:22px; margin-top:22px;">
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
@@ -342,7 +339,6 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
         </div>
       </div>
 
-      <!-- TABLE -->
       <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:8px; overflow:hidden;">
         <table style="width:100%; border-collapse:separate; border-spacing:0;">
           <thead>
@@ -357,7 +353,6 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
         </table>
       </div>
 
-      <!-- TOTALS -->
       <div style="display:flex; justify-content:flex-end; margin-top:24px;">
         <div style="min-width:320px;">
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
@@ -376,16 +371,11 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
       </div>
     </div>
 
-    <!-- BOTTOM BAR -->
     <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
 }
-
-
-
-
 
 // ====== download helpers ======
 async function canvasToJpegBase64(canvas, quality = 0.95) {
@@ -422,6 +412,29 @@ export default function EmailPage() {
   // Attach other files
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
+
+  // ====== PREVIEW SCALE (biar gak kepotong) ======
+  const previewOuterRef = useRef(null)
+  const PREVIEW_BASE_WIDTH = 760
+  const PREVIEW_BASE_HEIGHT = 980
+  const [previewScale, setPreviewScale] = useState(1)
+
+  useEffect(() => {
+    if (!previewOuterRef.current) return
+    const el = previewOuterRef.current
+
+    const calc = () => {
+      const w = el.clientWidth || PREVIEW_BASE_WIDTH
+      const s = Math.min(1, Math.max(0.3, w / PREVIEW_BASE_WIDTH))
+      setPreviewScale(s)
+    }
+
+    calc()
+
+    const ro = new ResizeObserver(() => calc())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // ====== MODAL PILIH TRANSAKSI ======
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -474,10 +487,11 @@ export default function EmailPage() {
           map.set(inv, {
             invoice_id: inv,
             tanggal_raw: r.tanggal || null,
-            tanggal: r.tanggal ? dayjs(r.tanggal).format('YYYY-MM-DD') : ymd, // simpan ymd utk render
+            tanggal: r.tanggal ? dayjs(r.tanggal).format('YYYY-MM-DD') : ymd,
             nama_pembeli: r.nama_pembeli || '',
             alamat: r.alamat || '',
             no_wa: r.no_wa || '',
+            email: (r.email || '').toString().trim(), // ✅ ambil email kalau ada
             items: [],
             item_count: 0,
             subtotal: 0,
@@ -503,6 +517,7 @@ export default function EmailPage() {
         if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
         if (!it.alamat && r.alamat) it.alamat = r.alamat
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
+        if (!it.email && r.email) it.email = String(r.email || '').trim() // ✅ pick first non-empty
       }
 
       const grouped = Array.from(map.values()).map((inv) => {
@@ -535,11 +550,12 @@ export default function EmailPage() {
   const pickInvoice = (inv) => {
     const payload = {
       invoice_id: inv.invoice_id,
-      tanggal: inv.tanggal, // ymd
+      tanggal: inv.tanggal,
       tanggal_raw: inv.tanggal_raw,
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
       no_wa: inv.no_wa || '',
+      email: (inv.email || '').toString().trim(), // ✅ bawa email
       items: inv.items || [],
       subtotal: inv.subtotal || 0,
       discount: inv.discount || 0,
@@ -547,6 +563,10 @@ export default function EmailPage() {
     }
 
     setDataInvoice(payload)
+
+    // ✅ AUTO INPUT EMAIL jika terdeteksi (tetap editable)
+    if (payload.email) setToEmail(payload.email)
+
     setPickerOpen(false)
   }
 
@@ -570,7 +590,6 @@ export default function EmailPage() {
     const html = buildInvoiceA4Html({ invoice_id: dataInvoice.invoice_id, payload: dataInvoice })
     const { wrap, root } = await renderHtmlToOffscreen(html)
 
-    // tunggu image/logo & font
     const imgs = Array.from(wrap.querySelectorAll('img'))
     await Promise.all(
       imgs.map(
@@ -584,7 +603,6 @@ export default function EmailPage() {
       )
     )
 
-    // render
     const mod = await import('html2canvas')
     const html2canvas = mod.default
 
@@ -612,7 +630,6 @@ export default function EmailPage() {
     try {
       const attachments = []
 
-      // ✅ auto attach invoice JPG (layout A4 model contoh)
       const invoiceJpgBase64 = await generateInvoiceJpgBase64()
       attachments.push({
         filename: `${dataInvoice.invoice_id}.jpg`,
@@ -620,7 +637,6 @@ export default function EmailPage() {
         contentBase64: invoiceJpgBase64,
       })
 
-      // lampiran tambahan
       for (const f of extraFiles) {
         const contentBase64 = await fileToBase64(f)
         if (!contentBase64) continue
@@ -735,7 +751,15 @@ export default function EmailPage() {
 
             <div>
               <div className={label}>To (Email Customer)</div>
-              <input className={input} placeholder="customer@email.com" value={toEmail} onChange={(e) => setToEmail(e.target.value)} />
+              <input
+                className={input}
+                placeholder="customer@email.com"
+                value={toEmail}
+                onChange={(e) => setToEmail(e.target.value)}
+              />
+              <div className="text-xs text-gray-500 mt-1">
+                Jika invoice punya email, akan otomatis terisi (tetap bisa diedit).
+              </div>
             </div>
 
             <div>
@@ -747,7 +771,13 @@ export default function EmailPage() {
             <div>
               <div className={label}>Lampiran tambahan (opsional)</div>
 
-              <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setExtraFiles(Array.from(e.target.files || []))} />
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => setExtraFiles(Array.from(e.target.files || []))}
+              />
 
               <div className="flex items-center gap-2">
                 <button className={btnSoft} onClick={() => fileRef.current?.click()} type="button">
@@ -778,7 +808,12 @@ export default function EmailPage() {
             </div>
 
             <div className="pt-2 flex items-center gap-2">
-              <button className={btnPrimary} onClick={sendEmail} disabled={sending || !dataInvoice} style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}>
+              <button
+                className={btnPrimary}
+                onClick={sendEmail}
+                disabled={sending || !dataInvoice}
+                style={{ opacity: sending || !dataInvoice ? 0.6 : 1 }}
+              >
                 {sending ? 'Mengirim...' : 'Kirim Email (Auto lampirkan JPG)'}
               </button>
             </div>
@@ -792,7 +827,7 @@ export default function EmailPage() {
           <div className={`${card} p-4`}>
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Preview Email</div>
-              <div className="text-xs text-gray-500">Render HTML</div>
+              <div className="text-xs text-gray-500">Safe View (Lock Size)</div>
             </div>
 
             <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
@@ -809,17 +844,45 @@ export default function EmailPage() {
                 </div>
               </div>
 
-              <div
-                className="bg-white"
-                style={{ minHeight: 420 }}
-                dangerouslySetInnerHTML={{
-                  __html:
-                    htmlBody ||
-                    `<div style="padding:16px; color:#666; font-family:system-ui;">
-                      Pilih transaksi untuk membuat template otomatis.
-                    </div>`,
-                }}
-              />
+              {/* ✅ Preview pakai iframe + scale biar tidak kepotong di web */}
+              <div ref={previewOuterRef} className="bg-white">
+                <div
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    background: '#fff',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: PREVIEW_BASE_WIDTH,
+                      transform: `scale(${previewScale})`,
+                      transformOrigin: 'top left',
+                      height: PREVIEW_BASE_HEIGHT,
+                    }}
+                  >
+                    <iframe
+                      title="email-preview"
+                      style={{
+                        width: PREVIEW_BASE_WIDTH,
+                        height: PREVIEW_BASE_HEIGHT,
+                        border: '0',
+                        display: 'block',
+                        background: '#fff',
+                      }}
+                      srcDoc={
+                        htmlBody ||
+                        `<div style="padding:16px; color:#666; font-family:system-ui;">
+                          Pilih transaksi untuk membuat template otomatis.
+                        </div>`
+                      }
+                    />
+                  </div>
+
+                  {/* spacer biar container tinggi mengikuti scale */}
+                  <div style={{ height: Math.max(0, PREVIEW_BASE_HEIGHT * previewScale - PREVIEW_BASE_HEIGHT) }} />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -858,7 +921,12 @@ export default function EmailPage() {
 
                     <div className="md:col-span-2">
                       <div className={label}>Search (Nama / Invoice / WA)</div>
-                      <input className={input} placeholder="Ketik nama pembeli / invoice / WA..." value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} />
+                      <input
+                        className={input}
+                        placeholder="Ketik nama pembeli / invoice / WA..."
+                        value={pickerSearch}
+                        onChange={(e) => setPickerSearch(e.target.value)}
+                      />
                       <div className="text-xs text-gray-500 mt-1">List tampil sesuai tanggal. Search hanya untuk memfilter.</div>
                     </div>
                   </div>
@@ -889,6 +957,11 @@ export default function EmailPage() {
                                   <div className="text-xs text-gray-500 mt-0.5">
                                     WA: <b>{r.no_wa || '-'}</b>
                                   </div>
+                                  {r.email ? (
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      Email: <b>{r.email}</b>
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <div className="text-right shrink-0">
                                   <div className="font-bold">{formatRupiah(r.total)}</div>
