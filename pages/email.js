@@ -625,12 +625,12 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 }
 
 // ====== OFFER A4 HTML (JPG) — sesuai header surat ======
-// ====== OFFER A4 HTML (JPG) — dibuat PERSIS seperti contoh "Surat penawaran.jpg"
+// ====== OFFER A4 HTML (JPG) — layout sesuai contoh + tabel modern (seperti preview)
 function buildOfferA4Html(payload) {
   const p = payload || {}
   const items = Array.isArray(p.items) ? p.items : []
 
-  // format Rupiah sesuai contoh: "Rp. 3.099.000"
+  // format Rupiah surat: "Rp. 3.099.000"
   const formatRpDot = (n) => {
     const x = toNumber(n)
     return 'Rp. ' + x.toLocaleString('id-ID')
@@ -642,18 +642,8 @@ function buildOfferA4Html(payload) {
     const d = dayjs(ymdOrIso)
     if (!d.isValid()) return String(ymdOrIso)
     const bulan = [
-      'Januari',
-      'Februari',
-      'Maret',
-      'April',
-      'Mei',
-      'Juni',
-      'Juli',
-      'Agustus',
-      'September',
-      'Oktober',
-      'November',
-      'Desember',
+      'Januari','Februari','Maret','April','Mei','Juni',
+      'Juli','Agustus','September','Oktober','November','Desember',
     ]
     const dd = String(d.date()).padStart(2, '0')
     const mm = bulan[d.month()]
@@ -661,9 +651,7 @@ function buildOfferA4Html(payload) {
     return `${dd} ${mm} ${yy}`
   }
 
-  // =========================
-  // DATA SURAT (sesuai contoh)
-  // =========================
+  // DATA SURAT
   const nomorSurat = safe(p.offer_id) || '01/SP/CTI/02/26'
   const tanggalSurat = formatTanggalIndo(p.tanggal) || formatTanggalIndo(dayjs().format('YYYY-MM-DD'))
 
@@ -671,27 +659,33 @@ function buildOfferA4Html(payload) {
   const kepadaPerusahaan = safe(p.kepada_perusahaan) || safe(p.kepadaPerusahaan) || ''
   const kepadaTempat = 'Di tempat'
 
-  // Header image sesuai standar kamu (public/head.png).
-  // Kalau file kamu beda, ganti path ini saja.
+  // ✅ Header image (WAJIB bener path-nya)
+  // Pastikan file ada di /public/head-surat-menyurat.png
   const HEAD_IMG = '/head-surat-menyurat.png'
 
-  // Ambil 1 produk utama (sesuai contoh tabel hanya 1 baris).
-  // Kalau item > 1, tetap tampil semua baris (lebih aman).
-  const rows = (items.length ? items : [{ nama_barang: '-', qty: 1, harga: 0 }])
+  // BLOK PEMBAYARAN (sesuai contoh)
+  const BANK_NAMA = 'BCA'
+  const BANK_CABANG = 'Ngaliyan, Semarang'
+  const BANK_REK = '871-504-7400'
+  const BANK_AN = 'Erick Karno Hutomo'
+
+  // ROWS (pakai tabel modern seperti preview)
+  const rowsData = items.length ? items : [{ nama_barang: '-', qty: 1, harga: 0 }]
+  const rows = rowsData
     .map((it) => {
       const namaBarang = safe(it.nama_barang) || '-'
       const harga = formatRpDot(toNumber(it.harga))
       return `
         <tr>
-          <td style="padding:14px 16px; border:1px solid #cfcfcf; border-right:none; vertical-align:middle;">
+          <td style="padding:14px 16px; border-top:1px solid #eef2f7; font-size:14px; color:#0b1220;">
             <div style="display:flex; gap:10px; align-items:flex-start;">
-              <div style="margin-top:3px; font-size:16px; line-height:1;">•</div>
-              <div style="font-size:16px; font-weight:700; color:#111827; line-height:1.35;">
+              <div style="margin-top:2px; font-size:16px; line-height:1;">•</div>
+              <div style="font-weight:700; line-height:1.35; word-break:break-word;">
                 ${namaBarang}
               </div>
             </div>
           </td>
-          <td style="padding:14px 16px; border:1px solid #cfcfcf; text-align:center; vertical-align:middle; font-size:16px; font-weight:800; color:#111827; white-space:nowrap;">
+          <td style="padding:14px 16px; border-top:1px solid #eef2f7; font-size:14px; font-weight:800; color:#0b1220; text-align:right; white-space:nowrap;">
             ${harga}
           </td>
         </tr>
@@ -699,18 +693,6 @@ function buildOfferA4Html(payload) {
     })
     .join('')
 
-  // =========================
-  // BLOK PEMBAYARAN (sesuai contoh)
-  // (Bila nanti mau dinamis, tinggal ambil dari payload)
-  // =========================
-  const BANK_NAMA = 'BCA'
-  const BANK_CABANG = 'Ngaliyan, Semarang'
-  const BANK_REK = '871-504-7400'
-  const BANK_AN = 'Erick Karno Hutomo'
-
-  // =========================
-  // HTML A4 (NO OVERLAP)
-  // =========================
   return `<!doctype html>
 <html>
 <head>
@@ -718,61 +700,76 @@ function buildOfferA4Html(payload) {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <style>
     *{ box-sizing:border-box; }
-    body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    body{ margin:0; background:#ffffff; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; }
   </style>
 </head>
 <body>
   <div id="offer-a4" style="width:794px; height:1123px; background:#ffffff; overflow:hidden;">
-    <!-- HEADER (fixed height, aman, tidak nabrak) -->
-    <div style="width:794px; height:210px; overflow:hidden;">
-      <img src="${HEAD_IMG}" alt="Header" style="width:794px; height:210px; object-fit:cover; display:block;" />
+    
+    <!-- ✅ HEADER: diperkecil + tidak mepet margin (mirip contoh) -->
+    <div style="padding:38px 56px 0 56px;">
+      <div style="border-radius:44px; overflow:hidden; background:#ffffff;">
+        <img
+          src="${HEAD_IMG}"
+          alt="Header"
+          style="width:100%; height:150px; object-fit:cover; display:block;"
+        />
+      </div>
     </div>
 
-    <!-- BODY (normal flow, tidak absolute) -->
-    <div style="padding:34px 60px 40px 60px;">
+    <!-- BODY -->
+    <div style="padding:28px 60px 40px 60px;">
 
-      <!-- JUDUL -->
-      <div style="text-align:center;">
-        <div style="font-size:40px; font-weight:900; letter-spacing:0.6px; color:#111827;">
+      <!-- ✅ Judul: Inter semi-bold 24, nomor regular 12 -->
+      <div style="text-align:center; margin-top:4px;">
+        <div style="font-size:24px; font-weight:600; letter-spacing:0.4px; color:#111827;">
           SURAT PENAWARAN
         </div>
-        <div style="margin-top:6px; font-size:18px; color:#4b5563;">
-          Nomor Surat : <span style="font-weight:400;">${nomorSurat}</span>
+        <div style="margin-top:8px; font-size:12px; font-weight:400; color:#4b5563;">
+          Nomor Surat : <span style="font-weight:400; color:#111827;">${nomorSurat}</span>
         </div>
       </div>
 
       <!-- KEPADA -->
-      <div style="margin-top:26px; font-size:18px; color:#111827; line-height:1.35;">
+      <div style="margin-top:20px; font-size:16px; color:#111827; line-height:1.45;">
         <div>Kepada Yth :</div>
         <div>UP. ${kepadaNama}</div>
         ${kepadaPerusahaan ? `<div>${kepadaPerusahaan}</div>` : ''}
         <div>${kepadaTempat}</div>
       </div>
 
-      <!-- ISI SURAT (kalimat sama seperti contoh) -->
-      <div style="margin-top:22px; font-size:18px; color:#111827; line-height:1.5;">
+      <!-- ✅ ISI SURAT: justify + tambah Erick Karno Hutomo/Head Store di bawah "Dengan hormat," -->
+      <div style="margin-top:18px; font-size:16px; color:#111827; line-height:1.7;">
         <div>Dengan hormat,</div>
-        <div>
-          Bersama surat ini kami CONNECT.IND sebagai salah satu dealer resmi Samsung,
-          bermaksud untuk memberikan penawaran produk yang tersedia di toko kami.
+
+        <div style="margin-top:6px; font-weight:700; color:#111827;">
+          Erick Karno Hutomo
         </div>
-        <div>
+        <div style="margin-top:2px; color:#111827;">
+          Head Store
+        </div>
+
+        <div style="margin-top:10px; text-align:justify;">
+          Bersama surat ini kami CONNECT.IND sebagai salah satu dealer resmi Samsung, bermaksud untuk memberikan
+          penawaran produk yang tersedia di toko kami.
+        </div>
+        <div style="margin-top:8px; text-align:justify;">
           Adapun untuk produk yang kami tawarkan sebagai berikut :
         </div>
       </div>
 
-      <!-- TABEL PRODUK (2 kolom, border abu, seperti contoh) -->
-      <div style="margin-top:18px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; border:1px solid #cfcfcf; border-radius:6px; overflow:hidden;">
+      <!-- ✅ TABEL: modern seperti preview -->
+      <div style="margin-top:14px; border:1px solid #eef2f7; border-radius:14px; overflow:hidden;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate; border-spacing:0;">
           <thead>
-            <tr>
-              <th style="padding:12px 16px; border:1px solid #cfcfcf; border-right:none; background:#efefef; text-align:center; font-size:18px; font-weight:800; color:#111827;">
+            <tr style="background:#f7f9fc;">
+              <th style="text-align:left; padding:12px 16px; font-size:14px; font-weight:800; color:#0b1220;">
                 Nama Produk
               </th>
-              <th style="padding:12px 16px; border:1px solid #cfcfcf; background:#efefef; text-align:center; font-size:18px; font-weight:800; color:#111827;">
+              <th style="text-align:right; padding:12px 16px; font-size:14px; font-weight:800; color:#0b1220;">
                 Harga
               </th>
             </tr>
@@ -783,8 +780,8 @@ function buildOfferA4Html(payload) {
         </table>
       </div>
 
-      <!-- BLOK PEMBAYARAN (sama seperti contoh) -->
-      <div style="margin-top:22px; font-size:18px; color:#111827; line-height:1.45;">
+      <!-- BLOK PEMBAYARAN -->
+      <div style="margin-top:18px; font-size:16px; color:#111827; line-height:1.6;">
         <div>Pembayaran dapat dilakukan ke rekening berikut:</div>
         <div>Bank : ${BANK_NAMA}</div>
         <div>Cabang : ${BANK_CABANG}</div>
@@ -793,16 +790,16 @@ function buildOfferA4Html(payload) {
       </div>
 
       <!-- PENUTUP -->
-      <div style="margin-top:22px; font-size:18px; color:#111827; line-height:1.5;">
+      <div style="margin-top:18px; font-size:16px; color:#111827; line-height:1.7; text-align:justify;">
         Demikian surat penawaran dari kami, atas perhatian dan kerjasamanya kami ucapkan terimakasih.
       </div>
 
       <!-- TTD -->
-      <div style="margin-top:26px; font-size:18px; color:#111827; line-height:1.4;">
+      <div style="margin-top:20px; font-size:16px; color:#111827; line-height:1.5;">
         <div>Semarang, ${tanggalSurat}</div>
         <div>Hormat kami,</div>
 
-        <div style="height:74px;"></div>
+        <div style="height:64px;"></div>
 
         <div style="width:260px; border-bottom:2px solid #111827; padding-bottom:2px; font-weight:400;">
           Erick Karno Hutomo
@@ -815,6 +812,7 @@ function buildOfferA4Html(payload) {
 </body>
 </html>`
 }
+
 
 
 // ===== PAGE =====
