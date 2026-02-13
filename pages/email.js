@@ -673,7 +673,7 @@ function buildOfferA4Html(payload) {
 
   // Header image sesuai standar kamu (public/head.png).
   // Kalau file kamu beda, ganti path ini saja.
-  const HEAD_IMG = '/head.png'
+  const HEAD_IMG = '/head-surat-menyurat.png'
 
   // Ambil 1 produk utama (sesuai contoh tabel hanya 1 baris).
   // Kalau item > 1, tetap tampil semua baris (lebih aman).
@@ -728,7 +728,7 @@ function buildOfferA4Html(payload) {
   <div id="offer-a4" style="width:794px; height:1123px; background:#ffffff; overflow:hidden;">
     <!-- HEADER (fixed height, aman, tidak nabrak) -->
     <div style="width:794px; height:210px; overflow:hidden;">
-      <img src="${head-surat-menyurat.png}" alt="Header" style="width:794px; height:210px; object-fit:cover; display:block;" />
+      <img src="${HEAD_IMG}" alt="Header" style="width:794px; height:210px; object-fit:cover; display:block;" />
     </div>
 
     <!-- BODY (normal flow, tidak absolute) -->
