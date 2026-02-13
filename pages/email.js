@@ -15,6 +15,14 @@ const btnDanger = btn + ' bg-red-600 text-white hover:bg-red-700'
 const FROM_EMAIL = 'admin@connectgadgetind.com'
 const FROM_NAME = 'CONNECT.IND'
 
+// ==========================
+// EMAIL LOG TABLE (Supabase)
+// ==========================
+// Pastikan tabel ini ada:
+// table: email_log
+// columns minimal: invoice_id (text), to_email (text), subject (text), sent_at (timestamptz default now())
+const EMAIL_LOG_TABLE = 'email_log'
+
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
 
@@ -46,8 +54,6 @@ function computeTotals(rows = []) {
 
 /**
  * ✅ TEMPLATE EMAIL (HTML) — MOBILE SAFE
- * - tidak pakai tabel 5 kolom (penyebab teks jadi vertikal di Gmail mobile)
- * - item jadi card per item, info qty/price/total di bawah (stacked)
  */
 function buildInvoiceEmailTemplate(payload) {
   const {
@@ -175,7 +181,6 @@ function buildInvoiceEmailTemplate(payload) {
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <style>
-      /* Gmail mobile aman */
       @media screen and (max-width: 600px) {
         .wrapPad { padding: 14px 10px !important; }
         .container { width: 100% !important; }
@@ -190,7 +195,6 @@ function buildInvoiceEmailTemplate(payload) {
           <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
             style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
             
-            <!-- HEADER -->
             <tr>
               <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
                 <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
@@ -200,7 +204,6 @@ function buildInvoiceEmailTemplate(payload) {
               </td>
             </tr>
 
-            <!-- BODY -->
             <tr>
               <td class="cardPad" style="padding:20px;">
                 <div style="font-size:18px; font-weight:900; color:#111827;">Invoice Pembelian</div>
@@ -209,7 +212,6 @@ function buildInvoiceEmailTemplate(payload) {
                   Tanggal: <b style="color:#111827;">${safe(tanggal)}</b>
                 </div>
 
-                <!-- BUYER BOX -->
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
                   <tr>
                     <td style="padding:14px; background:#fafafa; border-radius:14px; border:1px solid #efefef;">
@@ -223,13 +225,11 @@ function buildInvoiceEmailTemplate(payload) {
                   </tr>
                 </table>
 
-                <!-- ITEMS -->
                 <div style="margin-top:16px; font-weight:900; color:#111827;">Detail Item</div>
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
                   ${itemCards}
                 </table>
 
-                <!-- TOTAL BOX -->
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
                   <tr>
                     <td></td>
@@ -253,7 +253,6 @@ function buildInvoiceEmailTemplate(payload) {
                   </tr>
                 </table>
 
-                <!-- FOOTER TEXT -->
                 <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
                   Halo <b style="color:#111827;">${safe(nama_pembeli) || 'Customer'}</b>,<br/>
                   Terima kasih telah berbelanja di CONNECT.IND. Invoice pembelian Anda sudah kami lampirkan.<br/>
@@ -267,7 +266,6 @@ function buildInvoiceEmailTemplate(payload) {
               </td>
             </tr>
 
-            <!-- OUTRO -->
             <tr>
               <td style="text-align:center; color:#9ca3af; font-size:12px; padding:14px 16px; border-top:1px solid #f0f0f0;">
                 Email ini dikirim dari sistem CONNECT.IND.
@@ -302,7 +300,7 @@ async function renderHtmlToOffscreen(html) {
   return { wrap, root }
 }
 
-// ====== INVOICE A4 HTML (JPG) — biarkan seperti punya Pak Erick (tidak diubah) ======
+// ====== INVOICE A4 HTML (JPG) — tidak diubah ======
 function formatInvoiceDateLong(ymdOrIso) {
   if (!ymdOrIso) return ''
   const d = dayjs(ymdOrIso)
@@ -310,8 +308,6 @@ function formatInvoiceDateLong(ymdOrIso) {
   return d.format('MMMM D, YYYY')
 }
 
-// ⬇️ (bagian buildInvoiceA4Html Anda TIDAK saya ubah, karena sudah “benar”)
-// Pastikan tetap pakai buildInvoiceA4Html versi Anda sebelumnya.
 function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   const BLUE = '#2388ff'
   const _rows = Array.isArray(rows) ? rows : Array.isArray(payload?.items) ? payload.items : []
@@ -468,7 +464,9 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 </html>`
 }
 
-// ===== PAGE =====
+// ======================
+// PAGE
+// ======================
 export default function EmailPage() {
   const [sending, setSending] = useState(false)
 
@@ -485,6 +483,11 @@ export default function EmailPage() {
   const [extraFiles, setExtraFiles] = useState([])
   const fileRef = useRef(null)
 
+  // ====== HISTORY ======
+  const [historyEnabled, setHistoryEnabled] = useState(true) // auto false kalau table tidak ada / error
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [emailHistory, setEmailHistory] = useState([]) // untuk invoice terpilih
+
   // ====== MODAL PILIH TRANSAKSI ======
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerDate, setPickerDate] = useState(dayjs().format('YYYY-MM-DD'))
@@ -499,6 +502,129 @@ export default function EmailPage() {
     }
     setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
   }, [dataInvoice])
+
+  // ====== LOAD HISTORY WHEN INVOICE SELECTED ======
+  useEffect(() => {
+    const run = async () => {
+      if (!dataInvoice?.invoice_id) {
+        setEmailHistory([])
+        return
+      }
+      await fetchEmailHistory(dataInvoice.invoice_id)
+    }
+    run()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataInvoice?.invoice_id])
+
+  const formatSentAt = (ts) => {
+    if (!ts) return ''
+    const d = dayjs(ts)
+    if (!d.isValid()) return String(ts)
+    return d.format('DD/MM/YYYY HH:mm')
+  }
+
+  const normalizeHistoryRows = (rows) => {
+    const arr = Array.isArray(rows) ? rows : []
+    return arr
+      .map((r) => ({
+        id: r.id ?? null,
+        invoice_id: r.invoice_id ?? '',
+        to_email: r.to_email ?? '',
+        subject: r.subject ?? '',
+        sent_at: r.sent_at ?? null,
+        status: r.status ?? 'sent',
+        error_message: r.error_message ?? '',
+      }))
+      .sort((a, b) => {
+        const ta = a.sent_at ? new Date(a.sent_at).getTime() : 0
+        const tb = b.sent_at ? new Date(b.sent_at).getTime() : 0
+        return tb - ta
+      })
+  }
+
+  const fetchEmailHistory = async (invoiceId) => {
+    if (!historyEnabled) return
+    setHistoryLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from(EMAIL_LOG_TABLE)
+        .select('id, invoice_id, to_email, subject, sent_at, status, error_message')
+        .eq('invoice_id', invoiceId)
+        .order('sent_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        // kalau tabel belum ada / permission, matikan fitur history biar aman
+        console.warn('Email history disabled:', error.message)
+        setHistoryEnabled(false)
+        setEmailHistory([])
+        return
+      }
+
+      setEmailHistory(normalizeHistoryRows(data))
+    } catch (e) {
+      console.warn('Email history error:', e?.message || e)
+      setHistoryEnabled(false)
+      setEmailHistory([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const fetchEmailStatusForInvoices = async (invoiceIds = []) => {
+    if (!historyEnabled) return new Map()
+    const ids = (Array.isArray(invoiceIds) ? invoiceIds : []).filter(Boolean)
+    if (!ids.length) return new Map()
+
+    try {
+      // ambil logs untuk invoice ids (batasi 800 log)
+      const { data, error } = await supabase
+        .from(EMAIL_LOG_TABLE)
+        .select('invoice_id, to_email, sent_at, status')
+        .in('invoice_id', ids)
+        .order('sent_at', { ascending: false })
+        .limit(800)
+
+      if (error) {
+        console.warn('Email status disabled:', error.message)
+        setHistoryEnabled(false)
+        return new Map()
+      }
+
+      // map invoice_id -> {count,last_to,last_at}
+      const map = new Map()
+      const arr = Array.isArray(data) ? data : []
+      for (const r of arr) {
+        const inv = String(r.invoice_id || '').trim()
+        if (!inv) continue
+        if (!map.has(inv)) {
+          map.set(inv, {
+            count: 0,
+            last_to: r.to_email || '',
+            last_at: r.sent_at || null,
+            last_status: r.status || 'sent',
+          })
+        }
+        const it = map.get(inv)
+        it.count += 1
+
+        // pastikan last_at paling baru
+        const cur = it.last_at ? new Date(it.last_at).getTime() : 0
+        const now = r.sent_at ? new Date(r.sent_at).getTime() : 0
+        if (now >= cur) {
+          it.last_at = r.sent_at || it.last_at
+          it.last_to = r.to_email || it.last_to
+          it.last_status = r.status || it.last_status
+        }
+      }
+
+      return map
+    } catch (e) {
+      console.warn('Email status error:', e?.message || e)
+      setHistoryEnabled(false)
+      return new Map()
+    }
+  }
 
   // ✅ ambil H-1 sampai H+1 lalu filter client by YYYY-MM-DD (fix timezone)
   const fetchInvoicesByDate = async (ymd) => {
@@ -540,7 +666,13 @@ export default function EmailPage() {
             nama_pembeli: r.nama_pembeli || '',
             alamat: r.alamat || '',
             no_wa: r.no_wa || '',
-            email: r.email || '', // ✅ ambil email dari transaksi
+            email: r.email || '',
+
+            // history fields (filled later)
+            email_sent_count: 0,
+            email_last_to: '',
+            email_last_at: null,
+
             items: [],
             item_count: 0,
             subtotal: 0,
@@ -566,13 +698,29 @@ export default function EmailPage() {
         if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
         if (!it.alamat && r.alamat) it.alamat = r.alamat
         if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
-        if (!it.email && r.email) it.email = r.email // ✅ ambil email pertama yg ada
+        if (!it.email && r.email) it.email = r.email
       }
 
-      const grouped = Array.from(map.values()).map((inv) => {
+      let grouped = Array.from(map.values()).map((inv) => {
         const { subtotal, discount, total } = computeTotals(inv.items)
         return { ...inv, subtotal, discount, total }
       })
+
+      // ===== attach email status (SENT / NOT SENT) =====
+      if (historyEnabled) {
+        const ids = grouped.map((g) => g.invoice_id).filter(Boolean)
+        const statusMap = await fetchEmailStatusForInvoices(ids)
+        grouped = grouped.map((g) => {
+          const st = statusMap.get(g.invoice_id)
+          if (!st) return g
+          return {
+            ...g,
+            email_sent_count: st.count || 0,
+            email_last_to: st.last_to || '',
+            email_last_at: st.last_at || null,
+          }
+        })
+      }
 
       grouped.sort((a, b) => {
         const ta = a.tanggal_raw ? new Date(a.tanggal_raw).getTime() : 0
@@ -604,7 +752,13 @@ export default function EmailPage() {
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
       no_wa: inv.no_wa || '',
-      email: inv.email || '', // ✅ simpan email
+      email: inv.email || '',
+
+      // carry history status
+      email_sent_count: inv.email_sent_count || 0,
+      email_last_to: inv.email_last_to || '',
+      email_last_at: inv.email_last_at || null,
+
       items: inv.items || [],
       subtotal: inv.subtotal || 0,
       discount: inv.discount || 0,
@@ -671,6 +825,37 @@ export default function EmailPage() {
     return base64
   }
 
+  const insertEmailLog = async ({ invoice_id, to_email, subject, status = 'sent', error_message = '' }) => {
+    if (!historyEnabled) return { ok: false }
+    try {
+      const { data, error } = await supabase
+        .from(EMAIL_LOG_TABLE)
+        .insert([
+          {
+            invoice_id,
+            to_email,
+            subject,
+            status,
+            error_message,
+            sent_at: new Date().toISOString(),
+          },
+        ])
+        .select('id, invoice_id, to_email, subject, sent_at, status, error_message')
+        .single()
+
+      if (error) {
+        console.warn('Insert email log failed:', error.message)
+        setHistoryEnabled(false)
+        return { ok: false }
+      }
+      return { ok: true, row: data }
+    } catch (e) {
+      console.warn('Insert email log error:', e?.message || e)
+      setHistoryEnabled(false)
+      return { ok: false }
+    }
+  }
+
   const sendEmail = async () => {
     if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
@@ -717,13 +902,69 @@ export default function EmailPage() {
       if (!res.ok || !json.ok) {
         const dbg = json?.debug ? `\n\nDEBUG:\n${JSON.stringify(json.debug, null, 2)}` : ''
         alert((json?.message || 'Gagal mengirim email.') + `\n\nHTTP: ${res.status}` + dbg)
+
+        // log failed (optional)
+        await insertEmailLog({
+          invoice_id: dataInvoice.invoice_id,
+          to_email: toEmail.trim(),
+          subject: subject.trim(),
+          status: 'failed',
+          error_message: json?.message || `HTTP ${res.status}`,
+        })
+
         return
+      }
+
+      // ✅ log success
+      const ins = await insertEmailLog({
+        invoice_id: dataInvoice.invoice_id,
+        to_email: toEmail.trim(),
+        subject: subject.trim(),
+        status: 'sent',
+      })
+
+      // update UI history instantly
+      if (ins.ok && ins.row) {
+        setEmailHistory((prev) => normalizeHistoryRows([ins.row, ...(prev || [])]))
+
+        // update badge info in selected invoice
+        setDataInvoice((prev) => {
+          if (!prev) return prev
+          const nextCount = (prev.email_sent_count || 0) + 1
+          return {
+            ...prev,
+            email_sent_count: nextCount,
+            email_last_to: toEmail.trim(),
+            email_last_at: ins.row.sent_at || new Date().toISOString(),
+          }
+        })
+
+        // update in pickerRows cache too (optional)
+        setPickerRows((prev) =>
+          (Array.isArray(prev) ? prev : []).map((r) => {
+            if (r.invoice_id !== dataInvoice.invoice_id) return r
+            return {
+              ...r,
+              email_sent_count: (r.email_sent_count || 0) + 1,
+              email_last_to: toEmail.trim(),
+              email_last_at: ins.row.sent_at || new Date().toISOString(),
+            }
+          })
+        )
       }
 
       alert(`✅ Email berhasil dikirim ke ${toEmail}\nLampiran: ${dataInvoice.invoice_id}.jpg`)
     } catch (e) {
       console.error(e)
       alert('Gagal mengirim email: ' + (e?.message || String(e)))
+
+      await insertEmailLog({
+        invoice_id: dataInvoice?.invoice_id || '',
+        to_email: toEmail.trim(),
+        subject: subject.trim(),
+        status: 'failed',
+        error_message: e?.message || String(e),
+      })
     } finally {
       setSending(false)
     }
@@ -743,24 +984,60 @@ export default function EmailPage() {
   const summaryCards = useMemo(() => {
     if (!dataInvoice) return null
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
-          <div className="text-[11px] text-gray-500">Subtotal</div>
-          <div className="text-sm font-bold">{formatRupiah(dataInvoice.subtotal)}</div>
-        </div>
-        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
-          <div className="text-[11px] text-gray-500">Discount</div>
-          <div className="text-sm font-bold">
-            {dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+            <div className="text-[11px] text-gray-500">Subtotal</div>
+            <div className="text-sm font-bold">{formatRupiah(dataInvoice.subtotal)}</div>
+          </div>
+          <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+            <div className="text-[11px] text-gray-500">Discount</div>
+            <div className="text-sm font-bold">
+              {dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}
+            </div>
+          </div>
+          <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+            <div className="text-[11px] text-gray-500">Total</div>
+            <div className="text-sm font-bold">{formatRupiah(dataInvoice.total)}</div>
           </div>
         </div>
-        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
-          <div className="text-[11px] text-gray-500">Total</div>
-          <div className="text-sm font-bold">{formatRupiah(dataInvoice.total)}</div>
-        </div>
+
+        {/* HISTORY BADGE */}
+        {historyEnabled ? (
+          <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] text-gray-500">Status Email</div>
+              <div
+                className={
+                  (dataInvoice.email_sent_count || 0) > 0
+                    ? 'text-[11px] px-2 py-1 rounded-full bg-green-100 text-green-700 font-semibold'
+                    : 'text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold'
+                }
+              >
+                {(dataInvoice.email_sent_count || 0) > 0 ? 'SENT' : 'NOT SENT'}
+              </div>
+            </div>
+            <div className="mt-1 text-xs text-gray-600">
+              {dataInvoice.email_sent_count > 0 ? (
+                <>
+                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke{' '}
+                  <b>{dataInvoice.email_last_to || '-'}</b> • {formatSentAt(dataInvoice.email_last_at)}
+                </>
+              ) : (
+                <>Belum ada riwayat pengiriman email untuk invoice ini.</>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+            <div className="text-xs text-gray-600">
+              History email belum aktif (tabel <b>{EMAIL_LOG_TABLE}</b> tidak tersedia / akses ditolak).
+            </div>
+          </div>
+        )}
       </div>
     )
-  }, [dataInvoice])
+  }, [dataInvoice, historyEnabled])
 
   return (
     <Layout>
@@ -805,6 +1082,68 @@ export default function EmailPage() {
               <div className="text-sm text-gray-500">Pilih transaksi dulu untuk membangun template email.</div>
             )}
           </div>
+
+          {/* PANEL HISTORY (DETAIL) */}
+          {dataInvoice?.invoice_id && historyEnabled && (
+            <div className="mt-4 border border-gray-200 rounded-xl bg-white p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold">History Pengiriman Email</div>
+                <button
+                  className={btnSoft}
+                  type="button"
+                  onClick={() => fetchEmailHistory(dataInvoice.invoice_id)}
+                  disabled={historyLoading}
+                  style={{ opacity: historyLoading ? 0.6 : 1 }}
+                >
+                  {historyLoading ? 'Memuat...' : 'Refresh History'}
+                </button>
+              </div>
+
+              <div className="mt-3">
+                {historyLoading ? (
+                  <div className="text-sm text-gray-600">Memuat history...</div>
+                ) : emailHistory.length === 0 ? (
+                  <div className="text-sm text-gray-600">Belum ada history untuk invoice ini.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
+                    {emailHistory.slice(0, 15).map((h) => (
+                      <div key={h.id || `${h.sent_at}-${h.to_email}`} className="p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold truncate">{h.to_email || '-'}</div>
+                            <div className="text-xs text-gray-500 mt-0.5 truncate">{h.subject || '-'}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {formatSentAt(h.sent_at)} • Invoice: <b>{h.invoice_id}</b>
+                            </div>
+                          </div>
+                          <div className="shrink-0">
+                            <div
+                              className={
+                                String(h.status || 'sent') === 'sent'
+                                  ? 'text-[11px] px-2 py-1 rounded-full bg-green-100 text-green-700 font-semibold'
+                                  : 'text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-700 font-semibold'
+                              }
+                            >
+                              {String(h.status || 'sent').toUpperCase()}
+                            </div>
+                          </div>
+                        </div>
+                        {h.error_message ? (
+                          <div className="mt-2 text-xs text-red-600 whitespace-pre-wrap">{h.error_message}</div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {emailHistory.length > 15 ? (
+                <div className="text-xs text-gray-500 mt-2">
+                  Menampilkan 15 history terbaru (total: {emailHistory.length}).
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-2 gap-4">
@@ -913,7 +1252,6 @@ export default function EmailPage() {
                 </div>
               </div>
 
-              {/* ✅ FIX: preview jangan dipotong, bikin scroll */}
               <div style={{ maxHeight: 720, overflow: 'auto', background: '#fff' }}>
                 <div
                   dangerouslySetInnerHTML={{
@@ -992,38 +1330,64 @@ export default function EmailPage() {
                         <div className="p-4 text-sm text-gray-600">Tidak ada transaksi di tanggal ini.</div>
                       ) : (
                         <div className="divide-y divide-gray-100">
-                          {filteredPickerRows.map((r) => (
-                            <button
-                              key={r.invoice_id}
-                              onClick={() => pickInvoice(r)}
-                              className="w-full text-left p-3 hover:bg-gray-50"
-                              type="button"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    Invoice: <b>{r.invoice_id}</b> • {dayjs(r.tanggal_raw || r.tanggal).format('DD/MM/YYYY')}
-                                  </div>
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    WA: <b>{r.no_wa || '-'}</b>
-                                    {r.email ? (
-                                      <>
-                                        {' '}• Email: <b>{String(r.email)}</b>
-                                      </>
+                          {filteredPickerRows.map((r) => {
+                            const sent = (r.email_sent_count || 0) > 0
+                            return (
+                              <button
+                                key={r.invoice_id}
+                                onClick={() => pickInvoice(r)}
+                                className="w-full text-left p-3 hover:bg-gray-50"
+                                type="button"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <div className="font-semibold truncate">{r.nama_pembeli || '(Tanpa nama)'}</div>
+                                      {historyEnabled ? (
+                                        <div
+                                          className={
+                                            sent
+                                              ? 'text-[11px] px-2 py-1 rounded-full bg-green-100 text-green-700 font-semibold'
+                                              : 'text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold'
+                                          }
+                                        >
+                                          {sent ? 'SENT' : 'NOT SENT'}
+                                        </div>
+                                      ) : null}
+                                    </div>
+
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      Invoice: <b>{r.invoice_id}</b> • {dayjs(r.tanggal_raw || r.tanggal).format('DD/MM/YYYY')}
+                                    </div>
+
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      WA: <b>{r.no_wa || '-'}</b>
+                                      {r.email ? (
+                                        <>
+                                          {' '}• Email: <b>{String(r.email)}</b>
+                                        </>
+                                      ) : null}
+                                    </div>
+
+                                    {historyEnabled && sent ? (
+                                      <div className="text-xs text-gray-500 mt-0.5">
+                                        Last sent: <b>{r.email_last_to || '-'}</b> • {formatSentAt(r.email_last_at)}
+                                        {' '}• ({r.email_sent_count}x)
+                                      </div>
                                     ) : null}
                                   </div>
-                                </div>
-                                <div className="text-right shrink-0">
-                                  <div className="font-bold">{formatRupiah(r.total)}</div>
-                                  <div className="text-xs text-gray-500">
-                                    Sub: {formatRupiah(r.subtotal)} {r.discount ? `• Disc: -${formatRupiah(r.discount)}` : ''}
+
+                                  <div className="text-right shrink-0">
+                                    <div className="font-bold">{formatRupiah(r.total)}</div>
+                                    <div className="text-xs text-gray-500">
+                                      Sub: {formatRupiah(r.subtotal)} {r.discount ? `• Disc: -${formatRupiah(r.discount)}` : ''}
+                                    </div>
+                                    <div className="text-xs text-gray-500">{r.item_count} item</div>
                                   </div>
-                                  <div className="text-xs text-gray-500">{r.item_count} item</div>
                                 </div>
-                              </div>
-                            </button>
-                          ))}
+                              </button>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
