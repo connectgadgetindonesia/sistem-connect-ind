@@ -728,7 +728,7 @@ function buildOfferA4Html(payload) {
   <div id="offer-a4" style="width:794px; height:1123px; background:#ffffff; overflow:hidden;">
     <!-- HEADER (fixed height, aman, tidak nabrak) -->
     <div style="width:794px; height:210px; overflow:hidden;">
-      <img src="${HEAD_IMG}" alt="Header" style="width:794px; height:210px; object-fit:cover; display:block;" />
+      <img src="${head-surat-menyurat.png}" alt="Header" style="width:794px; height:210px; object-fit:cover; display:block;" />
     </div>
 
     <!-- BODY (normal flow, tidak absolute) -->
