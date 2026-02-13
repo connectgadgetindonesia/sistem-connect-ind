@@ -624,194 +624,176 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 </html>`
 }
 
-// ====== OFFER A4 HTML (JPG) — sesuai header surat ======
-// ====== OFFER A4 HTML (JPG) — layout sesuai contoh + tabel modern (seperti preview)
+// ====== OFFER A4 HTML (JPG) — FINAL STABLE (Header 460x130 + Qty + Signature bawah) ======
 function buildOfferA4Html(payload) {
   const p = payload || {}
   const items = Array.isArray(p.items) ? p.items : []
 
-  // format Rupiah surat: "Rp. 3.099.000"
+  const HEAD_IMG = '/head-surat-menyurat.png' // WAJIB ada di /public
+
   const formatRpDot = (n) => {
     const x = toNumber(n)
     return 'Rp. ' + x.toLocaleString('id-ID')
   }
 
-  // tanggal Indonesia: "05 Februari 2026"
   const formatTanggalIndo = (ymdOrIso) => {
     if (!ymdOrIso) return ''
     const d = dayjs(ymdOrIso)
     if (!d.isValid()) return String(ymdOrIso)
     const bulan = [
       'Januari','Februari','Maret','April','Mei','Juni',
-      'Juli','Agustus','September','Oktober','November','Desember',
+      'Juli','Agustus','September','Oktober','November','Desember'
     ]
-    const dd = String(d.date()).padStart(2, '0')
-    const mm = bulan[d.month()]
-    const yy = d.year()
-    return `${dd} ${mm} ${yy}`
+    return `${String(d.date()).padStart(2,'0')} ${bulan[d.month()]} ${d.year()}`
   }
 
-  // DATA SURAT
   const nomorSurat = safe(p.offer_id) || '01/SP/CTI/02/26'
   const tanggalSurat = formatTanggalIndo(p.tanggal) || formatTanggalIndo(dayjs().format('YYYY-MM-DD'))
 
-  const kepadaNama = safe(p.kepada_nama) || safe(p.kepadaNama) || 'Bapak/Ibu'
-  const kepadaPerusahaan = safe(p.kepada_perusahaan) || safe(p.kepadaPerusahaan) || ''
+  const kepadaNama = safe(p.kepada_nama) || 'Bapak/Ibu'
+  const kepadaPerusahaan = safe(p.kepada_perusahaan) || ''
   const kepadaTempat = 'Di tempat'
 
-  // ✅ Header image (WAJIB bener path-nya)
-  // Pastikan file ada di /public/head-surat-menyurat.png
-  const HEAD_IMG = '/head-surat-menyurat.png'
-
-  // BLOK PEMBAYARAN (sesuai contoh)
   const BANK_NAMA = 'BCA'
   const BANK_CABANG = 'Ngaliyan, Semarang'
   const BANK_REK = '871-504-7400'
   const BANK_AN = 'Erick Karno Hutomo'
 
-  // ROWS (pakai tabel modern seperti preview)
   const rowsData = items.length ? items : [{ nama_barang: '-', qty: 1, harga: 0 }]
-  const rows = rowsData
-    .map((it) => {
-      const namaBarang = safe(it.nama_barang) || '-'
-      const harga = formatRpDot(toNumber(it.harga))
-      return `
-        <tr>
-          <td style="padding:14px 16px; border-top:1px solid #eef2f7; font-size:14px; color:#0b1220;">
-            <div style="display:flex; gap:10px; align-items:flex-start;">
-              <div style="margin-top:2px; font-size:16px; line-height:1;">•</div>
-              <div style="font-weight:700; line-height:1.35; word-break:break-word;">
-                ${namaBarang}
-              </div>
-            </div>
-          </td>
-          <td style="padding:14px 16px; border-top:1px solid #eef2f7; font-size:14px; font-weight:800; color:#0b1220; text-align:right; white-space:nowrap;">
+
+  const rows = rowsData.map((it) => {
+    const namaBarang = safe(it.nama_barang) || '-'
+    const qty = Math.max(1, toInt(it.qty))
+    const harga = formatRpDot(toNumber(it.harga))
+
+    return `
+      <tr>
+        <td style="padding:14px 16px; border-top:1px solid #eef2f7;">
+          <div style="font-size:14px; font-weight:600; color:#0b1220;">
+            ${namaBarang}
+          </div>
+        </td>
+        <td style="padding:14px 16px; border-top:1px solid #eef2f7; text-align:center;">
+          <div style="font-size:14px; font-weight:600; color:#0b1220;">
+            ${qty}
+          </div>
+        </td>
+        <td style="padding:14px 16px; border-top:1px solid #eef2f7; text-align:right;">
+          <div style="font-size:14px; font-weight:700; color:#0b1220;">
             ${harga}
-          </td>
-        </tr>
-      `
-    })
-    .join('')
+          </div>
+        </td>
+      </tr>
+    `
+  }).join('')
 
   return `<!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
-  <style>
-    *{ box-sizing:border-box; }
-    body{ margin:0; background:#ffffff; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#ffffff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+</style>
 </head>
+
 <body>
-  <div id="offer-a4" style="width:794px; height:1123px; background:#ffffff; overflow:hidden;">
-    
-    <!-- ✅ HEADER: diperkecil + tidak mepet margin (mirip contoh) -->
-    <div style="padding:38px 56px 0 56px;">
-      <div style="border-radius:44px; overflow:hidden; background:#ffffff;">
-        <img
-          src="${HEAD_IMG}"
-          alt="Header"
-          style="width:100%; height:150px; object-fit:cover; display:block;"
-        />
-      </div>
-    </div>
+<div id="offer-a4" style="width:794px;height:1123px;background:#ffffff;overflow:hidden;">
 
-    <!-- BODY -->
-    <div style="padding:28px 60px 40px 60px;">
-
-      <!-- ✅ Judul: Inter semi-bold 24, nomor regular 12 -->
-      <div style="text-align:center; margin-top:4px;">
-        <div style="font-size:24px; font-weight:600; letter-spacing:0.4px; color:#111827;">
-          SURAT PENAWARAN
-        </div>
-        <div style="margin-top:8px; font-size:12px; font-weight:400; color:#4b5563;">
-          Nomor Surat : <span style="font-weight:400; color:#111827;">${nomorSurat}</span>
-        </div>
-      </div>
-
-      <!-- KEPADA -->
-      <div style="margin-top:20px; font-size:16px; color:#111827; line-height:1.45;">
-        <div>Kepada Yth :</div>
-        <div>UP. ${kepadaNama}</div>
-        ${kepadaPerusahaan ? `<div>${kepadaPerusahaan}</div>` : ''}
-        <div>${kepadaTempat}</div>
-      </div>
-
-      <!-- ✅ ISI SURAT: justify + tambah Erick Karno Hutomo/Head Store di bawah "Dengan hormat," -->
-      <div style="margin-top:18px; font-size:16px; color:#111827; line-height:1.7;">
-        <div>Dengan hormat,</div>
-
-        <div style="margin-top:6px; font-weight:700; color:#111827;">
-          Erick Karno Hutomo
-        </div>
-        <div style="margin-top:2px; color:#111827;">
-          Head Store
-        </div>
-
-        <div style="margin-top:10px; text-align:justify;">
-          Bersama surat ini kami CONNECT.IND sebagai salah satu dealer resmi Samsung, bermaksud untuk memberikan
-          penawaran produk yang tersedia di toko kami.
-        </div>
-        <div style="margin-top:8px; text-align:justify;">
-          Adapun untuk produk yang kami tawarkan sebagai berikut :
-        </div>
-      </div>
-
-      <!-- ✅ TABEL: modern seperti preview -->
-      <div style="margin-top:14px; border:1px solid #eef2f7; border-radius:14px; overflow:hidden;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate; border-spacing:0;">
-          <thead>
-            <tr style="background:#f7f9fc;">
-              <th style="text-align:left; padding:12px 16px; font-size:14px; font-weight:800; color:#0b1220;">
-                Nama Produk
-              </th>
-              <th style="text-align:right; padding:12px 16px; font-size:14px; font-weight:800; color:#0b1220;">
-                Harga
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- BLOK PEMBAYARAN -->
-      <div style="margin-top:18px; font-size:16px; color:#111827; line-height:1.6;">
-        <div>Pembayaran dapat dilakukan ke rekening berikut:</div>
-        <div>Bank : ${BANK_NAMA}</div>
-        <div>Cabang : ${BANK_CABANG}</div>
-        <div>Nomor Rekening : ${BANK_REK}</div>
-        <div>Atas Nama : ${BANK_AN}</div>
-      </div>
-
-      <!-- PENUTUP -->
-      <div style="margin-top:18px; font-size:16px; color:#111827; line-height:1.7; text-align:justify;">
-        Demikian surat penawaran dari kami, atas perhatian dan kerjasamanya kami ucapkan terimakasih.
-      </div>
-
-      <!-- TTD -->
-      <div style="margin-top:20px; font-size:16px; color:#111827; line-height:1.5;">
-        <div>Semarang, ${tanggalSurat}</div>
-        <div>Hormat kami,</div>
-
-        <div style="height:64px;"></div>
-
-        <div style="width:260px; border-bottom:2px solid #111827; padding-bottom:2px; font-weight:400;">
-          Erick Karno Hutomo
-        </div>
-        <div>Head Store</div>
-      </div>
-
+  <!-- HEADER 460x130 CENTER -->
+  <div style="padding:40px 60px 0 60px;">
+    <div style="width:460px;height:130px;margin:0 auto;border-radius:28px;overflow:hidden;">
+      <img src="${HEAD_IMG}" style="width:460px;height:130px;object-fit:cover;display:block;" />
     </div>
   </div>
+
+  <div style="padding:30px 60px 40px 60px;">
+
+    <!-- JUDUL -->
+    <div style="text-align:center;">
+      <div style="font-size:28px;font-weight:800;letter-spacing:0.5px;color:#111827;">
+        SURAT PENAWARAN
+      </div>
+      <div style="margin-top:6px;font-size:13px;font-weight:400;color:#4b5563;">
+        Nomor Surat : <span style="font-weight:600;color:#111827;">${nomorSurat}</span>
+      </div>
+    </div>
+
+    <!-- KEPADA -->
+    <div style="margin-top:24px;font-size:15px;color:#111827;line-height:1.6;">
+      <div style="font-weight:600;">Kepada Yth :</div>
+      <div>UP. ${kepadaNama}</div>
+      ${kepadaPerusahaan ? `<div>${kepadaPerusahaan}</div>` : ''}
+      <div>${kepadaTempat}</div>
+    </div>
+
+    <!-- ISI -->
+    <div style="margin-top:18px;font-size:15px;color:#111827;line-height:1.8;">
+      <div style="font-weight:600;">Dengan hormat,</div>
+
+      <div style="margin-top:10px;text-align:justify;">
+        Bersama surat ini kami CONNECT.IND sebagai salah satu dealer resmi Samsung,
+        bermaksud untuk memberikan penawaran produk yang tersedia di toko kami.
+      </div>
+
+      <div style="margin-top:8px;text-align:justify;">
+        Adapun untuk produk yang kami tawarkan sebagai berikut :
+      </div>
+    </div>
+
+    <!-- TABEL MODERN DENGAN QTY -->
+    <div style="margin-top:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:0;">
+        <thead>
+          <tr style="background:#f7f9fc;">
+            <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:left;">Nama Produk</th>
+            <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:center;">Qty</th>
+            <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:right;">Harga</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PEMBAYARAN -->
+    <div style="margin-top:18px;font-size:15px;color:#111827;line-height:1.7;">
+      <div style="font-weight:600;">Pembayaran dapat dilakukan ke rekening berikut:</div>
+      <div>Bank : ${BANK_NAMA}</div>
+      <div>Cabang : ${BANK_CABANG}</div>
+      <div>Nomor Rekening : ${BANK_REK}</div>
+      <div>Atas Nama : ${BANK_AN}</div>
+    </div>
+
+    <!-- PENUTUP -->
+    <div style="margin-top:18px;font-size:15px;color:#111827;line-height:1.8;text-align:justify;">
+      Demikian surat penawaran dari kami, atas perhatian dan kerjasamanya kami ucapkan terimakasih.
+    </div>
+
+    <!-- SIGNATURE BLOCK (PINDAH KE BAWAH SETELAH HORMAT KAMI) -->
+    <div style="margin-top:26px;font-size:15px;color:#111827;line-height:1.6;">
+      <div>Semarang, ${tanggalSurat}</div>
+      <div>Hormat kami,</div>
+
+      <div style="height:70px;"></div>
+
+      <div style="width:240px;border-bottom:2px solid #111827;font-weight:600;">
+        Erick Karno Hutomo
+      </div>
+      <div>Head Store</div>
+    </div>
+
+  </div>
+</div>
 </body>
 </html>`
 }
+
 
 
 
