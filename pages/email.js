@@ -780,8 +780,7 @@ function buildOfferA4Html(payload) {
       <div style="font-weight:600;">Dengan hormat,</div>
 
       <div style="margin-top:10px;text-align:justify;">
-        Bersama surat ini kami CONNECT.IND sebagai salah satu dealer resmi Samsung,
-        bermaksud untuk memberikan penawaran produk yang tersedia di toko kami.
+        Bersama surat ini kami CONNECT.IND, bermaksud untuk memberikan penawaran produk yang tersedia di toko kami.
       </div>
 
       <div style="margin-top:8px;text-align:justify;">
