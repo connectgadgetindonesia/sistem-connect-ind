@@ -668,7 +668,7 @@ function buildOfferA4Html(payload) {
             ${namaBarang}
           </div>
         </td>
-        <td style="padding:14px 6px; border-top:1px solid #eef2f7; text-align:center; width:60px;">
+        <td style="padding:14px 6px; border-top:1px solid #eef2f7; text-align:right; width:45px;">
           <div style="font-size:14px; font-weight:600;">
             ${qty}
           </div>
@@ -698,11 +698,16 @@ function buildOfferA4Html(payload) {
 <div id="offer-a4" style="width:794px;height:1123px;background:#ffffff;overflow:hidden;">
 
   <!-- HEADER DIBESARKAN 30% -->
-  <div style="padding:38px 60px 0 60px;">
-    <div style="width:600px;height:170px;margin:0 auto;border-radius:28px;overflow:hidden;">
-      <img src="${HEAD_IMG}" style="width:600px;height:170px;object-fit:cover;display:block;" />
-    </div>
+ <div style="padding:38px 60px 0 60px;">
+  <div style="width:674px;margin:0 auto;border-radius:28px;overflow:hidden;">
+    <img
+      src="${HEAD_IMG}"
+      style="width:674px;height:auto;display:block;"
+      alt="Header"
+    />
   </div>
+</div>
+
 
   <div style="padding:28px 60px 40px 60px;">
 
@@ -744,7 +749,7 @@ function buildOfferA4Html(payload) {
         <thead>
           <tr style="background:#f7f9fc;">
             <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:left;">Nama Produk</th>
-            <th style="padding:14px 6px;font-size:13px;font-weight:700;text-align:center;width:60px;">Qty</th>
+            <th style="padding:14px 4px;font-size:13px;font-weight:700;text-align:right;width:45px;">Qty</th>
             <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:right;">Harga</th>
           </tr>
         </thead>
