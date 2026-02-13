@@ -624,12 +624,12 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 </html>`
 }
 
-// ====== OFFER A4 HTML (JPG) — FINAL STABLE (Header 460x130 + Qty + Signature bawah) ======
+// ====== OFFER A4 HTML — REFINED PROPORTIONAL VERSION ======
 function buildOfferA4Html(payload) {
   const p = payload || {}
   const items = Array.isArray(p.items) ? p.items : []
 
-  const HEAD_IMG = '/head-surat-menyurat.png' // WAJIB ada di /public
+  const HEAD_IMG = '/head-surat-menyurat.png'
 
   const formatRpDot = (n) => {
     const x = toNumber(n)
@@ -654,11 +654,6 @@ function buildOfferA4Html(payload) {
   const kepadaPerusahaan = safe(p.kepada_perusahaan) || ''
   const kepadaTempat = 'Di tempat'
 
-  const BANK_NAMA = 'BCA'
-  const BANK_CABANG = 'Ngaliyan, Semarang'
-  const BANK_REK = '871-504-7400'
-  const BANK_AN = 'Erick Karno Hutomo'
-
   const rowsData = items.length ? items : [{ nama_barang: '-', qty: 1, harga: 0 }]
 
   const rows = rowsData.map((it) => {
@@ -673,13 +668,13 @@ function buildOfferA4Html(payload) {
             ${namaBarang}
           </div>
         </td>
-        <td style="padding:14px 16px; border-top:1px solid #eef2f7; text-align:center;">
-          <div style="font-size:14px; font-weight:600; color:#0b1220;">
+        <td style="padding:14px 6px; border-top:1px solid #eef2f7; text-align:center; width:60px;">
+          <div style="font-size:14px; font-weight:600;">
             ${qty}
           </div>
         </td>
         <td style="padding:14px 16px; border-top:1px solid #eef2f7; text-align:right;">
-          <div style="font-size:14px; font-weight:700; color:#0b1220;">
+          <div style="font-size:14px; font-weight:700;">
             ${harga}
           </div>
         </td>
@@ -692,39 +687,37 @@ function buildOfferA4Html(payload) {
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
   *{box-sizing:border-box;}
-  body{margin:0;background:#ffffff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  body{margin:0;background:#ffffff;font-family:Inter,system-ui;}
 </style>
 </head>
 
 <body>
 <div id="offer-a4" style="width:794px;height:1123px;background:#ffffff;overflow:hidden;">
 
-  <!-- HEADER 460x130 CENTER -->
-  <div style="padding:40px 60px 0 60px;">
-    <div style="width:460px;height:130px;margin:0 auto;border-radius:28px;overflow:hidden;">
-      <img src="${HEAD_IMG}" style="width:460px;height:130px;object-fit:cover;display:block;" />
+  <!-- HEADER DIBESARKAN 30% -->
+  <div style="padding:38px 60px 0 60px;">
+    <div style="width:600px;height:170px;margin:0 auto;border-radius:28px;overflow:hidden;">
+      <img src="${HEAD_IMG}" style="width:600px;height:170px;object-fit:cover;display:block;" />
     </div>
   </div>
 
-  <div style="padding:30px 60px 40px 60px;">
+  <div style="padding:28px 60px 40px 60px;">
 
     <!-- JUDUL -->
     <div style="text-align:center;">
       <div style="font-size:28px;font-weight:800;letter-spacing:0.5px;color:#111827;">
         SURAT PENAWARAN
       </div>
-      <div style="margin-top:6px;font-size:13px;font-weight:400;color:#4b5563;">
+      <div style="margin-top:6px;font-size:13px;color:#4b5563;">
         Nomor Surat : <span style="font-weight:600;color:#111827;">${nomorSurat}</span>
       </div>
     </div>
 
     <!-- KEPADA -->
-    <div style="margin-top:24px;font-size:15px;color:#111827;line-height:1.6;">
+    <div style="margin-top:24px;font-size:15px;line-height:1.6;">
       <div style="font-weight:600;">Kepada Yth :</div>
       <div>UP. ${kepadaNama}</div>
       ${kepadaPerusahaan ? `<div>${kepadaPerusahaan}</div>` : ''}
@@ -732,7 +725,7 @@ function buildOfferA4Html(payload) {
     </div>
 
     <!-- ISI -->
-    <div style="margin-top:18px;font-size:15px;color:#111827;line-height:1.8;">
+    <div style="margin-top:18px;font-size:15px;line-height:1.8;">
       <div style="font-weight:600;">Dengan hormat,</div>
 
       <div style="margin-top:10px;text-align:justify;">
@@ -745,13 +738,13 @@ function buildOfferA4Html(payload) {
       </div>
     </div>
 
-    <!-- TABEL MODERN DENGAN QTY -->
+    <!-- TABEL -->
     <div style="margin-top:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:0;">
         <thead>
           <tr style="background:#f7f9fc;">
             <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:left;">Nama Produk</th>
-            <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:center;">Qty</th>
+            <th style="padding:14px 6px;font-size:13px;font-weight:700;text-align:center;width:60px;">Qty</th>
             <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:right;">Harga</th>
           </tr>
         </thead>
@@ -761,28 +754,21 @@ function buildOfferA4Html(payload) {
       </table>
     </div>
 
-    <!-- PEMBAYARAN -->
-    <div style="margin-top:18px;font-size:15px;color:#111827;line-height:1.7;">
-      <div style="font-weight:600;">Pembayaran dapat dilakukan ke rekening berikut:</div>
-      <div>Bank : ${BANK_NAMA}</div>
-      <div>Cabang : ${BANK_CABANG}</div>
-      <div>Nomor Rekening : ${BANK_REK}</div>
-      <div>Atas Nama : ${BANK_AN}</div>
-    </div>
-
     <!-- PENUTUP -->
-    <div style="margin-top:18px;font-size:15px;color:#111827;line-height:1.8;text-align:justify;">
+    <div style="margin-top:20px;font-size:15px;line-height:1.8;text-align:justify;">
       Demikian surat penawaran dari kami, atas perhatian dan kerjasamanya kami ucapkan terimakasih.
     </div>
 
-    <!-- SIGNATURE BLOCK (PINDAH KE BAWAH SETELAH HORMAT KAMI) -->
-    <div style="margin-top:26px;font-size:15px;color:#111827;line-height:1.6;">
+    <!-- SIGNATURE -->
+    <div style="margin-top:28px;font-size:15px;line-height:1.6;">
       <div>Semarang, ${tanggalSurat}</div>
       <div>Hormat kami,</div>
 
-      <div style="height:70px;"></div>
+      <div style="height:80px;"></div>
 
-      <div style="width:240px;border-bottom:2px solid #111827;font-weight:600;">
+      <div style="width:260px;border-bottom:2px solid #111827;margin-top:10px;">
+      </div>
+      <div style="margin-top:6px;font-weight:600;">
         Erick Karno Hutomo
       </div>
       <div>Head Store</div>
