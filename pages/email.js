@@ -285,15 +285,7 @@ function buildInvoiceEmailTemplate(payload) {
  * ✅ TEMPLATE EMAIL SURAT PENAWARAN (HTML) — MOBILE SAFE
  */
 function buildOfferEmailTemplate(payload) {
-  const {
-    offer_id,
-    tanggal,
-    kepada_nama,
-    kepada_perusahaan,
-    to_email,
-    items = [],
-    catatan = '',
-  } = payload || {}
+  const { offer_id, tanggal, kepada_nama, kepada_perusahaan, to_email, items = [], catatan = '' } = payload || {}
 
   const rows =
     Array.isArray(items) && items.length
@@ -673,9 +665,6 @@ function buildOfferA4Html(payload) {
     `
 
   const whom = `${safe(p.kepada_nama) || 'Bapak/Ibu'}${p.kepada_perusahaan ? ` • ${safe(p.kepada_perusahaan)}` : ''}`
-
-  // Header image (taruh di public/)
-  // Rename aman: public/head-surat-menyurat.png
   const HEAD_IMG = '/head-surat-menyurat.png'
 
   return `<!doctype html>
@@ -811,6 +800,39 @@ export default function EmailPage() {
   const [offerNotes, setOfferNotes] = useState('')
   const [offerItems, setOfferItems] = useState([{ nama_barang: '', qty: 1, harga: 0 }])
 
+  // ======================
+  // OFFER helpers
+  // ======================
+  const generateOfferId = () => {
+    const d = dayjs().format('YYYYMMDD')
+    const rand = Math.floor(100 + Math.random() * 900)
+    return `SP-CTI-${d}-${rand}`
+  }
+
+  const normalizeOfferItems = (arr) => {
+    const items = Array.isArray(arr) ? arr : []
+    return items
+      .map((it) => ({
+        nama_barang: safe(it.nama_barang),
+        qty: Math.max(1, toInt(it.qty)),
+        harga: toNumber(it.harga),
+      }))
+      .filter((x) => x.nama_barang)
+  }
+
+  const getOfferPayload = () => {
+    const items = normalizeOfferItems(offerItems)
+    return {
+      offer_id: safe(offerId) || generateOfferId(),
+      tanggal: offerDate,
+      kepada_nama: safe(kepadaNama),
+      kepada_perusahaan: safe(kepadaPerusahaan),
+      to_email: safe(toEmail),
+      catatan: safe(offerNotes),
+      items,
+    }
+  }
+
   // ===== build HTML based on mode =====
   useEffect(() => {
     if (mode === 'invoice') {
@@ -822,14 +844,12 @@ export default function EmailPage() {
       return
     }
 
-    // offer mode
     const payload = getOfferPayload()
     setHtmlBody(buildOfferEmailTemplate(payload))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail])
 
   useEffect(() => {
-    // auto generate offer id once when switch to offer & empty
     if (mode !== 'offer') return
     if (offerId) return
     setOfferId(generateOfferId())
@@ -1190,39 +1210,6 @@ export default function EmailPage() {
     }
   }
 
-  // ======================
-  // OFFER helpers
-  // ======================
-  const generateOfferId = () => {
-    const d = dayjs().format('YYYYMMDD')
-    const rand = Math.floor(100 + Math.random() * 900)
-    return `SP-CTI-${d}-${rand}`
-  }
-
-  const normalizeOfferItems = (arr) => {
-    const items = Array.isArray(arr) ? arr : []
-    return items
-      .map((it) => ({
-        nama_barang: safe(it.nama_barang),
-        qty: Math.max(1, toInt(it.qty)),
-        harga: toNumber(it.harga),
-      }))
-      .filter((x) => x.nama_barang)
-  }
-
-  const getOfferPayload = () => {
-    const items = normalizeOfferItems(offerItems)
-    return {
-      offer_id: safe(offerId) || generateOfferId(),
-      tanggal: offerDate,
-      kepada_nama: safe(kepadaNama),
-      kepada_perusahaan: safe(kepadaPerusahaan),
-      to_email: safe(toEmail),
-      catatan: safe(offerNotes),
-      items,
-    }
-  }
-
   const computeOfferTotal = useMemo(() => {
     const items = normalizeOfferItems(offerItems)
     const grand = items.reduce((acc, it) => acc + Math.max(1, toInt(it.qty)) * toNumber(it.harga), 0)
@@ -1246,6 +1233,46 @@ export default function EmailPage() {
   }
 
   // ======================
+  // ✅ Preview: LOCK SIZE (mobile & web aman)
+  // - pakai iframe srcDoc supaya lebar email selalu "fixed" di dalam preview,
+  //   tidak ikut melebar/mengecil karena container halaman.
+  // ======================
+  const previewSrcDoc = useMemo(() => {
+    const body =
+      htmlBody ||
+      `<div style="padding:16px; color:#666; font-family:system-ui;">
+        ${mode === 'invoice' ? 'Pilih transaksi untuk membuat template otomatis.' : 'Isi data surat penawaran untuk membuat template otomatis.'}
+      </div>`
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    html,body{ margin:0; padding:0; background:#ffffff; }
+    /* preview wrapper: lock width dan center */
+    .preview-wrap{
+      width: 640px;
+      max-width: 640px;
+      margin: 0 auto;
+      background:#ffffff;
+    }
+    /* kalau layar kecil, tetap rapi */
+    @media (max-width: 680px){
+      .preview-wrap{ width: 100%; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-wrap">
+    ${body}
+  </div>
+</body>
+</html>`
+  }, [htmlBody, mode])
+
+  // ======================
   // Send / Download actions
   // ======================
   const sendEmail = async () => {
@@ -1253,14 +1280,12 @@ export default function EmailPage() {
     if (!subject.trim()) return alert('Subject masih kosong.')
     if (!htmlBody || htmlBody.trim().length < 20) return alert('Body email masih kosong.')
 
-    // validasi khusus offer
     if (mode === 'offer') {
       const p = getOfferPayload()
       if (!p.kepada_nama) return alert('Field "Kepada (Nama)" masih kosong.')
       if (!p.items.length) return alert('Item penawaran belum diisi.')
     }
 
-    // validasi invoice
     if (mode === 'invoice' && !dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
 
     setSending(true)
@@ -1333,7 +1358,6 @@ export default function EmailPage() {
         status: 'sent',
       })
 
-      // hanya update UI history detail untuk invoice mode
       if (mode === 'invoice' && ins.ok && ins.row) {
         setEmailHistory((prev) => normalizeHistoryRows([ins.row, ...(prev || [])]))
         setDataInvoice((prev) => {
@@ -1359,9 +1383,7 @@ export default function EmailPage() {
         )
       }
 
-      alert(
-        `✅ Email berhasil dikirim ke ${toEmail}\nLampiran: ${mode === 'invoice' ? dataInvoice.invoice_id : offerId}.jpg`
-      )
+      alert(`✅ Email berhasil dikirim ke ${toEmail}\nLampiran: ${mode === 'invoice' ? dataInvoice.invoice_id : offerId}.jpg`)
     } catch (e) {
       console.error(e)
       alert('Gagal mengirim email: ' + (e?.message || String(e)))
@@ -1425,9 +1447,7 @@ export default function EmailPage() {
           </div>
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="text-[11px] text-gray-500">Discount</div>
-            <div className="text-sm font-bold">
-              {dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}
-            </div>
+            <div className="text-sm font-bold">{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</div>
           </div>
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="text-[11px] text-gray-500">Total</div>
@@ -1452,8 +1472,8 @@ export default function EmailPage() {
             <div className="mt-1 text-xs text-gray-600">
               {dataInvoice.email_sent_count > 0 ? (
                 <>
-                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke <b>{dataInvoice.email_last_to || '-'}</b>{' '}
-                  • {formatSentAt(dataInvoice.email_last_at)}
+                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke <b>{dataInvoice.email_last_to || '-'}</b> •{' '}
+                  {formatSentAt(dataInvoice.email_last_at)}
                 </>
               ) : (
                 <>Belum ada riwayat pengiriman email untuk invoice ini.</>
@@ -1494,7 +1514,9 @@ export default function EmailPage() {
           <div>
             <div className="text-xl font-bold">Email Perusahaan</div>
             <div className="text-sm text-gray-500">
-              {mode === 'invoice' ? 'Kirim invoice via email (auto lampirkan JPG)' : 'Kirim Surat Penawaran via email (auto lampirkan JPG)'}
+              {mode === 'invoice'
+                ? 'Kirim invoice via email (auto lampirkan JPG)'
+                : 'Kirim Surat Penawaran via email (auto lampirkan JPG)'}
             </div>
           </div>
           <div className="text-sm text-gray-600">
@@ -1618,9 +1640,7 @@ export default function EmailPage() {
                 </div>
 
                 {emailHistory.length > 15 ? (
-                  <div className="text-xs text-gray-500 mt-2">
-                    Menampilkan 15 history terbaru (total: {emailHistory.length}).
-                  </div>
+                  <div className="text-xs text-gray-500 mt-2">Menampilkan 15 history terbaru (total: {emailHistory.length}).</div>
                 ) : null}
               </div>
             )}
@@ -1653,7 +1673,12 @@ export default function EmailPage() {
             <div className="grid md:grid-cols-2 gap-3">
               <div>
                 <div className={label}>Kepada (Nama)</div>
-                <input className={input} value={kepadaNama} onChange={(e) => setKepadaNama(e.target.value)} placeholder="Nama customer / PIC" />
+                <input
+                  className={input}
+                  value={kepadaNama}
+                  onChange={(e) => setKepadaNama(e.target.value)}
+                  placeholder="Nama customer / PIC"
+                />
               </div>
               <div>
                 <div className={label}>Perusahaan (Opsional)</div>
@@ -1697,7 +1722,12 @@ export default function EmailPage() {
                       <div className="text-[11px] text-gray-500 mt-1">{formatRupiah(toNumber(row.harga))}</div>
                     </div>
                     <div className="md:col-span-1 flex justify-end">
-                      <button type="button" className={btnDanger} onClick={() => removeOfferRow(idx)} disabled={offerItems.length <= 1}>
+                      <button
+                        type="button"
+                        className={btnDanger}
+                        onClick={() => removeOfferRow(idx)}
+                        disabled={offerItems.length <= 1}
+                      >
                         Hapus
                       </button>
                     </div>
@@ -1817,17 +1847,20 @@ export default function EmailPage() {
           <div className={`${card} p-4`}>
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Preview Email</div>
-              <div className="text-xs text-gray-500">Render HTML</div>
+              <div className="text-xs text-gray-500">Locked size (mobile & web aman)</div>
             </div>
 
             <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
               <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm">
-                <div>
-                  <b>To:</b> {toEmail || '(belum diisi)'}
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <div className="truncate">
+                    <b>To:</b> {toEmail || '(belum diisi)'}
+                  </div>
+                  <div className="truncate">
+                    <b>Subject:</b> {subject}
+                  </div>
                 </div>
-                <div>
-                  <b>Subject:</b> {subject}
-                </div>
+
                 <div className="mt-1 text-xs text-gray-500">
                   Lampiran otomatis:{' '}
                   <b>
@@ -1843,14 +1876,16 @@ export default function EmailPage() {
                 </div>
               </div>
 
-              <div style={{ maxHeight: 720, overflow: 'auto', background: '#fff' }}>
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      htmlBody ||
-                      `<div style="padding:16px; color:#666; font-family:system-ui;">
-                        ${mode === 'invoice' ? 'Pilih transaksi untuk membuat template otomatis.' : 'Isi data surat penawaran untuk membuat template otomatis.'}
-                      </div>`,
+              {/* ✅ iframe preview: tidak kepotong + konsisten di mobile/web */}
+              <div className="bg-white">
+                <iframe
+                  title="Email Preview"
+                  srcDoc={previewSrcDoc}
+                  className="w-full border-0"
+                  style={{
+                    height: 720,
+                    display: 'block',
+                    background: '#ffffff',
                   }}
                 />
               </div>
@@ -1965,8 +2000,8 @@ export default function EmailPage() {
                                   </div>
 
                                   <div className="text-right shrink-0">
-                                    <div className="font-bold">{formatRupiah(r.total)}</div>
-                                    <div className="text-xs text-gray-500">
+                                    <div className="font-bold whitespace-nowrap">{formatRupiah(r.total)}</div>
+                                    <div className="text-xs text-gray-500 whitespace-nowrap">
                                       Sub: {formatRupiah(r.subtotal)} {r.discount ? `• Disc: -${formatRupiah(r.discount)}` : ''}
                                     </div>
                                     <div className="text-xs text-gray-500">{r.item_count} item</div>
