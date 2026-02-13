@@ -34,6 +34,20 @@ const toNumber = (v) => {
 }
 const formatRupiah = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 
+// ======================
+// ✅ Rupiah input helpers
+// ======================
+const parseRupiahToNumber = (v) => {
+  const s = String(v || '')
+  const digits = s.replace(/[^\d]/g, '')
+  return parseInt(digits || '0', 10) || 0
+}
+const formatRupiahInput = (n) => {
+  const x = toNumber(n)
+  if (!x) return ''
+  return 'Rp ' + x.toLocaleString('id-ID')
+}
+
 // hitung total (ikuti invoicepdf.jsx)
 function computeTotals(rows = []) {
   const data = Array.isArray(rows) ? rows : []
@@ -283,6 +297,7 @@ function buildInvoiceEmailTemplate(payload) {
 
 /**
  * ✅ TEMPLATE EMAIL SURAT PENAWARAN (HTML) — MOBILE SAFE
+ * ✅ Qty dibuat rapet ke kolom harga (width kecil + padding kanan/kiri rapih)
  */
 function buildOfferEmailTemplate(payload) {
   const { offer_id, tanggal, kepada_nama, kepada_perusahaan, to_email, items = [], catatan = '' } = payload || {}
@@ -296,13 +311,26 @@ function buildOfferEmailTemplate(payload) {
             const total = qty * harga
             return `
               <tr>
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220;">${idx + 1}</td>
+                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220;">${
+                  idx + 1
+                }</td>
                 <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; font-weight:600; word-break:break-word;">
                   ${safe(it.nama_barang)}
                 </td>
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:center;">${qty}</td>
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap;">${formatRupiah(harga)}</td>
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap; font-weight:700;">${formatRupiah(total)}</td>
+
+                <!-- ✅ QTY kecil + nempel kanan -->
+                <td style="padding:10px 6px 10px 8px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; width:34px; white-space:nowrap;">
+                  ${qty}
+                </td>
+
+                <!-- ✅ HARGA padding kiri kecil biar dekat qty -->
+                <td style="padding:10px 12px 10px 8px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap;">
+                  ${formatRupiah(harga)}
+                </td>
+
+                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap; font-weight:700;">
+                  ${formatRupiah(total)}
+                </td>
               </tr>
             `
           })
@@ -378,8 +406,11 @@ function buildOfferEmailTemplate(payload) {
                       <tr style="background:#f7f9fc;">
                         <th style="text-align:left; padding:12px 12px; font-size:12px; font-weight:800; color:#0b1220;">No</th>
                         <th style="text-align:left; padding:12px 12px; font-size:12px; font-weight:800; color:#0b1220;">Barang</th>
-                        <th style="text-align:center; padding:12px 12px; font-size:12px; font-weight:800; color:#0b1220;">Qty</th>
-                        <th style="text-align:right; padding:12px 12px; font-size:12px; font-weight:800; color:#0b1220;">Harga</th>
+
+                        <!-- ✅ QTY header width kecil -->
+                        <th style="text-align:right; padding:12px 6px 12px 8px; font-size:12px; font-weight:800; color:#0b1220; width:34px; white-space:nowrap;">Qty</th>
+
+                        <th style="text-align:right; padding:12px 12px 12px 8px; font-size:12px; font-weight:800; color:#0b1220;">Harga</th>
                         <th style="text-align:right; padding:12px 12px; font-size:12px; font-weight:800; color:#0b1220;">Total</th>
                       </tr>
                     </thead>
@@ -624,7 +655,7 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 </html>`
 }
 
-// ====== OFFER A4 HTML — REFINED PROPORTIONAL VERSION ======
+// ====== OFFER A4 HTML — Qty dekat Harga + width qty kecil + padding rapat ======
 function buildOfferA4Html(payload) {
   const p = payload || {}
   const items = Array.isArray(p.items) ? p.items : []
@@ -641,10 +672,20 @@ function buildOfferA4Html(payload) {
     const d = dayjs(ymdOrIso)
     if (!d.isValid()) return String(ymdOrIso)
     const bulan = [
-      'Januari','Februari','Maret','April','Mei','Juni',
-      'Juli','Agustus','September','Oktober','November','Desember'
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ]
-    return `${String(d.date()).padStart(2,'0')} ${bulan[d.month()]} ${d.year()}`
+    return `${String(d.date()).padStart(2, '0')} ${bulan[d.month()]} ${d.year()}`
   }
 
   const nomorSurat = safe(p.offer_id) || '01/SP/CTI/02/26'
@@ -656,31 +697,37 @@ function buildOfferA4Html(payload) {
 
   const rowsData = items.length ? items : [{ nama_barang: '-', qty: 1, harga: 0 }]
 
-  const rows = rowsData.map((it) => {
-    const namaBarang = safe(it.nama_barang) || '-'
-    const qty = Math.max(1, toInt(it.qty))
-    const harga = formatRpDot(toNumber(it.harga))
+  const rows = rowsData
+    .map((it) => {
+      const namaBarang = safe(it.nama_barang) || '-'
+      const qty = Math.max(1, toInt(it.qty))
+      const harga = formatRpDot(toNumber(it.harga))
 
-    return `
+      return `
       <tr>
         <td style="padding:14px 16px; border-top:1px solid #eef2f7;">
           <div style="font-size:14px; font-weight:600; color:#0b1220;">
             ${namaBarang}
           </div>
         </td>
-        <td style="padding:14px 6px; border-top:1px solid #eef2f7; text-align:right; width:45px;">
-          <div style="font-size:14px; font-weight:600;">
+
+        <!-- ✅ QTY kecil + padding minimal + rapat ke harga -->
+        <td style="padding:14px 6px 14px 8px; border-top:1px solid #eef2f7; text-align:right; width:34px; white-space:nowrap;">
+          <div style="font-size:14px; font-weight:600; color:#0b1220;">
             ${qty}
           </div>
         </td>
-        <td style="padding:14px 16px; border-top:1px solid #eef2f7; text-align:right;">
-          <div style="font-size:14px; font-weight:700;">
+
+        <!-- ✅ HARGA padding kiri kecil biar dekat qty -->
+        <td style="padding:14px 16px 14px 10px; border-top:1px solid #eef2f7; text-align:right; white-space:nowrap;">
+          <div style="font-size:14px; font-weight:700; color:#0b1220;">
             ${harga}
           </div>
         </td>
       </tr>
     `
-  }).join('')
+    })
+    .join('')
 
   return `<!doctype html>
 <html>
@@ -707,7 +754,6 @@ function buildOfferA4Html(payload) {
     />
   </div>
 </div>
-
 
   <div style="padding:28px 60px 40px 60px;">
 
@@ -749,7 +795,10 @@ function buildOfferA4Html(payload) {
         <thead>
           <tr style="background:#f7f9fc;">
             <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:left;">Nama Produk</th>
-            <th style="padding:14px 4px;font-size:13px;font-weight:700;text-align:right;width:45px;">Qty</th>
+
+            <!-- ✅ header qty width kecil -->
+            <th style="padding:14px 6px 14px 8px;font-size:13px;font-weight:700;text-align:right;width:34px;white-space:nowrap;">Qty</th>
+
             <th style="padding:14px 16px;font-size:13px;font-weight:700;text-align:right;">Harga</th>
           </tr>
         </thead>
@@ -784,9 +833,6 @@ function buildOfferA4Html(payload) {
 </body>
 </html>`
 }
-
-
-
 
 // ===== PAGE =====
 export default function EmailPage() {
@@ -824,7 +870,9 @@ export default function EmailPage() {
   const [kepadaNama, setKepadaNama] = useState('')
   const [kepadaPerusahaan, setKepadaPerusahaan] = useState('')
   const [offerNotes, setOfferNotes] = useState('')
-  const [offerItems, setOfferItems] = useState([{ nama_barang: '', qty: 1, harga: 0 }])
+
+  // ✅ offerItems pakai hargaText supaya input rupiah tidak “loncat”
+  const [offerItems, setOfferItems] = useState([{ nama_barang: '', qty: 1, harga: 0, hargaText: '' }])
 
   // ======================
   // OFFER helpers
@@ -1243,7 +1291,7 @@ export default function EmailPage() {
   }, [offerItems])
 
   const addOfferRow = () => {
-    setOfferItems((prev) => [...(Array.isArray(prev) ? prev : []), { nama_barang: '', qty: 1, harga: 0 }])
+    setOfferItems((prev) => [...(Array.isArray(prev) ? prev : []), { nama_barang: '', qty: 1, harga: 0, hargaText: '' }])
   }
 
   const removeOfferRow = (idx) => {
@@ -1552,7 +1600,7 @@ export default function EmailPage() {
 
         {/* MODE TABS */}
         <div className={`${card} p-3`}>
-          <div className="flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex gap-2">
               <button type="button" className={btnTab(mode === 'invoice')} onClick={() => setMode('invoice')}>
                 Invoice
@@ -1562,12 +1610,13 @@ export default function EmailPage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button type="button" className={btnSoft} onClick={downloadJpg}>
+            {/* ✅ FIX tombol tidak tumpuk: wrap + full width di mobile */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
+              <button type="button" className={btnSoft + ' w-full sm:w-auto'} onClick={downloadJpg}>
                 Download JPG
               </button>
               <button
-                className={btnPrimary}
+                className={btnPrimary + ' w-full sm:w-auto'}
                 onClick={sendEmail}
                 disabled={sending || (mode === 'invoice' && !dataInvoice)}
                 style={{ opacity: sending || (mode === 'invoice' && !dataInvoice) ? 0.6 : 1 }}
@@ -1585,14 +1634,14 @@ export default function EmailPage() {
             <div className="grid lg:grid-cols-2 gap-3 items-start">
               <div>
                 <div className={label}>Pilih transaksi</div>
-                <div className="mt-1 flex gap-2">
+                <div className="mt-1 flex flex-col sm:flex-row gap-2">
                   <input
                     className={input}
                     value={dataInvoice?.invoice_id ? `${dataInvoice.invoice_id} • ${dataInvoice.nama_pembeli || ''}` : ''}
                     placeholder="Belum pilih transaksi"
                     readOnly
                   />
-                  <button className={btnPrimary + ' shrink-0'} onClick={openPicker} type="button">
+                  <button className={btnPrimary + ' w-full sm:w-auto shrink-0'} onClick={openPicker} type="button">
                     Pilih Transaksi
                   </button>
                 </div>
@@ -1666,7 +1715,9 @@ export default function EmailPage() {
                 </div>
 
                 {emailHistory.length > 15 ? (
-                  <div className="text-xs text-gray-500 mt-2">Menampilkan 15 history terbaru (total: {emailHistory.length}).</div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Menampilkan 15 history terbaru (total: {emailHistory.length}).
+                  </div>
                 ) : null}
               </div>
             )}
@@ -1721,8 +1772,13 @@ export default function EmailPage() {
               <div className="text-sm font-semibold mb-2">Item Penawaran</div>
               <div className="space-y-2">
                 {offerItems.map((row, idx) => (
-                  <div key={idx} className="grid md:grid-cols-12 gap-2 items-center">
-                    <div className="md:col-span-6">
+                  // ✅ FIX LAYOUT: desktop sejajar rapi, mobile stack rapi
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 md:grid-cols-[1fr_110px_220px_110px] gap-2 items-start"
+                  >
+                    {/* Nama Barang */}
+                    <div>
                       <input
                         className={input}
                         placeholder="Nama barang"
@@ -1730,27 +1786,46 @@ export default function EmailPage() {
                         onChange={(e) => updateOfferRow(idx, { nama_barang: e.target.value })}
                       />
                     </div>
-                    <div className="md:col-span-2">
+
+                    {/* Qty */}
+                    <div>
                       <input
-                        className={input}
+                        className={input + ' text-right'}
+                        inputMode="numeric"
                         placeholder="Qty"
                         value={row.qty}
-                        onChange={(e) => updateOfferRow(idx, { qty: toInt(e.target.value) || 1 })}
+                        onChange={(e) => updateOfferRow(idx, { qty: Math.max(1, toInt(e.target.value) || 1) })}
                       />
                     </div>
-                    <div className="md:col-span-3">
+
+                    {/* Harga */}
+                    <div>
                       <input
-                        className={input}
-                        placeholder="Harga"
-                        value={row.harga}
-                        onChange={(e) => updateOfferRow(idx, { harga: toNumber(e.target.value) })}
+                        className={input + ' text-right'}
+                        inputMode="numeric"
+                        placeholder="Rp 0"
+                        value={row.hargaText ?? formatRupiahInput(row.harga)}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          const num = parseRupiahToNumber(raw)
+                          updateOfferRow(idx, { harga: num, hargaText: raw })
+                        }}
+                        onBlur={() => {
+                          const num = toNumber(row.harga)
+                          updateOfferRow(idx, { hargaText: num ? formatRupiahInput(num) : '' })
+                        }}
+                        onFocus={() => {
+                          const num = toNumber(row.harga)
+                          updateOfferRow(idx, { hargaText: num ? String(num) : '' })
+                        }}
                       />
-                      <div className="text-[11px] text-gray-500 mt-1">{formatRupiah(toNumber(row.harga))}</div>
                     </div>
-                    <div className="md:col-span-1 flex justify-end">
+
+                    {/* Hapus */}
+                    <div className="md:flex md:justify-end">
                       <button
                         type="button"
-                        className={btnDanger}
+                        className={btnDanger + ' w-full md:w-auto whitespace-nowrap'}
                         onClick={() => removeOfferRow(idx)}
                         disabled={offerItems.length <= 1}
                       >
@@ -1848,13 +1923,14 @@ export default function EmailPage() {
               )}
             </div>
 
-            <div className="pt-2 flex items-center gap-2">
-              <button className={btnSoft} onClick={downloadJpg} type="button">
+            {/* ✅ FIX tombol composer agar tidak mepet/tumpuk */}
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <button className={btnSoft + ' w-full sm:w-auto'} onClick={downloadJpg} type="button">
                 Download JPG
               </button>
 
               <button
-                className={btnPrimary}
+                className={btnPrimary + ' w-full sm:w-auto'}
                 onClick={sendEmail}
                 disabled={sending || (mode === 'invoice' && !dataInvoice)}
                 style={{ opacity: sending || (mode === 'invoice' && !dataInvoice) ? 0.6 : 1 }}
