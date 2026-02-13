@@ -625,48 +625,92 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 }
 
 // ====== OFFER A4 HTML (JPG) — sesuai header surat ======
+// ====== OFFER A4 HTML (JPG) — dibuat PERSIS seperti contoh "Surat penawaran.jpg"
 function buildOfferA4Html(payload) {
-  const BLUE = '#2388ff'
   const p = payload || {}
   const items = Array.isArray(p.items) ? p.items : []
-  const tanggalLong = formatInvoiceDateLong(p.tanggal)
 
-  const grand = items.reduce((acc, it) => {
-    const qty = Math.max(1, toInt(it.qty))
-    const harga = toNumber(it.harga)
-    return acc + qty * harga
-  }, 0)
+  // format Rupiah sesuai contoh: "Rp. 3.099.000"
+  const formatRpDot = (n) => {
+    const x = toNumber(n)
+    return 'Rp. ' + x.toLocaleString('id-ID')
+  }
 
-  const rows = items.length
-    ? items
-        .map((it, idx) => {
-          const qty = Math.max(1, toInt(it.qty))
-          const harga = toNumber(it.harga)
-          const total = qty * harga
-          return `
-            <tr>
-              <td style="padding:12px 14px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220;">${idx + 1}</td>
-              <td style="padding:12px 14px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; font-weight:600; word-break:break-word;">
-                ${safe(it.nama_barang)}
-              </td>
-              <td style="padding:12px 14px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:center;">${qty}</td>
-              <td style="padding:12px 14px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap;">${formatRupiah(harga)}</td>
-              <td style="padding:12px 14px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap; font-weight:700;">${formatRupiah(total)}</td>
-            </tr>
-          `
-        })
-        .join('')
-    : `
-      <tr>
-        <td colspan="5" style="padding:14px; border-top:1px solid #eef2f7; color:#6b7280; font-size:12px;">
-          (Item penawaran belum diisi)
-        </td>
-      </tr>
-    `
+  // tanggal Indonesia: "05 Februari 2026"
+  const formatTanggalIndo = (ymdOrIso) => {
+    if (!ymdOrIso) return ''
+    const d = dayjs(ymdOrIso)
+    if (!d.isValid()) return String(ymdOrIso)
+    const bulan = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ]
+    const dd = String(d.date()).padStart(2, '0')
+    const mm = bulan[d.month()]
+    const yy = d.year()
+    return `${dd} ${mm} ${yy}`
+  }
 
-  const whom = `${safe(p.kepada_nama) || 'Bapak/Ibu'}${p.kepada_perusahaan ? ` • ${safe(p.kepada_perusahaan)}` : ''}`
-  const HEAD_IMG = '/head-surat-menyurat.png'
+  // =========================
+  // DATA SURAT (sesuai contoh)
+  // =========================
+  const nomorSurat = safe(p.offer_id) || '01/SP/CTI/02/26'
+  const tanggalSurat = formatTanggalIndo(p.tanggal) || formatTanggalIndo(dayjs().format('YYYY-MM-DD'))
 
+  const kepadaNama = safe(p.kepada_nama) || safe(p.kepadaNama) || 'Bapak/Ibu'
+  const kepadaPerusahaan = safe(p.kepada_perusahaan) || safe(p.kepadaPerusahaan) || ''
+  const kepadaTempat = 'Di tempat'
+
+  // Header image sesuai standar kamu (public/head.png).
+  // Kalau file kamu beda, ganti path ini saja.
+  const HEAD_IMG = '/head.png'
+
+  // Ambil 1 produk utama (sesuai contoh tabel hanya 1 baris).
+  // Kalau item > 1, tetap tampil semua baris (lebih aman).
+  const rows = (items.length ? items : [{ nama_barang: '-', qty: 1, harga: 0 }])
+    .map((it) => {
+      const namaBarang = safe(it.nama_barang) || '-'
+      const harga = formatRpDot(toNumber(it.harga))
+      return `
+        <tr>
+          <td style="padding:14px 16px; border:1px solid #cfcfcf; border-right:none; vertical-align:middle;">
+            <div style="display:flex; gap:10px; align-items:flex-start;">
+              <div style="margin-top:3px; font-size:16px; line-height:1;">•</div>
+              <div style="font-size:16px; font-weight:700; color:#111827; line-height:1.35;">
+                ${namaBarang}
+              </div>
+            </div>
+          </td>
+          <td style="padding:14px 16px; border:1px solid #cfcfcf; text-align:center; vertical-align:middle; font-size:16px; font-weight:800; color:#111827; white-space:nowrap;">
+            ${harga}
+          </td>
+        </tr>
+      `
+    })
+    .join('')
+
+  // =========================
+  // BLOK PEMBAYARAN (sesuai contoh)
+  // (Bila nanti mau dinamis, tinggal ambil dari payload)
+  // =========================
+  const BANK_NAMA = 'BCA'
+  const BANK_CABANG = 'Ngaliyan, Semarang'
+  const BANK_REK = '871-504-7400'
+  const BANK_AN = 'Erick Karno Hutomo'
+
+  // =========================
+  // HTML A4 (NO OVERLAP)
+  // =========================
   return `<!doctype html>
 <html>
 <head>
@@ -674,93 +718,104 @@ function buildOfferA4Html(payload) {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
   <style>
     *{ box-sizing:border-box; }
     body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
   </style>
 </head>
 <body>
-  <div id="offer-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
-    <div style="position:absolute; left:0; right:0; top:0;">
-      <img src="${HEAD_IMG}" alt="Header" style="width:794px; height:auto; display:block;" />
+  <div id="offer-a4" style="width:794px; height:1123px; background:#ffffff; overflow:hidden;">
+    <!-- HEADER (fixed height, aman, tidak nabrak) -->
+    <div style="width:794px; height:210px; overflow:hidden;">
+      <img src="${HEAD_IMG}" alt="Header" style="width:794px; height:210px; object-fit:cover; display:block;" />
     </div>
 
-    <div style="position:absolute; left:0; right:0; top:170px; bottom:0; padding:34px 56px 42px 56px;">
-      <div style="display:flex; justify-content:space-between; gap:18px;">
+    <!-- BODY (normal flow, tidak absolute) -->
+    <div style="padding:34px 60px 40px 60px;">
+
+      <!-- JUDUL -->
+      <div style="text-align:center;">
+        <div style="font-size:40px; font-weight:900; letter-spacing:0.6px; color:#111827;">
+          SURAT PENAWARAN
+        </div>
+        <div style="margin-top:6px; font-size:18px; color:#4b5563;">
+          Nomor Surat : <span style="font-weight:400;">${nomorSurat}</span>
+        </div>
+      </div>
+
+      <!-- KEPADA -->
+      <div style="margin-top:26px; font-size:18px; color:#111827; line-height:1.35;">
+        <div>Kepada Yth :</div>
+        <div>UP. ${kepadaNama}</div>
+        ${kepadaPerusahaan ? `<div>${kepadaPerusahaan}</div>` : ''}
+        <div>${kepadaTempat}</div>
+      </div>
+
+      <!-- ISI SURAT (kalimat sama seperti contoh) -->
+      <div style="margin-top:22px; font-size:18px; color:#111827; line-height:1.5;">
+        <div>Dengan hormat,</div>
         <div>
-          <div style="font-size:18px; font-weight:900; color:#0b1220; letter-spacing:.2px;">SURAT PENAWARAN</div>
-          <div style="margin-top:6px; font-size:12px; color:#6a768a; line-height:1.75;">
-            Nomor: <b style="color:#0b1220;">${safe(p.offer_id)}</b><br/>
-            Tanggal: <b style="color:#0b1220;">${safe(tanggalLong || p.tanggal)}</b>
-          </div>
+          Bersama surat ini kami CONNECT.IND sebagai salah satu dealer resmi Samsung,
+          bermaksud untuk memberikan penawaran produk yang tersedia di toko kami.
         </div>
-
-        <div style="text-align:right;">
-          <div style="font-size:12px; color:#6a768a;">Kepada</div>
-          <div style="margin-top:6px; font-size:12px; font-weight:700; color:#0b1220; max-width:320px; word-break:break-word;">
-            ${whom}
-          </div>
-          <div style="margin-top:4px; font-size:12px; color:#6a768a; max-width:320px; word-break:break-word;">
-            ${safe(p.to_email)}
-          </div>
+        <div>
+          Adapun untuk produk yang kami tawarkan sebagai berikut :
         </div>
       </div>
 
-      <div style="margin-top:18px; font-size:12px; color:#0b1220; line-height:1.85;">
-        Yth. <b>${safe(p.kepada_nama) || 'Bapak/Ibu'}</b>,<br/>
-        Terima kasih atas ketertarikannya. Berikut kami sampaikan penawaran harga dari CONNECT.IND.
-      </div>
-
-      <div style="margin-top:18px; border:1px solid #eef2f7; border-radius:12px; overflow:hidden;">
-        <table style="width:100%; border-collapse:separate; border-spacing:0;">
+      <!-- TABEL PRODUK (2 kolom, border abu, seperti contoh) -->
+      <div style="margin-top:18px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; border:1px solid #cfcfcf; border-radius:6px; overflow:hidden;">
           <thead>
-            <tr style="background:#f7f9fc;">
-              <th style="text-align:left; padding:14px 14px; font-size:12px; font-weight:800; color:#0b1220;">No</th>
-              <th style="text-align:left; padding:14px 14px; font-size:12px; font-weight:800; color:#0b1220;">Barang</th>
-              <th style="text-align:center; padding:14px 14px; font-size:12px; font-weight:800; color:#0b1220;">Qty</th>
-              <th style="text-align:right; padding:14px 14px; font-size:12px; font-weight:800; color:#0b1220;">Harga</th>
-              <th style="text-align:right; padding:14px 14px; font-size:12px; font-weight:800; color:#0b1220;">Total</th>
+            <tr>
+              <th style="padding:12px 16px; border:1px solid #cfcfcf; border-right:none; background:#efefef; text-align:center; font-size:18px; font-weight:800; color:#111827;">
+                Nama Produk
+              </th>
+              <th style="padding:12px 16px; border:1px solid #cfcfcf; background:#efefef; text-align:center; font-size:18px; font-weight:800; color:#111827;">
+                Harga
+              </th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>
+            ${rows}
+          </tbody>
         </table>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; margin-top:16px;">
-        <div style="min-width:320px; border:1px solid #eef2f7; border-radius:12px; padding:14px 16px;">
-          <div style="display:flex; justify-content:space-between; gap:12px;">
-            <div style="font-size:12px; color:#6a768a;">Grand Total</div>
-            <div style="font-size:14px; font-weight:800; color:${BLUE};">${formatRupiah(grand)}</div>
-          </div>
+      <!-- BLOK PEMBAYARAN (sama seperti contoh) -->
+      <div style="margin-top:22px; font-size:18px; color:#111827; line-height:1.45;">
+        <div>Pembayaran dapat dilakukan ke rekening berikut:</div>
+        <div>Bank : ${BANK_NAMA}</div>
+        <div>Cabang : ${BANK_CABANG}</div>
+        <div>Nomor Rekening : ${BANK_REK}</div>
+        <div>Atas Nama : ${BANK_AN}</div>
+      </div>
+
+      <!-- PENUTUP -->
+      <div style="margin-top:22px; font-size:18px; color:#111827; line-height:1.5;">
+        Demikian surat penawaran dari kami, atas perhatian dan kerjasamanya kami ucapkan terimakasih.
+      </div>
+
+      <!-- TTD -->
+      <div style="margin-top:26px; font-size:18px; color:#111827; line-height:1.4;">
+        <div>Semarang, ${tanggalSurat}</div>
+        <div>Hormat kami,</div>
+
+        <div style="height:74px;"></div>
+
+        <div style="width:260px; border-bottom:2px solid #111827; padding-bottom:2px; font-weight:400;">
+          Erick Karno Hutomo
         </div>
+        <div>Head Store</div>
       </div>
 
-      ${
-        safe(p.catatan)
-          ? `<div style="margin-top:16px; padding:12px 14px; border:1px solid #eef2f7; border-radius:12px; background:#fafafa;">
-              <div style="font-size:12px; font-weight:800; color:#0b1220; margin-bottom:6px;">Catatan</div>
-              <div style="font-size:12px; color:#0b1220; line-height:1.75; white-space:pre-wrap;">${safe(
-                p.catatan
-              )}</div>
-            </div>`
-          : ''
-      }
-
-      <div style="margin-top:18px; font-size:12px; color:#0b1220; line-height:1.85;">
-        Apabila Bapak/Ibu membutuhkan informasi lebih lanjut, silakan hubungi WhatsApp kami di
-        <b>0896-31-4000-31</b>.
-        <br/><br/>
-        Hormat kami,<br/>
-        <b>CONNECT.IND</b>
-      </div>
     </div>
-
-    <div style="position:absolute; left:0; right:0; bottom:0; height:10px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
 }
+
 
 // ===== PAGE =====
 export default function EmailPage() {
