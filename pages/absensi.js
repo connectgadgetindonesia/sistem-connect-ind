@@ -57,6 +57,26 @@ function fmtDateID(ts) {
   }
 }
 
+// ===== laporan helper =====
+const STATUS_LIST = ['Hadir', 'Izin', 'Sakit', 'Libur', 'Cuti']
+const normStatus = (s) => {
+  const v = String(s || '').trim()
+  if (!v) return 'Hadir'
+  // pastikan konsisten kapital awal
+  const vv = v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
+  // mapping kalau ada typo
+  if (vv === 'Ijin') return 'Izin'
+  return vv
+}
+const upper = (s) => String(s || '').trim().toUpperCase()
+
+function buildEmptyStatusObj() {
+  const o = {}
+  for (const st of STATUS_LIST) o[st] = 0
+  o.Total = 0
+  return o
+}
+
 export default function AbsenTugasKaryawan() {
   // ====== DATA KARYAWAN (MASTER) ======
   const [employees, setEmployees] = useState([]) // {id,nama,aktif}
@@ -83,6 +103,15 @@ export default function AbsenTugasKaryawan() {
   const [selectedDate, setSelectedDate] = useState(todayStr())
   const isToday = selectedDate === todayStr()
 
+  // ====== LAPORAN (Bulanan/Tahunan) ======
+  const [reportMode, setReportMode] = useState('bulan') // 'bulan' | 'tahun'
+  const [reportMonth, setReportMonth] = useState(todayStr().slice(0, 7)) // YYYY-MM
+  const [reportYear, setReportYear] = useState(todayStr().slice(0, 4)) // YYYY
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportMeta, setReportMeta] = useState({ rangeLabel: '', totalRows: 0 })
+  const [reportTotals, setReportTotals] = useState(buildEmptyStatusObj())
+  const [reportByEmployee, setReportByEmployee] = useState([]) // [{nama, ...statusCounts}]
+
   // lock agar ensure tidak double jalan
   const ensureLockRef = useRef(false)
 
@@ -91,9 +120,10 @@ export default function AbsenTugasKaryawan() {
     ;(async () => {
       await loadEmployees()
       await loadAbsensi(selectedDate)
-      // penting: ensure dulu baru load (biar list konsisten)
       if (isToday) await ensureTasksIfNeeded(selectedDate)
       await loadTasks(selectedDate)
+      // auto-load laporan awal (bulan ini)
+      await fetchLaporan({ mode: 'bulan', month: reportMonth, year: reportYear })
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -319,7 +349,6 @@ export default function AbsenTugasKaryawan() {
     setWorkModal(true)
   }
 
-  // ✅ FIX FINAL: update + fallback + reload DB
   async function confirmWork() {
     if (!workTask) return
     const who = (workAssignee || '').trim().toUpperCase()
@@ -332,13 +361,11 @@ export default function AbsenTugasKaryawan() {
       assignee: who,
     }
 
-    // 1) update by id
     let upd = null
     if (workTask.id) {
       upd = await supabase.from('tugas_harian').update(payload).eq('id', workTask.id)
     }
 
-    // 2) fallback update by task_date + title
     if (!upd || upd.error) {
       const tgl = workTask.task_date || selectedDate
       const title = (workTask.title || '').trim()
@@ -350,7 +377,6 @@ export default function AbsenTugasKaryawan() {
       }
     }
 
-    // 3) reload DB biar refresh tidak balik
     await loadTasks(selectedDate)
 
     setWorkModal(false)
@@ -404,7 +430,11 @@ export default function AbsenTugasKaryawan() {
     }
 
     const jamNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    const { error } = await supabase.from('absensi_karyawan').update({ jam_pulang: jamNow }).eq('id', row.id).eq('tanggal', selectedDate)
+    const { error } = await supabase
+      .from('absensi_karyawan')
+      .update({ jam_pulang: jamNow })
+      .eq('id', row.id)
+      .eq('tanggal', selectedDate)
 
     if (error) return alert('Gagal menyimpan absen pulang: ' + error.message)
     await loadAbsensi(selectedDate)
@@ -422,6 +452,95 @@ export default function AbsenTugasKaryawan() {
     return isToday ? (absenList || []).some((a) => a.status === 'Hadir') : true
   }, [absenList, isToday])
 
+  // ======================
+  // LAPORAN: Bulanan / Tahunan
+  // ======================
+  const fetchLaporan = async ({ mode, month, year }) => {
+    setReportLoading(true)
+    try {
+      let start = ''
+      let end = ''
+      let label = ''
+
+      if (mode === 'tahun') {
+        const y = String(year || todayStr().slice(0, 4)).slice(0, 4)
+        start = `${y}-01-01`
+        end = `${y}-12-31`
+        label = `Tahun ${y}`
+      } else {
+        // bulan
+        const ym = String(month || todayStr().slice(0, 7)).slice(0, 7) // YYYY-MM
+        const y = ym.slice(0, 4)
+        const m = ym.slice(5, 7)
+        start = `${y}-${m}-01`
+        // last day of month
+        const dt = new Date(Number(y), Number(m), 0) // day 0 => last day prev month; m already next month index
+        const dd = String(dt.getDate()).padStart(2, '0')
+        end = `${y}-${m}-${dd}`
+        label = `Bulan ${ym}`
+      }
+
+      const { data, error } = await supabase
+        .from('absensi_karyawan')
+        .select('nama,status,tanggal,shift')
+        .gte('tanggal', start)
+        .lte('tanggal', end)
+        .order('tanggal', { ascending: true })
+        .limit(5000)
+
+      if (error) throw error
+
+      const rows = Array.isArray(data) ? data : []
+      const totals = buildEmptyStatusObj()
+      const byEmpMap = new Map()
+
+      for (const r of rows) {
+        const nm = upper(r?.nama)
+        const st = normStatus(r?.status)
+
+        if (!totals[st] && st !== 'Total') {
+          // jika status baru/unik, masukkan juga (biar tidak hilang)
+          totals[st] = 0
+        }
+
+        totals[st] = (totals[st] || 0) + 1
+        totals.Total += 1
+
+        if (!byEmpMap.has(nm)) byEmpMap.set(nm, { nama: nm, ...buildEmptyStatusObj() })
+        const obj = byEmpMap.get(nm)
+
+        if (!obj[st] && st !== 'Total') obj[st] = 0
+        obj[st] = (obj[st] || 0) + 1
+        obj.Total += 1
+      }
+
+      // sort employee by Total desc
+      const byEmp = Array.from(byEmpMap.values()).sort((a, b) => (b.Total || 0) - (a.Total || 0))
+
+      setReportMeta({ rangeLabel: `${label} (${start} s/d ${end})`, totalRows: rows.length })
+      setReportTotals(totals)
+      setReportByEmployee(byEmp)
+    } catch (e) {
+      console.error(e)
+      alert('Gagal ambil laporan: ' + (e?.message || String(e)))
+      setReportMeta({ rangeLabel: '', totalRows: 0 })
+      setReportTotals(buildEmptyStatusObj())
+      setReportByEmployee([])
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  const reportStatusColumns = useMemo(() => {
+    // gunakan STATUS_LIST tapi kalau ada status lain masuk, tetap tampilkan
+    const cols = new Set(STATUS_LIST)
+    // dari totals bisa punya kunci tambahan
+    Object.keys(reportTotals || {}).forEach((k) => {
+      if (k && k !== 'Total') cols.add(k)
+    })
+    return Array.from(cols)
+  }, [reportTotals])
+
   return (
     <Layout>
       <div style={pageWrap}>
@@ -429,13 +548,16 @@ export default function AbsenTugasKaryawan() {
         <div style={headerRow}>
           <div>
             <div style={title}>Absensi & Tugas Harian</div>
-            <div style={subtitle}>
-              Mode: {isToday ? <b>Hari Ini</b> : <b>Laporan (Read-only)</b>}
-            </div>
+            <div style={subtitle}>Mode: {isToday ? <b>Hari Ini</b> : <b>Laporan (Read-only)</b>}</div>
           </div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <input type="date" style={{ ...input, width: 190 }} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+            <input
+              type="date"
+              style={{ ...inputBase, width: 190 }}
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
             <button
               style={btnOutline}
               onClick={async () => {
@@ -446,6 +568,122 @@ export default function AbsenTugasKaryawan() {
             >
               Lihat Laporan
             </button>
+          </div>
+        </div>
+
+        {/* ✅ LAPORAN BULANAN / TAHUNAN */}
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 900 }}>Laporan Absensi (Bulanan & Tahunan)</div>
+              <div style={helpText}>Rekap status: Hadir / Izin / Sakit / Libur / Cuti</div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <select
+                value={reportMode}
+                onChange={(e) => setReportMode(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="bulan">Bulanan</option>
+                <option value="tahun">Tahunan</option>
+              </select>
+
+              {reportMode === 'bulan' ? (
+                <input
+                  type="month"
+                  value={reportMonth}
+                  onChange={(e) => setReportMonth(e.target.value)}
+                  style={{ ...inputBase, width: 180 }}
+                />
+              ) : (
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={reportYear}
+                  onChange={(e) => setReportYear(e.target.value)}
+                  style={{ ...inputBase, width: 120 }}
+                  placeholder="2026"
+                />
+              )}
+
+              <button
+                style={btnPrimary}
+                disabled={reportLoading}
+                onClick={() => fetchLaporan({ mode: reportMode, month: reportMonth, year: reportYear })}
+                type="button"
+              >
+                {reportLoading ? 'Memuat...' : 'Cek Laporan'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            {reportMeta.rangeLabel ? (
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                <b>{reportMeta.rangeLabel}</b> • total data: <b>{reportMeta.totalRows}</b>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: '#64748b' }}>Klik <b>Cek Laporan</b> untuk menampilkan rekap.</div>
+            )}
+          </div>
+
+          {/* cards totals */}
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 10 }}>
+            <div style={miniCard}>
+              <div style={miniLabel}>Total</div>
+              <div style={miniValue}>{reportTotals.Total || 0}</div>
+            </div>
+            {reportStatusColumns.map((st) => (
+              <div key={st} style={miniCard}>
+                <div style={miniLabel}>{st}</div>
+                <div style={miniValue}>{reportTotals[st] || 0}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* table by employee */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Rekap Per Karyawan</div>
+
+            <div style={{ ...tableWrap, marginTop: 0 }}>
+              <table style={table}>
+                <thead>
+                  <tr style={theadRow}>
+                    <th style={thLeft}>Nama</th>
+                    <th style={thCenter}>Total</th>
+                    {reportStatusColumns.map((st) => (
+                      <th key={st} style={thCenter}>
+                        {st}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportByEmployee.length === 0 ? (
+                    <tr>
+                      <td style={{ ...tdCenter, color: '#64748b', padding: 14 }} colSpan={2 + reportStatusColumns.length}>
+                        Belum ada data laporan.
+                      </td>
+                    </tr>
+                  ) : (
+                    reportByEmployee.map((r) => (
+                      <tr key={r.nama} style={tbodyTr}>
+                        <td style={tdLeft}>{r.nama}</td>
+                        <td style={tdCenter}><b>{r.Total || 0}</b></td>
+                        {reportStatusColumns.map((st) => (
+                          <td key={st} style={tdCenter}>{r[st] || 0}</td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ ...helpText, marginTop: 10 }}>
+              Catatan: Rekap ini mengambil dari tabel <b>absensi_karyawan</b> berdasarkan kolom <b>tanggal</b>.
+            </div>
           </div>
         </div>
 
@@ -469,7 +707,7 @@ export default function AbsenTugasKaryawan() {
                     value={nama}
                     onChange={(e) => onNamaChange(e.target.value)}
                     placeholder="Ketik Nama Karyawan"
-                    style={input}
+                    style={inputBase}
                     disabled={!isToday}
                     list="karyawanList"
                   />
@@ -481,12 +719,13 @@ export default function AbsenTugasKaryawan() {
                   <div style={helpText}>Ketik nama → akan muncul saran.</div>
                 </div>
 
-                <select value={shift} onChange={(e) => setShift(e.target.value)} style={input} disabled={!isToday}>
+                {/* ✅ FIX: select height sama */}
+                <select value={shift} onChange={(e) => setShift(e.target.value)} style={selectStyle} disabled={!isToday}>
                   <option value="Pagi">Shift Pagi (09.00–17.00)</option>
                   <option value="Siang">Shift Siang (13.00–20.00)</option>
                 </select>
 
-                <select value={status} onChange={(e) => setStatus(e.target.value)} style={input} disabled={!isToday}>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle} disabled={!isToday}>
                   <option value="Hadir">Hadir</option>
                   <option value="Izin">Izin</option>
                   <option value="Sakit">Sakit</option>
@@ -523,9 +762,7 @@ export default function AbsenTugasKaryawan() {
               <div>
                 Izin/Sakit/Libur/Cuti: <b>{(absenList || []).filter((a) => a.status !== 'Hadir').length}</b>
               </div>
-              <div style={helpText}>
-                Shift Siang: tidak bisa absen pulang kalau tugas belum selesai semua.
-              </div>
+              <div style={helpText}>Shift Siang: tidak bisa absen pulang kalau tugas belum selesai semua.</div>
             </div>
           </div>
         </div>
@@ -535,7 +772,9 @@ export default function AbsenTugasKaryawan() {
           <div style={cardHeaderRow}>
             <div>
               <div style={{ fontWeight: 900 }}>Daftar Absensi</div>
-              <div style={helpText}>Tanggal: <b>{selectedDate}</b></div>
+              <div style={helpText}>
+                Tanggal: <b>{selectedDate}</b>
+              </div>
             </div>
           </div>
 
@@ -618,7 +857,7 @@ export default function AbsenTugasKaryawan() {
           {/* tambah manual */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
             <input
-              style={{ ...input, flex: 1, minWidth: 260 }}
+              style={{ ...inputBase, flex: 1, minWidth: 260 }}
               placeholder="Tambah tugas manual (untuk hari ini saja)"
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
@@ -696,7 +935,7 @@ export default function AbsenTugasKaryawan() {
 
                 <div style={{ display: 'grid', gap: 10 }}>
                   <input
-                    style={input}
+                    style={inputBase}
                     placeholder="Nama karyawan"
                     value={empForm.nama}
                     onChange={(e) => setEmpForm((p) => ({ ...p, nama: e.target.value }))}
@@ -802,7 +1041,7 @@ export default function AbsenTugasKaryawan() {
 
               <div>
                 <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6, fontWeight: 800 }}>Dikerjakan oleh:</div>
-                <select style={input} value={workAssignee} onChange={(e) => setWorkAssignee(e.target.value)}>
+                <select style={selectStyle} value={workAssignee} onChange={(e) => setWorkAssignee(e.target.value)}>
                   {hadirNames.map((n) => (
                     <option key={n} value={n}>
                       {n}
@@ -880,13 +1119,26 @@ const cardHeaderRow = {
   flexWrap: 'wrap',
 }
 
-const input = {
+const inputBase = {
   width: '100%',
-  padding: '10px 12px',
+  height: 42, // ✅ FIX tinggi konsisten
+  lineHeight: '42px',
+  padding: '0 12px',
   borderRadius: 10,
   border: '1px solid #d1d5db',
   outline: 'none',
   fontSize: 13,
+  background: '#fff',
+}
+
+const selectStyle = {
+  ...inputBase,
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+  lineHeight: 'normal', // select better
+  paddingTop: 0,
+  paddingBottom: 0,
 }
 
 const btnPrimary = {
@@ -966,6 +1218,7 @@ const formGrid = {
   gridTemplateColumns: '2fr 1fr 1fr',
   gap: 10,
 }
+
 const tableWrap = {
   border: '1px solid #e5e7eb',
   borderRadius: 10,
@@ -1046,9 +1299,27 @@ const subCard = {
   background: '#fff',
 }
 
+// mini cards laporan
+const miniCard = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  padding: 12,
+  background: '#fff',
+}
+const miniLabel = {
+  fontSize: 11,
+  color: '#64748b',
+  fontWeight: 800,
+}
+const miniValue = {
+  marginTop: 6,
+  fontSize: 16,
+  fontWeight: 900,
+  color: '#0f172a',
+}
+
 /* ===== Responsive kecil (tanpa ganggu logic) ===== */
 if (typeof window !== 'undefined') {
-  // tidak wajib, tapi kalau layar kecil: grid jadi 1 kolom
   const isSmall = window.matchMedia && window.matchMedia('(max-width: 900px)').matches
   if (isSmall) {
     grid3.gridTemplateColumns = '1fr'
