@@ -21,6 +21,9 @@ const formatIDR = (val) => {
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
 const SKU_OFFICE = 'OFC-365-1'
 
+// ✅ NEW: METODE PEMBAYARAN
+const METODE_PEMBAYARAN = ['BRI', 'BCA', 'MANDIRI', 'BSI', 'BNI', 'TOKOPEDIA', 'SHOPEE', 'CASH']
+
 const card = 'bg-white border border-gray-200 rounded-xl'
 const input = 'border border-gray-200 p-2 rounded-lg w-full'
 const label = 'text-sm text-gray-600'
@@ -69,6 +72,7 @@ export default function Penjualan() {
     alamat: '',
     no_wa: '',
     email: '', // ✅ NEW
+    metode_pembayaran: '', // ✅ NEW
     referral: '',
     dilayani_oleh: ''
   })
@@ -110,14 +114,9 @@ export default function Penjualan() {
   // ====== OPTIONS SN/SKU ======
   useEffect(() => {
     async function fetchOptions() {
-      const { data: stokReady } = await supabase
-        .from('stok')
-        .select('sn, nama_produk, warna')
-        .eq('status', 'READY')
+      const { data: stokReady } = await supabase.from('stok').select('sn, nama_produk, warna').eq('status', 'READY')
 
-      const { data: aksesoris } = await supabase
-        .from('stok_aksesoris')
-        .select('sku, nama_produk, warna')
+      const { data: aksesoris } = await supabase.from('stok_aksesoris').select('sku, nama_produk, warna')
 
       const combinedOptions = [
         ...(stokReady?.map((item) => ({
@@ -210,16 +209,13 @@ export default function Penjualan() {
         const sisa = toNumber(r.sisa_pembayaran || (hargaJual - dp) || 0)
 
         const infoProduk = [namaProduk, warna, storage].filter(Boolean).join(' ')
-        const infoBayar =
-          hargaJual > 0 || dp > 0
-            ? `DP Rp ${dp.toLocaleString('id-ID')} • Sisa Rp ${sisa.toLocaleString('id-ID')}`
-            : ''
+        const infoBayar = hargaJual > 0 || dp > 0 ? `DP Rp ${dp.toLocaleString('id-ID')} • Sisa Rp ${sisa.toLocaleString('id-ID')}` : ''
 
         return {
           value: r.id,
-          label: `${nama}${wa ? ` • ${wa}` : ''}${status ? ` • ${status}` : ''}${
-            infoProduk ? ` • ${infoProduk}` : ''
-          }${infoBayar ? ` • ${infoBayar}` : ''}`,
+          label: `${nama}${wa ? ` • ${wa}` : ''}${status ? ` • ${status}` : ''}${infoProduk ? ` • ${infoProduk}` : ''}${
+            infoBayar ? ` • ${infoBayar}` : ''
+          }`,
           meta: {
             id: r.id,
             nama,
@@ -278,12 +274,7 @@ export default function Penjualan() {
   async function cariStok(snsku, setter) {
     const code = (snsku || '').toString().trim()
 
-    const { data: unit } = await supabase
-      .from('stok')
-      .select('*')
-      .eq('sn', code)
-      .eq('status', 'READY')
-      .maybeSingle()
+    const { data: unit } = await supabase.from('stok').select('*').eq('sn', code).eq('status', 'READY').maybeSingle()
 
     if (unit) {
       setter((prev) => ({
@@ -299,11 +290,7 @@ export default function Penjualan() {
       return
     }
 
-    const { data: aks } = await supabase
-      .from('stok_aksesoris')
-      .select('*')
-      .eq('sku', code)
-      .maybeSingle()
+    const { data: aks } = await supabase.from('stok_aksesoris').select('*').eq('sku', code).maybeSingle()
 
     if (aks) {
       setter((prev) => ({
@@ -416,11 +403,7 @@ export default function Penjualan() {
     const tahun = dayjs(tanggal).format('YYYY')
     const prefix = `INV-CTI-${bulan}-${tahun}-`
 
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('invoice_id')
-      .ilike('invoice_id', `${prefix}%`)
-      .range(0, 9999)
+    const { data, error } = await supabase.from('penjualan_baru').select('invoice_id').ilike('invoice_id', `${prefix}%`).range(0, 9999)
 
     if (error) {
       console.error('generateInvoiceId error:', error)
@@ -455,13 +438,12 @@ export default function Penjualan() {
     if (submitting) return
 
     const ok = window.confirm(
-      'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
-        'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' +
-        'Klik OK untuk melanjutkan.'
+      'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' + 'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' + 'Klik OK untuk melanjutkan.'
     )
     if (!ok) return
 
     if (!formData.tanggal || produkList.length === 0) return alert('Tanggal & minimal 1 produk wajib diisi')
+    if (!formData.metode_pembayaran) return alert('Pilih metode pembayaran terlebih dahulu.')
 
     setSubmitting(true)
     try {
@@ -519,7 +501,8 @@ export default function Penjualan() {
           nama_pembeli: (formData.nama_pembeli || '').toString().trim().toUpperCase(),
           alamat: (formData.alamat || '').toString().trim(),
           no_wa: (formData.no_wa || '').toString().trim(),
-          email: (formData.email || '').toString().trim().toLowerCase(), // ✅ NEW
+          email: (formData.email || '').toString().trim().toLowerCase(),
+          metode_pembayaran: (formData.metode_pembayaran || '').toString().trim().toUpperCase(), // ✅ NEW
           referral: (formData.referral || '').toString().trim().toUpperCase(),
           dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
           sn_sku: item.sn_sku,
@@ -574,7 +557,8 @@ export default function Penjualan() {
         nama_pembeli: '',
         alamat: '',
         no_wa: '',
-        email: '', // ✅ NEW
+        email: '',
+        metode_pembayaran: '', // ✅ NEW
         referral: '',
         dilayani_oleh: ''
       })
@@ -599,10 +583,7 @@ export default function Penjualan() {
 
   const sumHarga = useMemo(
     () =>
-      produkList.reduce(
-        (s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1),
-        0
-      ),
+      produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0),
     [produkList]
   )
   const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
@@ -671,19 +652,11 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="md:col-span-2">
                   <div className={label}>Tanggal</div>
-                  <input
-                    type="date"
-                    className={input}
-                    value={formData.tanggal}
-                    onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
-                    required
-                  />
+                  <input type="date" className={input} value={formData.tanggal} onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })} required />
                 </div>
 
                 <div className="md:col-span-2">
-                  <div className={label}>
-                    {buyerTab === 'customer' ? 'Pilih Customer Lama' : 'Pilih Indent Berjalan'}
-                  </div>
+                  <div className={label}>{buyerTab === 'customer' ? 'Pilih Customer Lama' : 'Pilih Indent Berjalan'}</div>
                   <Select
                     className="text-sm"
                     styles={selectStyles}
@@ -700,54 +673,41 @@ export default function Penjualan() {
 
                 <div>
                   <div className={label}>Nama Pembeli</div>
-                  <input
-                    className={input}
-                    value={formData.nama_pembeli}
-                    onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })}
-                    required
-                  />
+                  <input className={input} value={formData.nama_pembeli} onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })} required />
                 </div>
 
                 <div>
                   <div className={label}>No. WA</div>
-                  <input
-                    className={input}
-                    value={formData.no_wa}
-                    onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })}
-                    required
-                  />
+                  <input className={input} value={formData.no_wa} onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })} required />
                 </div>
 
-                {/* ✅ NEW: EMAIL */}
+                {/* ✅ EMAIL */}
                 <div className="md:col-span-2">
                   <div className={label}>Email</div>
-                  <input
-                    className={input}
-                    type="email"
-                    placeholder="customer@email.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
+                  <input className={input} type="email" placeholder="customer@email.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                </div>
+
+                {/* ✅ NEW: METODE PEMBAYARAN */}
+                <div className="md:col-span-2">
+                  <div className={label}>Metode Pembayaran</div>
+                  <select className={input} value={formData.metode_pembayaran} onChange={(e) => setFormData({ ...formData, metode_pembayaran: e.target.value })} required>
+                    <option value="">Pilih Metode Pembayaran</option>
+                    {METODE_PEMBAYARAN.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="md:col-span-2">
                   <div className={label}>Alamat</div>
-                  <input
-                    className={input}
-                    value={formData.alamat}
-                    onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
-                    required
-                  />
+                  <input className={input} value={formData.alamat} onChange={(e) => setFormData({ ...formData, alamat: e.target.value })} required />
                 </div>
 
                 <div>
                   <div className={label}>Referral</div>
-                  <select
-                    className={input}
-                    value={formData.referral}
-                    onChange={(e) => setFormData({ ...formData, referral: e.target.value })}
-                    required
-                  >
+                  <select className={input} value={formData.referral} onChange={(e) => setFormData({ ...formData, referral: e.target.value })} required>
                     <option value="">Pilih Referral</option>
                     {KARYAWAN.map((n) => (
                       <option key={n} value={n}>
@@ -759,12 +719,7 @@ export default function Penjualan() {
 
                 <div>
                   <div className={label}>Dilayani Oleh</div>
-                  <select
-                    className={input}
-                    value={formData.dilayani_oleh}
-                    onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })}
-                    required
-                  >
+                  <select className={input} value={formData.dilayani_oleh} onChange={(e) => setFormData({ ...formData, dilayani_oleh: e.target.value })} required>
                     <option value="">Pilih Dilayani Oleh</option>
                     {KARYAWAN.map((n) => (
                       <option key={n} value={n}>
@@ -813,13 +768,7 @@ export default function Penjualan() {
                 <div>
                   <div className={label}>Qty</div>
                   {produkBaru.is_aksesoris ? (
-                    <input
-                      className={input}
-                      type="number"
-                      min="1"
-                      value={produkBaru.qty}
-                      onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })}
-                    />
+                    <input className={input} type="number" min="1" value={produkBaru.qty} onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })} />
                   ) : (
                     <div className={`${input} flex items-center text-sm text-gray-600`}>1 (unit SN)</div>
                   )}
@@ -833,11 +782,7 @@ export default function Penjualan() {
               {isOfficeSKUProduk && (
                 <div className="mt-3">
                   <div className={label}>Username Office (email pelanggan)</div>
-                  <input
-                    className={input}
-                    value={produkBaru.office_username}
-                    onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })}
-                  />
+                  <input className={input} value={produkBaru.office_username} onChange={(e) => setProdukBaru({ ...produkBaru, office_username: e.target.value })} />
                 </div>
               )}
             </div>
@@ -863,13 +808,7 @@ export default function Penjualan() {
                 <div>
                   <div className={label}>Qty Bonus</div>
                   {bonusBaru.is_aksesoris ? (
-                    <input
-                      className={input}
-                      type="number"
-                      min="1"
-                      value={bonusBaru.qty}
-                      onChange={(e) => setBonusBaru({ ...bonusBaru, qty: clampInt(e.target.value, 1, 100) })}
-                    />
+                    <input className={input} type="number" min="1" value={bonusBaru.qty} onChange={(e) => setBonusBaru({ ...bonusBaru, qty: clampInt(e.target.value, 1, 100) })} />
                   ) : (
                     <div className={`${input} flex items-center text-sm text-gray-600`}>1 (unit SN)</div>
                   )}
@@ -885,11 +824,7 @@ export default function Penjualan() {
               {isOfficeSKUBonus && (
                 <div className="mt-3">
                   <div className={label}>Username Office (email pelanggan)</div>
-                  <input
-                    className={input}
-                    value={bonusBaru.office_username}
-                    onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })}
-                  />
+                  <input className={input} value={bonusBaru.office_username} onChange={(e) => setBonusBaru({ ...bonusBaru, office_username: e.target.value })} />
                 </div>
               )}
             </div>
@@ -916,8 +851,7 @@ export default function Penjualan() {
                 </div>
                 <div className="text-sm text-gray-700 flex items-end">
                   <div>
-                    Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b> • Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b> • Total:{' '}
-                    <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b>
+                    Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b> • Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b> • Total: <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b>
                   </div>
                 </div>
               </div>
@@ -925,12 +859,7 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                 <div>
                   <div className={label}>Deskripsi Biaya</div>
-                  <input
-                    className={input}
-                    placeholder="contoh: Ongkir"
-                    value={biayaDesc}
-                    onChange={(e) => setBiayaDesc(e.target.value)}
-                  />
+                  <input className={input} placeholder="contoh: Ongkir" value={biayaDesc} onChange={(e) => setBiayaDesc(e.target.value)} />
                 </div>
                 <div>
                   <div className={label}>Nominal (Rp)</div>
@@ -952,9 +881,7 @@ export default function Penjualan() {
                 </button>
               </div>
 
-              <div className="mt-3 text-xs text-gray-600">
-                Catatan: Diskon dibagi proporsional ke produk berbayar, biaya dicatat sebagai pengurang laba (harga jual 0).
-              </div>
+              <div className="mt-3 text-xs text-gray-600">Catatan: Diskon dibagi proporsional ke produk berbayar, biaya dicatat sebagai pengurang laba (harga jual 0).</div>
             </div>
 
             {/* SUBMIT */}
