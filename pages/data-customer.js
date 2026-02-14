@@ -714,46 +714,50 @@ export default function DataCustomer() {
           </div>
         </div>
 
-        {/* DIRECTORY */}
+               {/* DIRECTORY */}
         <div className={`${card} p-4`}>
+          {/* Header + Controls (FIX WIDTH / FIX GRID) */}
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-3">
-            <div>
+            <div className="min-w-[260px]">
               <div className="font-bold text-gray-900">Customer Directory (Editable)</div>
               <div className="text-xs text-gray-500">
                 Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
               </div>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-end">
-              <div className="w-full md:w-[240px]">
-                <div className={label}>Sort Directory</div>
-                <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
-                  <option value="last">Transaksi Terakhir</option>
-                  <option value="nominal">Nominal</option>
-                  <option value="trx">Jumlah Transaksi</option>
-                  <option value="nama">Nama</option>
-                </select>
-              </div>
+            {/* Kontrol dibuat FIX GRID supaya tidak geser */}
+            <div className="w-full md:w-auto">
+              <div className="grid grid-cols-1 md:grid-cols-[240px_140px_360px] gap-3 items-end">
+                <div className="w-full">
+                  <div className={label}>Sort Directory</div>
+                  <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
+                    <option value="last">Transaksi Terakhir</option>
+                    <option value="nominal">Nominal</option>
+                    <option value="trx">Jumlah Transaksi</option>
+                    <option value="nama">Nama</option>
+                  </select>
+                </div>
 
-              <div className="w-full md:w-[140px]">
-                <div className={label}>Urutan</div>
-                <button
-                  type="button"
-                  onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
-                  className={btn}
-                >
-                  {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
-                </button>
-              </div>
+                <div className="w-full">
+                  <div className={label}>Urutan</div>
+                  <button
+                    type="button"
+                    onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
+                    className={`${btn} h-[42px]`} // ✅ tinggi sama dengan input
+                  >
+                    {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
+                  </button>
+                </div>
 
-              <div className="w-full md:w-[360px]">
-                <div className={label}>Search Directory</div>
-                <input
-                  className={input}
-                  placeholder="Cari nama / WA / email / alamat…"
-                  value={searchDir}
-                  onChange={(e) => setSearchDir(e.target.value)}
-                />
+                <div className="w-full">
+                  <div className={label}>Search Directory</div>
+                  <input
+                    className={input}
+                    placeholder="Cari nama / WA / email / alamat…"
+                    value={searchDir}
+                    onChange={(e) => setSearchDir(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -765,58 +769,80 @@ export default function DataCustomer() {
             </b>
           </div>
 
-          <div className="overflow-x-auto border border-gray-200 rounded-xl">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">Nama</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">Alamat</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">No WA</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">Email</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-center">Trx</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-right">Nominal</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">Terakhir</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-center">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingDir && pageRows.length === 0 && (
+          {/* TABLE WRAP dibuat FIX WIDTH biar isi tidak “ketarik-ketarikk” */}
+          <div className="border border-gray-200 rounded-xl overflow-x-auto">
+            {/* min-w bikin layout stabil (tidak berubah-ubah) */}
+            <div className="min-w-[1120px]">
+              <table className="w-full text-sm table-fixed">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
-                      Memuat…
-                    </td>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[170px]">Nama</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Alamat</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[140px]">No WA</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Email</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-center w-[80px]">Trx</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-right w-[150px]">Nominal</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[110px]">Terakhir</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-center w-[110px]">Aksi</th>
                   </tr>
-                )}
+                </thead>
 
-                {!loadingDir && pageRows.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
-                      Tidak ada data.
-                    </td>
-                  </tr>
-                )}
+                <tbody>
+                  {loadingDir && pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
+                        Memuat…
+                      </td>
+                    </tr>
+                  )}
 
-                {pageRows.map((c) => (
-                  <tr key={c.key} className="hover:bg-gray-50">
-                    <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700">{c.nama}</td>
-                    <td className="border-b border-gray-200 px-3 py-2">{c.alamat || '-'}</td>
-                    <td className="border-b border-gray-200 px-3 py-2">{c.no_wa || '-'}</td>
-                    <td className="border-b border-gray-200 px-3 py-2">{c.email || '-'}</td>
-                    <td className="border-b border-gray-200 px-3 py-2 text-center">{c.trx}</td>
-                    <td className="border-b border-gray-200 px-3 py-2 text-right">{formatRp(c.nominal)}</td>
-                    <td className="border-b border-gray-200 px-3 py-2">{c.last_tanggal ? c.last_tanggal : '-'}</td>
-                    <td className="border-b border-gray-200 px-3 py-2 text-center">
-                      <button onClick={() => openEditModal(c)} className={btn} type="button">
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  {!loadingDir && pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
+                        Tidak ada data.
+                      </td>
+                    </tr>
+                  )}
+
+                  {pageRows.map((c) => (
+                    <tr key={c.key} className="hover:bg-gray-50">
+                      <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700 truncate">
+                        {c.nama}
+                      </td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.alamat || '-'}>
+                        {c.alamat || '-'}
+                      </td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 truncate">{c.no_wa || '-'}</td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.email || '-'}>
+                        {c.email || '-'}
+                      </td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{c.trx}</td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        {formatRp(c.nominal)}
+                      </td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 whitespace-nowrap">
+                        {c.last_tanggal ? c.last_tanggal : '-'}
+                      </td>
+
+                      <td className="border-b border-gray-200 px-3 py-2 text-center">
+                        <button onClick={() => openEditModal(c)} className={`${btn} px-3 py-2`} type="button">
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* Pagination */}
+          {/* Pagination (biar gak geser: tinggi tombol sama & wrap rapi) */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">
               Menampilkan <b className="text-gray-900">{shownFrom}–{shownTo}</b> dari{' '}
@@ -824,26 +850,37 @@ export default function DataCustomer() {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
+              <button className={`${btn} h-[42px]`} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
                 « First
               </button>
-              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} type="button">
+              <button
+                className={`${btn} h-[42px]`}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                type="button"
+              >
                 ‹ Prev
               </button>
               <button
-                className={btn}
+                className={`${btn} h-[42px]`}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage === totalPages}
                 type="button"
               >
                 Next ›
               </button>
-              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages} type="button">
+              <button
+                className={`${btn} h-[42px]`}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages}
+                type="button"
+              >
                 Last »
               </button>
             </div>
           </div>
         </div>
+
 
         {/* EDIT MODAL */}
         {openEdit && editRow && (
