@@ -10,17 +10,20 @@ const PAGE_SIZE = 20
 const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
 const label = 'text-xs text-gray-600 mb-1'
 const input =
-  'border border-gray-200 px-3 py-2 rounded-lg w-full bg-white focus:outline-none focus:ring-2 focus:ring-blue-200'
+  'border border-gray-200 px-3 py-2 rounded-lg w-full min-w-0 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200'
+
+// ❌ Hapus whitespace-nowrap global biar mobile aman
 const btn =
-  'px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap'
+  'px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
 const btnPrimary =
-  'px-4 py-2 rounded-lg text-sm font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60 whitespace-nowrap'
+  'px-4 py-2 rounded-lg text-sm font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60 md:whitespace-nowrap'
 const btnSoft =
-  'px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-60 whitespace-nowrap'
+  'px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-60 md:whitespace-nowrap'
 const btnSuccess =
-  'px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 whitespace-nowrap'
+  'px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 md:whitespace-nowrap'
+
 const btnTab = (active) =>
-  `px-3 py-2 rounded-lg text-sm border whitespace-nowrap ${
+  `px-3 py-2 rounded-lg text-sm border md:whitespace-nowrap ${
     active ? 'bg-black text-white border-black' : 'bg-white border-gray-200 hover:bg-gray-50'
   }`
 
@@ -383,7 +386,6 @@ export default function DataCustomer() {
     return arr
   }, [rawDir, searchDir, dirSortKey, dirSortDir])
 
-  // paging directory
   const totalRows = directory.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
   const safePage = Math.min(Math.max(1, page), totalPages)
@@ -397,7 +399,6 @@ export default function DataCustomer() {
     return directory.slice(start, start + PAGE_SIZE)
   }, [directory, safePage])
 
-  // ===== Export =====
   function exportTopCustomersExcel() {
     const rows = customersTop.slice(0, 9999).map((c, idx) => ({
       No: idx + 1,
@@ -425,7 +426,6 @@ export default function DataCustomer() {
     XLSX.writeFile(wb, `TopProduk_${tanggalAwal}_sd_${tanggalAkhir}.xlsx`)
   }
 
-  // ===== Edit handlers =====
   const openEditModal = (row) => {
     setEditRow({ ...row })
     setOpenEdit(true)
@@ -482,7 +482,6 @@ export default function DataCustomer() {
 
   return (
     <Layout>
-      {/* ✅ FIX UTAMA: halaman dibuat FIX WIDTH + scrollbar space selalu ada (tidak geser) */}
       <div className="bg-gray-50 min-h-screen overflow-y-scroll">
         <div className="max-w-[1150px] mx-auto p-6">
           {/* HEADER */}
@@ -494,11 +493,11 @@ export default function DataCustomer() {
               </div>
             </div>
 
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={handleRefreshTop} className={btnPrimary} type="button">
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <button onClick={handleRefreshTop} className={`${btnPrimary} w-full sm:w-auto`} type="button">
                 {loadingTop ? 'Memuat…' : 'Refresh (Top)'}
               </button>
-              <button onClick={handleRefreshDir} className={btnSoft} type="button">
+              <button onClick={handleRefreshDir} className={`${btnSoft} w-full sm:w-auto`} type="button">
                 {loadingDir ? 'Memuat…' : 'Refresh (Directory)'}
               </button>
             </div>
@@ -519,7 +518,6 @@ export default function DataCustomer() {
 
           {/* RANGE + SEARCH TOP */}
           <div className={`${card} p-4 mb-4`}>
-            {/* ✅ Grid FIX di desktop: tidak akan dorong-dorongan */}
             <div className="grid gap-3 md:grid-cols-12 items-end">
               {mode === 'bulanan' && (
                 <div className="md:col-span-3">
@@ -569,22 +567,23 @@ export default function DataCustomer() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 mt-3">
-              <button onClick={() => setQuickRange('today')} className={btn} type="button">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-3">
+              <button onClick={() => setQuickRange('today')} className={`${btn} w-full sm:w-auto`} type="button">
                 Hari ini
               </button>
-              <button onClick={() => setQuickRange('week')} className={btn} type="button">
+              <button onClick={() => setQuickRange('week')} className={`${btn} w-full sm:w-auto`} type="button">
                 Minggu ini
               </button>
-              <button onClick={() => setQuickRange('month')} className={btn} type="button">
+              <button onClick={() => setQuickRange('month')} className={`${btn} w-full sm:w-auto`} type="button">
                 Bulan ini
               </button>
-              <button onClick={() => setQuickRange('year')} className={btn} type="button">
+              <button onClick={() => setQuickRange('year')} className={`${btn} w-full sm:w-auto`} type="button">
                 Tahun ini
               </button>
 
               <div className="flex-1" />
-              <button onClick={handleRefreshTop} className={btnPrimary} type="button">
+
+              <button onClick={handleRefreshTop} className={`${btnPrimary} w-full sm:w-auto`} type="button">
                 {loadingTop ? 'Memuat…' : 'Apply / Refresh Top'}
               </button>
             </div>
@@ -610,39 +609,40 @@ export default function DataCustomer() {
             </div>
           </div>
 
-          {/* FILTER METRIC + EXPORT (FIX GRID agar tidak geser) */}
+          {/* FILTER METRIC + EXPORT (NO OVERLAP) */}
           <div className={`${card} p-4 mb-4`}>
-            <div className="grid grid-cols-1 md:grid-cols-[240px_240px_1fr_auto_auto] gap-3 items-end">
-              <div className="w-full">
-                <div className={label}>Top Customer berdasarkan</div>
-                <select className={input} value={customerMetric} onChange={(e) => setCustomerMetric(e.target.value)}>
-                  <option value="nominal">Nominal</option>
-                  <option value="jumlah">Qty Transaksi</option>
-                </select>
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <div className="w-full md:w-[240px]">
+                  <div className={label}>Top Customer berdasarkan</div>
+                  <select className={input} value={customerMetric} onChange={(e) => setCustomerMetric(e.target.value)}>
+                    <option value="nominal">Nominal</option>
+                    <option value="jumlah">Qty Transaksi</option>
+                  </select>
+                </div>
+
+                <div className="w-full md:w-[240px]">
+                  <div className={label}>Top Produk berdasarkan</div>
+                  <select className={input} value={productMetric} onChange={(e) => setProductMetric(e.target.value)}>
+                    <option value="qty">Qty</option>
+                    <option value="nominal">Nominal</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="w-full">
-                <div className={label}>Top Produk berdasarkan</div>
-                <select className={input} value={productMetric} onChange={(e) => setProductMetric(e.target.value)}>
-                  <option value="qty">Qty</option>
-                  <option value="nominal">Nominal</option>
-                </select>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 md:justify-end">
+                <button onClick={exportTopCustomersExcel} className={`${btnSuccess} w-full sm:w-auto`} type="button">
+                  Download Excel (Customer)
+                </button>
+                <button onClick={exportTopProductsExcel} className={`${btnSuccess} w-full sm:w-auto`} type="button">
+                  Download Excel (Produk)
+                </button>
               </div>
-
-              <div />
-
-              <button onClick={exportTopCustomersExcel} className={btnSuccess} type="button">
-                Download Excel (Customer)
-              </button>
-              <button onClick={exportTopProductsExcel} className={btnSuccess} type="button">
-                Download Excel (Produk)
-              </button>
             </div>
           </div>
 
           {/* TOP TABLES */}
           <div className="grid gap-4 md:grid-cols-2 mb-6">
-            {/* TOP CUSTOMER */}
             <div className={`${card} p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="font-bold text-gray-900">Top 5 Customer</div>
@@ -684,7 +684,6 @@ export default function DataCustomer() {
               </div>
             </div>
 
-            {/* TOP PRODUK */}
             <div className={`${card} p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="font-bold text-gray-900">Top 5 Produk</div>
@@ -723,21 +722,24 @@ export default function DataCustomer() {
                 </div>
               </div>
 
-              <div className="text-xs text-gray-500 mt-2">Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).</div>
+              <div className="text-xs text-gray-500 mt-2">
+                Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).
+              </div>
             </div>
           </div>
 
-          {/* DIRECTORY (FIX WIDTH + FIX TABLE) */}
+          {/* DIRECTORY */}
           <div className={`${card} p-4`}>
+            {/* ✅ Mobile stack, desktop fixed grid */}
             <div className="grid grid-cols-1 md:grid-cols-[260px_240px_140px_360px] gap-3 items-end">
-              <div className="min-w-[260px]">
+              <div className="min-w-0">
                 <div className="font-bold text-gray-900">Customer Directory (Editable)</div>
                 <div className="text-xs text-gray-500">
                   Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
                 </div>
               </div>
 
-              <div className="w-full">
+              <div className="w-full min-w-0">
                 <div className={label}>Sort Directory</div>
                 <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
                   <option value="last">Transaksi Terakhir</option>
@@ -747,7 +749,7 @@ export default function DataCustomer() {
                 </select>
               </div>
 
-              <div className="w-full">
+              <div className="w-full min-w-0">
                 <div className={label}>Urutan</div>
                 <button
                   type="button"
@@ -758,7 +760,7 @@ export default function DataCustomer() {
                 </button>
               </div>
 
-              <div className="w-full">
+              <div className="w-full min-w-0">
                 <div className={label}>Search Directory</div>
                 <input
                   className={input}
@@ -777,7 +779,6 @@ export default function DataCustomer() {
             </div>
 
             <div className="border border-gray-200 rounded-xl overflow-x-auto">
-              {/* ✅ min-width table di-lock supaya kolom tidak berubah */}
               <div className="min-w-[1120px]">
                 <table className="w-full text-sm table-fixed">
                   <thead className="bg-gray-50">
@@ -844,12 +845,12 @@ export default function DataCustomer() {
                 <b className="text-gray-900">{totalRows}</b>
               </div>
 
-              <div className="flex gap-2 flex-wrap">
-                <button className={`${btn} h-[42px]`} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                <button className={`${btn} h-[42px] w-full sm:w-auto`} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
                   « First
                 </button>
                 <button
-                  className={`${btn} h-[42px]`}
+                  className={`${btn} h-[42px] w-full sm:w-auto`}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={safePage === 1}
                   type="button"
@@ -857,7 +858,7 @@ export default function DataCustomer() {
                   ‹ Prev
                 </button>
                 <button
-                  className={`${btn} h-[42px]`}
+                  className={`${btn} h-[42px] w-full sm:w-auto`}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={safePage === totalPages}
                   type="button"
@@ -865,7 +866,7 @@ export default function DataCustomer() {
                   Next ›
                 </button>
                 <button
-                  className={`${btn} h-[42px]`}
+                  className={`${btn} h-[42px] w-full sm:w-auto`}
                   onClick={() => setPage(totalPages)}
                   disabled={safePage === totalPages}
                   type="button"
@@ -931,7 +932,7 @@ export default function DataCustomer() {
                     </div>
                   </div>
 
-                  <button onClick={saveEdit} disabled={savingEdit} className={btnPrimary} type="button">
+                  <button onClick={saveEdit} disabled={savingEdit} className={`${btnPrimary} w-full`} type="button">
                     {savingEdit ? 'Menyimpan…' : 'Simpan Perubahan'}
                   </button>
 
