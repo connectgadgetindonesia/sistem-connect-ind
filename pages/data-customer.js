@@ -12,7 +12,6 @@ const label = 'text-xs text-gray-600 mb-1'
 const input =
   'border border-gray-200 px-3 py-2 rounded-lg w-full min-w-0 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200'
 
-// ❌ Hapus whitespace-nowrap global biar mobile aman
 const btn =
   'px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
 const btnPrimary =
@@ -109,9 +108,9 @@ export default function DataCustomer() {
   const [customerMetric, setCustomerMetric] = useState('nominal') // nominal | jumlah
   const [productMetric, setProductMetric] = useState('qty') // qty | nominal
 
-  // SORT DIRECTORY
-  const [dirSortKey, setDirSortKey] = useState('last') // last | nominal | trx | nama
-  const [dirSortDir, setDirSortDir] = useState('desc') // asc | desc
+  // ✅ SORT DIRECTORY (1 dropdown, mirip pricelist)
+  // last_desc | last_asc | nominal_desc | nominal_asc | trx_desc | trx_asc | nama_asc | nama_desc
+  const [dirSortBy, setDirSortBy] = useState('last_desc')
 
   // paging directory
   const [page, setPage] = useState(1)
@@ -352,39 +351,45 @@ export default function DataCustomer() {
       )
     })
 
-    const dirMul = dirSortDir === 'asc' ? 1 : -1
+    const byName = (a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id', { sensitivity: 'base' })
+    const byLast = (a, b) => String(a.last_tanggal || '').localeCompare(String(b.last_tanggal || ''), 'id')
+    const byNominal = (a, b) => (a.nominal || 0) - (b.nominal || 0)
+    const byTrx = (a, b) => (a.trx || 0) - (b.trx || 0)
 
-    arr.sort((a, b) => {
-      if (dirSortKey === 'last') {
-        const av = a.last_tanggal || ''
-        const bv = b.last_tanggal || ''
-        if (av !== bv) return (av > bv ? 1 : -1) * dirMul
-        if (a.nominal !== b.nominal) return (a.nominal - b.nominal) * -1
-        return a.nama.localeCompare(b.nama)
-      }
+    const copy = [...arr]
+    switch (dirSortBy) {
+      case 'last_asc':
+        copy.sort((a, b) => byLast(a, b) || -byNominal(a, b) || byName(a, b))
+        break
+      case 'last_desc':
+        copy.sort((a, b) => -byLast(a, b) || -byNominal(a, b) || byName(a, b))
+        break
 
-      if (dirSortKey === 'nominal') {
-        if (a.nominal !== b.nominal) return (a.nominal - b.nominal) * dirMul
-        const av = a.last_tanggal || ''
-        const bv = b.last_tanggal || ''
-        if (av !== bv) return (av > bv ? 1 : -1) * -1
-        return a.nama.localeCompare(b.nama)
-      }
+      case 'nominal_asc':
+        copy.sort((a, b) => byNominal(a, b) || -byLast(a, b) || byName(a, b))
+        break
+      case 'nominal_desc':
+        copy.sort((a, b) => -byNominal(a, b) || -byLast(a, b) || byName(a, b))
+        break
 
-      if (dirSortKey === 'trx') {
-        if (a.trx !== b.trx) return (a.trx - b.trx) * dirMul
-        const av = a.last_tanggal || ''
-        const bv = b.last_tanggal || ''
-        if (av !== bv) return (av > bv ? 1 : -1) * -1
-        return a.nama.localeCompare(b.nama)
-      }
+      case 'trx_asc':
+        copy.sort((a, b) => byTrx(a, b) || -byLast(a, b) || byName(a, b))
+        break
+      case 'trx_desc':
+        copy.sort((a, b) => -byTrx(a, b) || -byLast(a, b) || byName(a, b))
+        break
 
-      const res = a.nama.localeCompare(b.nama)
-      return res * dirMul
-    })
+      case 'nama_desc':
+        copy.sort((a, b) => -byName(a, b) || -byLast(a, b))
+        break
+      case 'nama_asc':
+      default:
+        copy.sort((a, b) => byName(a, b) || -byLast(a, b))
+        break
+    }
 
-    return arr
-  }, [rawDir, searchDir, dirSortKey, dirSortDir])
+    return copy
+  }, [rawDir, searchDir, dirSortBy])
 
   const totalRows = directory.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
@@ -392,7 +397,7 @@ export default function DataCustomer() {
 
   useEffect(() => {
     setPage(1)
-  }, [searchDir, dirSortKey, dirSortDir])
+  }, [searchDir, dirSortBy])
 
   const pageRows = useMemo(() => {
     const start = (safePage - 1) * PAGE_SIZE
@@ -609,7 +614,7 @@ export default function DataCustomer() {
             </div>
           </div>
 
-          {/* FILTER METRIC + EXPORT (NO OVERLAP) */}
+          {/* FILTER METRIC + EXPORT */}
           <div className={`${card} p-4 mb-4`}>
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
@@ -728,54 +733,47 @@ export default function DataCustomer() {
             </div>
           </div>
 
-          {/* DIRECTORY */}
+          {/* DIRECTORY (FIXED LIKE PRICELIST) */}
           <div className={`${card} p-4`}>
-            {/* ✅ Mobile stack, desktop fixed grid */}
-            <div className="grid grid-cols-1 md:grid-cols-[260px_240px_140px_360px] gap-3 items-end">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-3">
               <div className="min-w-0">
                 <div className="font-bold text-gray-900">Customer Directory (Editable)</div>
                 <div className="text-xs text-gray-500">
                   Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
                 </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Total: <b className="text-gray-900">{totalRows}</b> customer • Halaman:{' '}
+                  <b className="text-gray-900">
+                    {safePage}/{totalPages}
+                  </b>
+                </div>
               </div>
 
-              <div className="w-full min-w-0">
-                <div className={label}>Sort Directory</div>
-                <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
-                  <option value="last">Transaksi Terakhir</option>
-                  <option value="nominal">Nominal</option>
-                  <option value="trx">Jumlah Transaksi</option>
-                  <option value="nama">Nama</option>
-                </select>
-              </div>
-
-              <div className="w-full min-w-0">
-                <div className={label}>Urutan</div>
-                <button
-                  type="button"
-                  onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
-                  className={`${btn} h-[42px] w-full`}
-                >
-                  {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
-                </button>
-              </div>
-
-              <div className="w-full min-w-0">
-                <div className={label}>Search Directory</div>
+              {/* ✅ Bar: search + sort (no overlap, wrap like pricelist) */}
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full md:w-auto md:justify-end">
                 <input
-                  className={input}
+                  className={`${input} sm:max-w-[340px]`}
                   placeholder="Cari nama / WA / email / alamat…"
                   value={searchDir}
                   onChange={(e) => setSearchDir(e.target.value)}
                 />
-              </div>
-            </div>
 
-            <div className="text-xs text-gray-500 mt-3 mb-3">
-              Total: <b className="text-gray-900">{totalRows}</b> customer • Halaman:{' '}
-              <b className="text-gray-900">
-                {safePage}/{totalPages}
-              </b>
+                <select
+                  className={`${input} sm:w-[240px]`}
+                  value={dirSortBy}
+                  onChange={(e) => setDirSortBy(e.target.value)}
+                  title="Urutkan data"
+                >
+                  <option value="last_desc">Transaksi Terakhir (Terbaru)</option>
+                  <option value="last_asc">Transaksi Terakhir (Terlama)</option>
+                  <option value="nominal_desc">Nominal (Tertinggi)</option>
+                  <option value="nominal_asc">Nominal (Terendah)</option>
+                  <option value="trx_desc">Jumlah Transaksi (Terbanyak)</option>
+                  <option value="trx_asc">Jumlah Transaksi (Tersedikit)</option>
+                  <option value="nama_asc">Nama (A–Z)</option>
+                  <option value="nama_desc">Nama (Z–A)</option>
+                </select>
+              </div>
             </div>
 
             <div className="border border-gray-200 rounded-xl overflow-x-auto">
@@ -936,7 +934,9 @@ export default function DataCustomer() {
                     {savingEdit ? 'Menyimpan…' : 'Simpan Perubahan'}
                   </button>
 
-                  <div className="text-xs text-gray-500">Setelah disimpan, directory akan auto refresh supaya data langsung berubah.</div>
+                  <div className="text-xs text-gray-500">
+                    Setelah disimpan, directory akan auto refresh supaya data langsung berubah.
+                  </div>
                 </div>
               </div>
             </div>
