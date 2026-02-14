@@ -12,12 +12,15 @@ const label = 'text-xs text-gray-600 mb-1'
 const input =
   'border border-gray-200 px-3 py-2 rounded-lg w-full bg-white focus:outline-none focus:ring-2 focus:ring-blue-200'
 const btn =
-  'px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
-const btnPrimary = 'px-4 py-2 rounded-lg text-sm font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60'
-const btnSoft = 'px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-60'
-const btnSuccess = 'px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-60'
+  'px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap'
+const btnPrimary =
+  'px-4 py-2 rounded-lg text-sm font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60 whitespace-nowrap'
+const btnSoft =
+  'px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-60 whitespace-nowrap'
+const btnSuccess =
+  'px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 whitespace-nowrap'
 const btnTab = (active) =>
-  `px-3 py-2 rounded-lg text-sm border ${
+  `px-3 py-2 rounded-lg text-sm border whitespace-nowrap ${
     active ? 'bg-black text-white border-black' : 'bg-white border-gray-200 hover:bg-gray-50'
   }`
 
@@ -479,475 +482,465 @@ export default function DataCustomer() {
 
   return (
     <Layout>
-      <div className="p-6 bg-gray-50 min-h-screen">
-        {/* HEADER */}
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-5">
-          <div>
-            <div className="text-2xl font-bold text-gray-900">Data Customer</div>
-            <div className="text-sm text-gray-600">
-              Top customer & top produk (bonus tidak dihitung) + Directory customer editable (sinkron ke Riwayat Penjualan).
-            </div>
-          </div>
-
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={handleRefreshTop} className={btnPrimary} type="button">
-              {loadingTop ? 'Memuat…' : 'Refresh (Top)'}
-            </button>
-            <button onClick={handleRefreshDir} className={btnSoft} type="button">
-              {loadingDir ? 'Memuat…' : 'Refresh (Directory)'}
-            </button>
-          </div>
-        </div>
-
-        {/* TABS */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button onClick={() => setMode('bulanan')} className={btnTab(mode === 'bulanan')} type="button">
-            Bulanan
-          </button>
-          <button onClick={() => setMode('tahunan')} className={btnTab(mode === 'tahunan')} type="button">
-            Tahunan
-          </button>
-          <button onClick={() => setMode('custom')} className={btnTab(mode === 'custom')} type="button">
-            Custom
-          </button>
-        </div>
-
-        {/* RANGE + SEARCH TOP */}
-        <div className={`${card} p-4 mb-4`}>
-          <div className="grid gap-3 md:grid-cols-12 items-end">
-            {/* mode input */}
-            {mode === 'bulanan' && (
-              <div className="md:col-span-3">
-                <div className={label}>Pilih Bulan</div>
-                <input type="month" value={bulan} onChange={(e) => setBulan(e.target.value)} className={input} />
+      {/* ✅ FIX UTAMA: halaman dibuat FIX WIDTH + scrollbar space selalu ada (tidak geser) */}
+      <div className="bg-gray-50 min-h-screen overflow-y-scroll">
+        <div className="max-w-[1150px] mx-auto p-6">
+          {/* HEADER */}
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-5">
+            <div>
+              <div className="text-2xl font-bold text-gray-900">Data Customer</div>
+              <div className="text-sm text-gray-600">
+                Top customer & top produk (bonus tidak dihitung) + Directory customer editable (sinkron ke Riwayat Penjualan).
               </div>
-            )}
-
-            {mode === 'tahunan' && (
-              <div className="md:col-span-2">
-                <div className={label}>Pilih Tahun</div>
-                <input type="number" value={tahun} onChange={(e) => setTahun(e.target.value)} className={input} />
-              </div>
-            )}
-
-            <div className="md:col-span-3">
-              <div className={label}>Dari</div>
-              <input
-                type="date"
-                value={tanggalAwal}
-                onChange={(e) => setTanggalAwal(e.target.value)}
-                className={input}
-                disabled={mode !== 'custom'}
-              />
-            </div>
-
-            <div className="md:col-span-3">
-              <div className={label}>Sampai</div>
-              <input
-                type="date"
-                value={tanggalAkhir}
-                onChange={(e) => setTanggalAkhir(e.target.value)}
-                className={input}
-                disabled={mode !== 'custom'}
-              />
-            </div>
-
-            <div className="md:col-span-3">
-              <div className={label}>Search (Top)</div>
-              <input
-                type="text"
-                placeholder="Cari customer / WA / produk…"
-                value={searchTop}
-                onChange={(e) => setSearchTop(e.target.value)}
-                className={input}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button onClick={() => setQuickRange('today')} className={btn} type="button">
-              Hari ini
-            </button>
-            <button onClick={() => setQuickRange('week')} className={btn} type="button">
-              Minggu ini
-            </button>
-            <button onClick={() => setQuickRange('month')} className={btn} type="button">
-              Bulan ini
-            </button>
-            <button onClick={() => setQuickRange('year')} className={btn} type="button">
-              Tahun ini
-            </button>
-
-            <div className="flex-1" />
-            <button onClick={handleRefreshTop} className={btnPrimary} type="button">
-              {loadingTop ? 'Memuat…' : 'Apply / Refresh Top'}
-            </button>
-          </div>
-
-          <div className="text-xs text-gray-500 mt-3">
-            Range aktif: <b>{tanggalAwal}</b> s/d <b>{tanggalAkhir}</b>
-          </div>
-        </div>
-
-        {/* KPI */}
-        <div className="grid gap-4 md:grid-cols-3 mb-5">
-          <div className={`${card} p-4`}>
-            <div className="text-xs text-gray-500">Total Customer</div>
-            <div className="text-2xl font-bold text-gray-900">{summary.totalCustomer}</div>
-          </div>
-          <div className={`${card} p-4`}>
-            <div className="text-xs text-gray-500">Total Transaksi (non bonus)</div>
-            <div className="text-2xl font-bold text-gray-900">{summary.totalTransaksi}</div>
-          </div>
-          <div className={`${card} p-4`}>
-            <div className="text-xs text-gray-500">Rata-rata Transaksi / Customer</div>
-            <div className="text-2xl font-bold text-gray-900">{summary.rata.toFixed(1)}</div>
-          </div>
-        </div>
-
-        {/* FILTER METRIC + EXPORT */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-3">
-          <div className="flex flex-wrap gap-3">
-            <div className="min-w-[220px]">
-              <div className={label}>Top Customer berdasarkan</div>
-              <select className={input} value={customerMetric} onChange={(e) => setCustomerMetric(e.target.value)}>
-                <option value="nominal">Nominal</option>
-                <option value="jumlah">Qty Transaksi</option>
-              </select>
-            </div>
-
-            <div className="min-w-[220px]">
-              <div className={label}>Top Produk berdasarkan</div>
-              <select className={input} value={productMetric} onChange={(e) => setProductMetric(e.target.value)}>
-                <option value="qty">Qty</option>
-                <option value="nominal">Nominal</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={exportTopCustomersExcel} className={btnSuccess} type="button">
-              Download Excel (Customer)
-            </button>
-            <button onClick={exportTopProductsExcel} className={btnSuccess} type="button">
-              Download Excel (Produk)
-            </button>
-          </div>
-        </div>
-
-        {/* TOP TABLES */}
-        <div className="grid gap-4 md:grid-cols-2 mb-6">
-          {/* TOP CUSTOMER */}
-          <div className={`${card} p-4`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-bold text-gray-900">Top 5 Customer</div>
-              <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
-            </div>
-
-            <div className="overflow-x-auto border border-gray-200 rounded-xl">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left">Nama</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left">No WA</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-center">Trx</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-right">Nominal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customersTop.slice(0, 5).map((c) => (
-                    <tr key={c.key} className="hover:bg-gray-50">
-                      <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700">{c.nama}</td>
-                      <td className="border-b border-gray-200 px-3 py-2">{c.no_wa || '-'}</td>
-                      <td className="border-b border-gray-200 px-3 py-2 text-center">{c.jumlah}</td>
-                      <td className="border-b border-gray-200 px-3 py-2 text-right">{formatRp(c.nominal)}</td>
-                    </tr>
-                  ))}
-                  {customersTop.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
-                        Tidak ada data.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* TOP PRODUK */}
-          <div className={`${card} p-4`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-bold text-gray-900">Top 5 Produk</div>
-              <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
-            </div>
-
-            <div className="overflow-x-auto border border-gray-200 rounded-xl">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left">Produk</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-center">Qty</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-right">Nominal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productsTop.slice(0, 5).map((p) => (
-                    <tr key={p.nama_produk} className="hover:bg-gray-50">
-                      <td className="border-b border-gray-200 px-3 py-2 font-semibold">{p.nama_produk}</td>
-                      <td className="border-b border-gray-200 px-3 py-2 text-center">{p.qty}</td>
-                      <td className="border-b border-gray-200 px-3 py-2 text-right">{formatRp(p.nominal)}</td>
-                    </tr>
-                  ))}
-                  {productsTop.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
-                        Tidak ada data.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="text-xs text-gray-500 mt-2">Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).</div>
-          </div>
-        </div>
-
-               {/* DIRECTORY */}
-        <div className={`${card} p-4`}>
-          {/* Header + Controls (FIX WIDTH / FIX GRID) */}
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-3">
-            <div className="min-w-[260px]">
-              <div className="font-bold text-gray-900">Customer Directory (Editable)</div>
-              <div className="text-xs text-gray-500">
-                Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
-              </div>
-            </div>
-
-            {/* Kontrol dibuat FIX GRID supaya tidak geser */}
-            <div className="w-full md:w-auto">
-              <div className="grid grid-cols-1 md:grid-cols-[240px_140px_360px] gap-3 items-end">
-                <div className="w-full">
-                  <div className={label}>Sort Directory</div>
-                  <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
-                    <option value="last">Transaksi Terakhir</option>
-                    <option value="nominal">Nominal</option>
-                    <option value="trx">Jumlah Transaksi</option>
-                    <option value="nama">Nama</option>
-                  </select>
-                </div>
-
-                <div className="w-full">
-                  <div className={label}>Urutan</div>
-                  <button
-                    type="button"
-                    onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
-                    className={`${btn} h-[42px]`} // ✅ tinggi sama dengan input
-                  >
-                    {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
-                  </button>
-                </div>
-
-                <div className="w-full">
-                  <div className={label}>Search Directory</div>
-                  <input
-                    className={input}
-                    placeholder="Cari nama / WA / email / alamat…"
-                    value={searchDir}
-                    onChange={(e) => setSearchDir(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-xs text-gray-500 mb-3">
-            Total: <b className="text-gray-900">{totalRows}</b> customer • Halaman:{' '}
-            <b className="text-gray-900">
-              {safePage}/{totalPages}
-            </b>
-          </div>
-
-          {/* TABLE WRAP dibuat FIX WIDTH biar isi tidak “ketarik-ketarikk” */}
-          <div className="border border-gray-200 rounded-xl overflow-x-auto">
-            {/* min-w bikin layout stabil (tidak berubah-ubah) */}
-            <div className="min-w-[1120px]">
-              <table className="w-full text-sm table-fixed">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[170px]">Nama</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Alamat</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[140px]">No WA</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Email</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-center w-[80px]">Trx</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-right w-[150px]">Nominal</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-left w-[110px]">Terakhir</th>
-                    <th className="border-b border-gray-200 px-3 py-2 text-center w-[110px]">Aksi</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {loadingDir && pageRows.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
-                        Memuat…
-                      </td>
-                    </tr>
-                  )}
-
-                  {!loadingDir && pageRows.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
-                        Tidak ada data.
-                      </td>
-                    </tr>
-                  )}
-
-                  {pageRows.map((c) => (
-                    <tr key={c.key} className="hover:bg-gray-50">
-                      <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700 truncate">
-                        {c.nama}
-                      </td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.alamat || '-'}>
-                        {c.alamat || '-'}
-                      </td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 truncate">{c.no_wa || '-'}</td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.email || '-'}>
-                        {c.email || '-'}
-                      </td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{c.trx}</td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                        {formatRp(c.nominal)}
-                      </td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 whitespace-nowrap">
-                        {c.last_tanggal ? c.last_tanggal : '-'}
-                      </td>
-
-                      <td className="border-b border-gray-200 px-3 py-2 text-center">
-                        <button onClick={() => openEditModal(c)} className={`${btn} px-3 py-2`} type="button">
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Pagination (biar gak geser: tinggi tombol sama & wrap rapi) */}
-          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500">
-              Menampilkan <b className="text-gray-900">{shownFrom}–{shownTo}</b> dari{' '}
-              <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <button className={`${btn} h-[42px]`} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
-                « First
+              <button onClick={handleRefreshTop} className={btnPrimary} type="button">
+                {loadingTop ? 'Memuat…' : 'Refresh (Top)'}
               </button>
-              <button
-                className={`${btn} h-[42px]`}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1}
-                type="button"
-              >
-                ‹ Prev
-              </button>
-              <button
-                className={`${btn} h-[42px]`}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages}
-                type="button"
-              >
-                Next ›
-              </button>
-              <button
-                className={`${btn} h-[42px]`}
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages}
-                type="button"
-              >
-                Last »
+              <button onClick={handleRefreshDir} className={btnSoft} type="button">
+                {loadingDir ? 'Memuat…' : 'Refresh (Directory)'}
               </button>
             </div>
           </div>
-        </div>
 
+          {/* TABS */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button onClick={() => setMode('bulanan')} className={btnTab(mode === 'bulanan')} type="button">
+              Bulanan
+            </button>
+            <button onClick={() => setMode('tahunan')} className={btnTab(mode === 'tahunan')} type="button">
+              Tahunan
+            </button>
+            <button onClick={() => setMode('custom')} className={btnTab(mode === 'custom')} type="button">
+              Custom
+            </button>
+          </div>
 
-        {/* EDIT MODAL */}
-        {openEdit && editRow && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-            <div className={`${card} w-full max-w-lg p-5`}>
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <div className="text-lg font-bold text-gray-900">Edit Customer</div>
-                  <div className="text-xs text-gray-500">
-                    Save akan update semua transaksi penjualan_baru yang match Nama+WA.
-                  </div>
+          {/* RANGE + SEARCH TOP */}
+          <div className={`${card} p-4 mb-4`}>
+            {/* ✅ Grid FIX di desktop: tidak akan dorong-dorongan */}
+            <div className="grid gap-3 md:grid-cols-12 items-end">
+              {mode === 'bulanan' && (
+                <div className="md:col-span-3">
+                  <div className={label}>Pilih Bulan</div>
+                  <input type="month" value={bulan} onChange={(e) => setBulan(e.target.value)} className={input} />
                 </div>
-                <button onClick={closeEditModal} className={btn} disabled={savingEdit} type="button">
-                  Tutup
-                </button>
+              )}
+
+              {mode === 'tahunan' && (
+                <div className="md:col-span-2">
+                  <div className={label}>Pilih Tahun</div>
+                  <input type="number" value={tahun} onChange={(e) => setTahun(e.target.value)} className={input} />
+                </div>
+              )}
+
+              <div className="md:col-span-3">
+                <div className={label}>Dari</div>
+                <input
+                  type="date"
+                  value={tanggalAwal}
+                  onChange={(e) => setTanggalAwal(e.target.value)}
+                  className={input}
+                  disabled={mode !== 'custom'}
+                />
               </div>
 
-              <div className="grid gap-3">
-                <div>
-                  <div className={label}>Nama</div>
-                  <input
-                    className={input}
-                    value={editRow.nama}
-                    onChange={(e) => setEditRow((p) => ({ ...p, nama: e.target.value }))}
-                  />
+              <div className="md:col-span-3">
+                <div className={label}>Sampai</div>
+                <input
+                  type="date"
+                  value={tanggalAkhir}
+                  onChange={(e) => setTanggalAkhir(e.target.value)}
+                  className={input}
+                  disabled={mode !== 'custom'}
+                />
+              </div>
+
+              <div className="md:col-span-3">
+                <div className={label}>Search (Top)</div>
+                <input
+                  type="text"
+                  placeholder="Cari customer / WA / produk…"
+                  value={searchTop}
+                  onChange={(e) => setSearchTop(e.target.value)}
+                  className={input}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button onClick={() => setQuickRange('today')} className={btn} type="button">
+                Hari ini
+              </button>
+              <button onClick={() => setQuickRange('week')} className={btn} type="button">
+                Minggu ini
+              </button>
+              <button onClick={() => setQuickRange('month')} className={btn} type="button">
+                Bulan ini
+              </button>
+              <button onClick={() => setQuickRange('year')} className={btn} type="button">
+                Tahun ini
+              </button>
+
+              <div className="flex-1" />
+              <button onClick={handleRefreshTop} className={btnPrimary} type="button">
+                {loadingTop ? 'Memuat…' : 'Apply / Refresh Top'}
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-500 mt-3">
+              Range aktif: <b>{tanggalAwal}</b> s/d <b>{tanggalAkhir}</b>
+            </div>
+          </div>
+
+          {/* KPI */}
+          <div className="grid gap-4 md:grid-cols-3 mb-5">
+            <div className={`${card} p-4`}>
+              <div className="text-xs text-gray-500">Total Customer</div>
+              <div className="text-2xl font-bold text-gray-900">{summary.totalCustomer}</div>
+            </div>
+            <div className={`${card} p-4`}>
+              <div className="text-xs text-gray-500">Total Transaksi (non bonus)</div>
+              <div className="text-2xl font-bold text-gray-900">{summary.totalTransaksi}</div>
+            </div>
+            <div className={`${card} p-4`}>
+              <div className="text-xs text-gray-500">Rata-rata Transaksi / Customer</div>
+              <div className="text-2xl font-bold text-gray-900">{summary.rata.toFixed(1)}</div>
+            </div>
+          </div>
+
+          {/* FILTER METRIC + EXPORT (FIX GRID agar tidak geser) */}
+          <div className={`${card} p-4 mb-4`}>
+            <div className="grid grid-cols-1 md:grid-cols-[240px_240px_1fr_auto_auto] gap-3 items-end">
+              <div className="w-full">
+                <div className={label}>Top Customer berdasarkan</div>
+                <select className={input} value={customerMetric} onChange={(e) => setCustomerMetric(e.target.value)}>
+                  <option value="nominal">Nominal</option>
+                  <option value="jumlah">Qty Transaksi</option>
+                </select>
+              </div>
+
+              <div className="w-full">
+                <div className={label}>Top Produk berdasarkan</div>
+                <select className={input} value={productMetric} onChange={(e) => setProductMetric(e.target.value)}>
+                  <option value="qty">Qty</option>
+                  <option value="nominal">Nominal</option>
+                </select>
+              </div>
+
+              <div />
+
+              <button onClick={exportTopCustomersExcel} className={btnSuccess} type="button">
+                Download Excel (Customer)
+              </button>
+              <button onClick={exportTopProductsExcel} className={btnSuccess} type="button">
+                Download Excel (Produk)
+              </button>
+            </div>
+          </div>
+
+          {/* TOP TABLES */}
+          <div className="grid gap-4 md:grid-cols-2 mb-6">
+            {/* TOP CUSTOMER */}
+            <div className={`${card} p-4`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-bold text-gray-900">Top 5 Customer</div>
+                <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
+              </div>
+
+              <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                <div className="min-w-[520px]">
+                  <table className="w-full text-sm table-fixed">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border-b border-gray-200 px-3 py-2 text-left w-[180px]">Nama</th>
+                        <th className="border-b border-gray-200 px-3 py-2 text-left w-[160px]">No WA</th>
+                        <th className="border-b border-gray-200 px-3 py-2 text-center w-[70px]">Trx</th>
+                        <th className="border-b border-gray-200 px-3 py-2 text-right w-[140px]">Nominal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customersTop.slice(0, 5).map((c) => (
+                        <tr key={c.key} className="hover:bg-gray-50">
+                          <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700 truncate">{c.nama}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 truncate">{c.no_wa || '-'}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{c.jumlah}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                            {formatRp(c.nominal)}
+                          </td>
+                        </tr>
+                      ))}
+                      {customersTop.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
+                            Tidak ada data.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
+              </div>
+            </div>
 
-                <div>
-                  <div className={label}>Alamat</div>
-                  <input
-                    className={input}
-                    value={editRow.alamat}
-                    onChange={(e) => setEditRow((p) => ({ ...p, alamat: e.target.value }))}
-                  />
+            {/* TOP PRODUK */}
+            <div className={`${card} p-4`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-bold text-gray-900">Top 5 Produk</div>
+                <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
+              </div>
+
+              <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                <div className="min-w-[520px]">
+                  <table className="w-full text-sm table-fixed">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border-b border-gray-200 px-3 py-2 text-left w-[300px]">Produk</th>
+                        <th className="border-b border-gray-200 px-3 py-2 text-center w-[70px]">Qty</th>
+                        <th className="border-b border-gray-200 px-3 py-2 text-right w-[140px]">Nominal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productsTop.slice(0, 5).map((p) => (
+                        <tr key={p.nama_produk} className="hover:bg-gray-50">
+                          <td className="border-b border-gray-200 px-3 py-2 font-semibold truncate">{p.nama_produk}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{p.qty}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                            {formatRp(p.nominal)}
+                          </td>
+                        </tr>
+                      ))}
+                      {productsTop.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                            Tidak ada data.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <div className={label}>No WA</div>
-                    <input
-                      className={input}
-                      value={editRow.no_wa}
-                      onChange={(e) => setEditRow((p) => ({ ...p, no_wa: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <div className={label}>Email</div>
-                    <input
-                      className={input}
-                      value={editRow.email || ''}
-                      onChange={(e) => setEditRow((p) => ({ ...p, email: e.target.value }))}
-                      placeholder="contoh: customer@email.com"
-                    />
-                  </div>
-                </div>
+              <div className="text-xs text-gray-500 mt-2">Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).</div>
+            </div>
+          </div>
 
-                <button onClick={saveEdit} disabled={savingEdit} className={btnPrimary} type="button">
-                  {savingEdit ? 'Menyimpan…' : 'Simpan Perubahan'}
-                </button>
-
+          {/* DIRECTORY (FIX WIDTH + FIX TABLE) */}
+          <div className={`${card} p-4`}>
+            <div className="grid grid-cols-1 md:grid-cols-[260px_240px_140px_360px] gap-3 items-end">
+              <div className="min-w-[260px]">
+                <div className="font-bold text-gray-900">Customer Directory (Editable)</div>
                 <div className="text-xs text-gray-500">
-                  Setelah disimpan, directory akan auto refresh supaya data langsung berubah.
+                  Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
                 </div>
+              </div>
+
+              <div className="w-full">
+                <div className={label}>Sort Directory</div>
+                <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
+                  <option value="last">Transaksi Terakhir</option>
+                  <option value="nominal">Nominal</option>
+                  <option value="trx">Jumlah Transaksi</option>
+                  <option value="nama">Nama</option>
+                </select>
+              </div>
+
+              <div className="w-full">
+                <div className={label}>Urutan</div>
+                <button
+                  type="button"
+                  onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
+                  className={`${btn} h-[42px] w-full`}
+                >
+                  {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
+                </button>
+              </div>
+
+              <div className="w-full">
+                <div className={label}>Search Directory</div>
+                <input
+                  className={input}
+                  placeholder="Cari nama / WA / email / alamat…"
+                  value={searchDir}
+                  onChange={(e) => setSearchDir(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-500 mt-3 mb-3">
+              Total: <b className="text-gray-900">{totalRows}</b> customer • Halaman:{' '}
+              <b className="text-gray-900">
+                {safePage}/{totalPages}
+              </b>
+            </div>
+
+            <div className="border border-gray-200 rounded-xl overflow-x-auto">
+              {/* ✅ min-width table di-lock supaya kolom tidak berubah */}
+              <div className="min-w-[1120px]">
+                <table className="w-full text-sm table-fixed">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="border-b border-gray-200 px-3 py-2 text-left w-[170px]">Nama</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Alamat</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-left w-[140px]">No WA</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Email</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-center w-[80px]">Trx</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-right w-[150px]">Nominal</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-left w-[110px]">Terakhir</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-center w-[110px]">Aksi</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {loadingDir && pageRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
+                          Memuat…
+                        </td>
+                      </tr>
+                    )}
+
+                    {!loadingDir && pageRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
+                          Tidak ada data.
+                        </td>
+                      </tr>
+                    )}
+
+                    {pageRows.map((c) => (
+                      <tr key={c.key} className="hover:bg-gray-50">
+                        <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700 truncate">{c.nama}</td>
+                        <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.alamat || '-'}>
+                          {c.alamat || '-'}
+                        </td>
+                        <td className="border-b border-gray-200 px-3 py-2 truncate">{c.no_wa || '-'}</td>
+                        <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.email || '-'}>
+                          {c.email || '-'}
+                        </td>
+                        <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{c.trx}</td>
+                        <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                          {formatRp(c.nominal)}
+                        </td>
+                        <td className="border-b border-gray-200 px-3 py-2 whitespace-nowrap">{c.last_tanggal || '-'}</td>
+                        <td className="border-b border-gray-200 px-3 py-2 text-center">
+                          <button onClick={() => openEditModal(c)} className={`${btn} px-3 py-2`} type="button">
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
+              <div className="text-xs text-gray-500">
+                Menampilkan <b className="text-gray-900">{shownFrom}–{shownTo}</b> dari{' '}
+                <b className="text-gray-900">{totalRows}</b>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                <button className={`${btn} h-[42px]`} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
+                  « First
+                </button>
+                <button
+                  className={`${btn} h-[42px]`}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  type="button"
+                >
+                  ‹ Prev
+                </button>
+                <button
+                  className={`${btn} h-[42px]`}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  type="button"
+                >
+                  Next ›
+                </button>
+                <button
+                  className={`${btn} h-[42px]`}
+                  onClick={() => setPage(totalPages)}
+                  disabled={safePage === totalPages}
+                  type="button"
+                >
+                  Last »
+                </button>
               </div>
             </div>
           </div>
-        )}
+
+          {/* EDIT MODAL */}
+          {openEdit && editRow && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+              <div className={`${card} w-full max-w-lg p-5`}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <div className="text-lg font-bold text-gray-900">Edit Customer</div>
+                    <div className="text-xs text-gray-500">
+                      Save akan update semua transaksi penjualan_baru yang match Nama+WA.
+                    </div>
+                  </div>
+                  <button onClick={closeEditModal} className={btn} disabled={savingEdit} type="button">
+                    Tutup
+                  </button>
+                </div>
+
+                <div className="grid gap-3">
+                  <div>
+                    <div className={label}>Nama</div>
+                    <input
+                      className={input}
+                      value={editRow.nama}
+                      onChange={(e) => setEditRow((p) => ({ ...p, nama: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <div className={label}>Alamat</div>
+                    <input
+                      className={input}
+                      value={editRow.alamat}
+                      onChange={(e) => setEditRow((p) => ({ ...p, alamat: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <div className={label}>No WA</div>
+                      <input
+                        className={input}
+                        value={editRow.no_wa}
+                        onChange={(e) => setEditRow((p) => ({ ...p, no_wa: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <div className={label}>Email</div>
+                      <input
+                        className={input}
+                        value={editRow.email || ''}
+                        onChange={(e) => setEditRow((p) => ({ ...p, email: e.target.value }))}
+                        placeholder="contoh: customer@email.com"
+                      />
+                    </div>
+                  </div>
+
+                  <button onClick={saveEdit} disabled={savingEdit} className={btnPrimary} type="button">
+                    {savingEdit ? 'Menyimpan…' : 'Simpan Perubahan'}
+                  </button>
+
+                  <div className="text-xs text-gray-500">Setelah disimpan, directory akan auto refresh supaya data langsung berubah.</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </Layout>
   )
