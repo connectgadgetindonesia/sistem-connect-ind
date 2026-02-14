@@ -6,6 +6,22 @@ import * as XLSX from 'xlsx'
 
 const PAGE_SIZE = 20
 
+// ===== UI STYLE (samakan Pricelist) =====
+const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
+const label = 'text-xs text-gray-600 mb-1'
+const input =
+  'border border-gray-200 px-3 py-2 rounded-lg w-full bg-white focus:outline-none focus:ring-2 focus:ring-blue-200'
+const btn =
+  'px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed'
+const btnPrimary = 'px-4 py-2 rounded-lg text-sm font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60'
+const btnSoft = 'px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-60'
+const btnSuccess = 'px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-60'
+const btnTab = (active) =>
+  `px-3 py-2 rounded-lg text-sm border ${
+    active ? 'bg-black text-white border-black' : 'bg-white border-gray-200 hover:bg-gray-50'
+  }`
+
+// ===== HELPERS =====
 const toNumber = (v) => {
   if (typeof v === 'number') return v
   return parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10) || 0
@@ -22,10 +38,7 @@ async function fetchAllPenjualanByRange({ start, end }) {
   while (keepGoing) {
     const { data, error } = await supabase
       .from('penjualan_baru')
-      .select(
-        'tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,laba,nama_produk,sn_sku,is_bonus',
-        { count: 'exact' }
-      )
+      .select('tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,laba,nama_produk,sn_sku,is_bonus', { count: 'exact' })
       .gte('tanggal', start)
       .lte('tanggal', end)
       .order('tanggal', { ascending: false })
@@ -44,7 +57,6 @@ async function fetchAllPenjualanByRange({ start, end }) {
 }
 
 async function fetchAllPenjualanForDirectory() {
-  // Directory ambil SEMUA data (biar edit sinkron ke seluruh riwayat)
   const pageSize = 1000
   let from = 0
   let all = []
@@ -91,7 +103,7 @@ export default function DataCustomer() {
   const [customerMetric, setCustomerMetric] = useState('nominal') // nominal | jumlah
   const [productMetric, setProductMetric] = useState('qty') // qty | nominal
 
-  // ✅ SORT DIRECTORY (default: transaksi terakhir)
+  // SORT DIRECTORY
   const [dirSortKey, setDirSortKey] = useState('last') // last | nominal | trx | nama
   const [dirSortDir, setDirSortDir] = useState('desc') // asc | desc
 
@@ -100,7 +112,7 @@ export default function DataCustomer() {
 
   // modal edit
   const [openEdit, setOpenEdit] = useState(false)
-  const [editRow, setEditRow] = useState(null) // { key, nama, alamat, no_wa, email, __match }
+  const [editRow, setEditRow] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
 
   // set range otomatis saat ganti tab
@@ -121,7 +133,6 @@ export default function DataCustomer() {
   }, [mode, bulan, tahun])
 
   useEffect(() => {
-    // initial load
     handleRefreshTop()
     handleRefreshDir()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,9 +227,7 @@ export default function DataCustomer() {
       const wa = (r.no_wa || '').trim()
       const key = `${nama}__${wa || '-'}`
 
-      if (!map.has(key)) {
-        map.set(key, { key, nama, no_wa: wa || '-', jumlah: 0, nominal: 0 })
-      }
+      if (!map.has(key)) map.set(key, { key, nama, no_wa: wa || '-', jumlah: 0, nominal: 0 })
       const c = map.get(key)
       c.jumlah += 1
       c.nominal += r.harga_jual
@@ -295,7 +304,7 @@ export default function DataCustomer() {
       const wa = (r0.no_wa || '').toString().trim()
       const key = `${nama}__${wa || '-'}`
 
-      const tgl = (r0.tanggal || '').toString().trim() // format YYYY-MM-DD (baik untuk compare string)
+      const tgl = (r0.tanggal || '').toString().trim()
       if (!map.has(key)) {
         map.set(key, {
           key,
@@ -305,7 +314,7 @@ export default function DataCustomer() {
           email: (r0.email || '').toString().trim() || '',
           trx: 0,
           nominal: 0,
-          last_tanggal: tgl || '', // ✅ simpan transaksi terakhir
+          last_tanggal: tgl || '',
           __match: { nama_pembeli: namaRaw, no_wa: wa, alamat: (r0.alamat || '').toString().trim() },
         })
       }
@@ -315,7 +324,6 @@ export default function DataCustomer() {
       row.no_wa = pick(row.no_wa, wa) || '-'
       row.email = pick(row.email, (r0.email || '').toString().trim()) || ''
 
-      // ✅ update last transaksi (ambil yg paling baru)
       if (tgl && (!row.last_tanggal || tgl > row.last_tanggal)) row.last_tanggal = tgl
 
       const isBonus = r0?.is_bonus === true || toNumber(r0.harga_jual) <= 0
@@ -345,7 +353,6 @@ export default function DataCustomer() {
         const av = a.last_tanggal || ''
         const bv = b.last_tanggal || ''
         if (av !== bv) return (av > bv ? 1 : -1) * dirMul
-        // tie-breaker: nominal desc
         if (a.nominal !== b.nominal) return (a.nominal - b.nominal) * -1
         return a.nama.localeCompare(b.nama)
       }
@@ -366,7 +373,6 @@ export default function DataCustomer() {
         return a.nama.localeCompare(b.nama)
       }
 
-      // nama
       const res = a.nama.localeCompare(b.nama)
       return res * dirMul
     })
@@ -421,7 +427,6 @@ export default function DataCustomer() {
     setEditRow({ ...row })
     setOpenEdit(true)
   }
-
   const closeEditModal = () => {
     setOpenEdit(false)
     setEditRow(null)
@@ -442,7 +447,6 @@ export default function DataCustomer() {
 
     setSavingEdit(true)
     try {
-      // Update semua transaksi yang match nama + wa (sinkron ke riwayat.js)
       let q = supabase.from('penjualan_baru').update({
         nama_pembeli: newNama,
         alamat: newAlamat,
@@ -450,18 +454,15 @@ export default function DataCustomer() {
         email: newEmail,
       })
 
-      // prioritas match by WA
       if (oldWa) {
         q = q.eq('no_wa', oldWa).ilike('nama_pembeli', oldNama)
       } else {
-        // fallback: match by nama + alamat
         q = q.ilike('nama_pembeli', oldNama).ilike('alamat', old.alamat || '')
       }
 
       const { error } = await q
       if (error) throw error
 
-      // refresh directory biar langsung kelihatan
       await handleRefreshDir()
       closeEditModal()
       alert('Berhasil update data customer dan sudah sinkron ke Riwayat Penjualan.')
@@ -473,150 +474,114 @@ export default function DataCustomer() {
     }
   }
 
+  const shownFrom = totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
+  const shownTo = Math.min(safePage * PAGE_SIZE, totalRows)
+
   return (
     <Layout>
       <div className="p-6 bg-gray-50 min-h-screen">
-        {/* Header */}
+        {/* HEADER */}
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-5">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Data Customer</h1>
+            <div className="text-2xl font-bold text-gray-900">Data Customer</div>
             <div className="text-sm text-gray-600">
-              Top 5 customer & top 5 produk (tanpa grafik) + Customer Directory editable (sinkron ke Riwayat Penjualan).
+              Top customer & top produk (bonus tidak dihitung) + Directory customer editable (sinkron ke Riwayat Penjualan).
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleRefreshTop}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
-            >
-              {loadingTop ? 'Memuat...' : 'Refresh (Top)'}
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={handleRefreshTop} className={btnPrimary} type="button">
+              {loadingTop ? 'Memuat…' : 'Refresh (Top)'}
             </button>
-            <button
-              onClick={handleRefreshDir}
-              className="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm"
-            >
-              {loadingDir ? 'Memuat...' : 'Refresh (Directory)'}
+            <button onClick={handleRefreshDir} className={btnSoft} type="button">
+              {loadingDir ? 'Memuat…' : 'Refresh (Directory)'}
             </button>
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* TABS */}
         <div className="flex flex-wrap gap-2 mb-4">
-          <button
-            onClick={() => setMode('bulanan')}
-            className={`border px-3 py-2 rounded-lg text-sm ${
-              mode === 'bulanan' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100'
-            }`}
-          >
+          <button onClick={() => setMode('bulanan')} className={btnTab(mode === 'bulanan')} type="button">
             Bulanan
           </button>
-          <button
-            onClick={() => setMode('tahunan')}
-            className={`border px-3 py-2 rounded-lg text-sm ${
-              mode === 'tahunan' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100'
-            }`}
-          >
+          <button onClick={() => setMode('tahunan')} className={btnTab(mode === 'tahunan')} type="button">
             Tahunan
           </button>
-          <button
-            onClick={() => setMode('custom')}
-            className={`border px-3 py-2 rounded-lg text-sm ${
-              mode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100'
-            }`}
-          >
+          <button onClick={() => setMode('custom')} className={btnTab(mode === 'custom')} type="button">
             Custom
           </button>
         </div>
 
-        {/* Range Controls (Top) */}
-        <div className="bg-white rounded-2xl border shadow-sm p-4 mb-4">
-          <div className="flex flex-wrap gap-3 items-end">
+        {/* RANGE + SEARCH TOP */}
+        <div className={`${card} p-4 mb-4`}>
+          <div className="grid gap-3 md:grid-cols-12 items-end">
+            {/* mode input */}
             {mode === 'bulanan' && (
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Pilih Bulan</div>
-                <input
-                  type="month"
-                  value={bulan}
-                  onChange={(e) => setBulan(e.target.value)}
-                  className="border px-3 py-2 rounded-lg"
-                />
+              <div className="md:col-span-3">
+                <div className={label}>Pilih Bulan</div>
+                <input type="month" value={bulan} onChange={(e) => setBulan(e.target.value)} className={input} />
               </div>
             )}
 
             {mode === 'tahunan' && (
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Pilih Tahun</div>
-                <input
-                  type="number"
-                  value={tahun}
-                  onChange={(e) => setTahun(e.target.value)}
-                  className="border px-3 py-2 rounded-lg w-32"
-                />
+              <div className="md:col-span-2">
+                <div className={label}>Pilih Tahun</div>
+                <input type="number" value={tahun} onChange={(e) => setTahun(e.target.value)} className={input} />
               </div>
             )}
 
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Dari</div>
+            <div className="md:col-span-3">
+              <div className={label}>Dari</div>
               <input
                 type="date"
                 value={tanggalAwal}
                 onChange={(e) => setTanggalAwal(e.target.value)}
-                className="border px-3 py-2 rounded-lg"
+                className={input}
                 disabled={mode !== 'custom'}
               />
             </div>
 
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Sampai</div>
+            <div className="md:col-span-3">
+              <div className={label}>Sampai</div>
               <input
                 type="date"
                 value={tanggalAkhir}
                 onChange={(e) => setTanggalAkhir(e.target.value)}
-                className="border px-3 py-2 rounded-lg"
+                className={input}
                 disabled={mode !== 'custom'}
               />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setQuickRange('today')}
-                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
-              >
-                Hari ini
-              </button>
-              <button
-                onClick={() => setQuickRange('week')}
-                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
-              >
-                Minggu ini
-              </button>
-              <button
-                onClick={() => setQuickRange('month')}
-                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
-              >
-                Bulan ini
-              </button>
-              <button
-                onClick={() => setQuickRange('year')}
-                className="border px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-100"
-              >
-                Tahun ini
-              </button>
-            </div>
-
-            <div className="flex-1" />
-
-            <div className="min-w-[280px]">
-              <div className="text-xs text-gray-500 mb-1">Search (Top)</div>
+            <div className="md:col-span-3">
+              <div className={label}>Search (Top)</div>
               <input
                 type="text"
-                placeholder="Cari customer / WA / produk..."
+                placeholder="Cari customer / WA / produk…"
                 value={searchTop}
                 onChange={(e) => setSearchTop(e.target.value)}
-                className="border px-3 py-2 rounded-lg w-full"
+                className={input}
               />
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button onClick={() => setQuickRange('today')} className={btn} type="button">
+              Hari ini
+            </button>
+            <button onClick={() => setQuickRange('week')} className={btn} type="button">
+              Minggu ini
+            </button>
+            <button onClick={() => setQuickRange('month')} className={btn} type="button">
+              Bulan ini
+            </button>
+            <button onClick={() => setQuickRange('year')} className={btn} type="button">
+              Tahun ini
+            </button>
+
+            <div className="flex-1" />
+            <button onClick={handleRefreshTop} className={btnPrimary} type="button">
+              {loadingTop ? 'Memuat…' : 'Apply / Refresh Top'}
+            </button>
           </div>
 
           <div className="text-xs text-gray-500 mt-3">
@@ -625,95 +590,82 @@ export default function DataCustomer() {
         </div>
 
         {/* KPI */}
-        <div className="grid gap-4 md:grid-cols-3 mb-6">
-          <div className="bg-white rounded-2xl border shadow-sm p-4">
+        <div className="grid gap-4 md:grid-cols-3 mb-5">
+          <div className={`${card} p-4`}>
             <div className="text-xs text-gray-500">Total Customer</div>
-            <div className="text-2xl font-bold">{summary.totalCustomer}</div>
+            <div className="text-2xl font-bold text-gray-900">{summary.totalCustomer}</div>
           </div>
-          <div className="bg-white rounded-2xl border shadow-sm p-4">
+          <div className={`${card} p-4`}>
             <div className="text-xs text-gray-500">Total Transaksi (non bonus)</div>
-            <div className="text-2xl font-bold">{summary.totalTransaksi}</div>
+            <div className="text-2xl font-bold text-gray-900">{summary.totalTransaksi}</div>
           </div>
-          <div className="bg-white rounded-2xl border shadow-sm p-4">
+          <div className={`${card} p-4`}>
             <div className="text-xs text-gray-500">Rata-rata Transaksi / Customer</div>
-            <div className="text-2xl font-bold">{summary.rata.toFixed(1)}</div>
+            <div className="text-2xl font-bold text-gray-900">{summary.rata.toFixed(1)}</div>
           </div>
         </div>
 
-        {/* Controls + Export */}
-        <div className="flex flex-wrap gap-3 items-end mb-3">
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Top 5 Customer berdasarkan</div>
-            <select
-              className="border px-3 py-2 rounded-lg bg-white"
-              value={customerMetric}
-              onChange={(e) => setCustomerMetric(e.target.value)}
-            >
-              <option value="nominal">Nominal</option>
-              <option value="jumlah">Qty Transaksi</option>
-            </select>
+        {/* FILTER METRIC + EXPORT */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-3">
+          <div className="flex flex-wrap gap-3">
+            <div className="min-w-[220px]">
+              <div className={label}>Top Customer berdasarkan</div>
+              <select className={input} value={customerMetric} onChange={(e) => setCustomerMetric(e.target.value)}>
+                <option value="nominal">Nominal</option>
+                <option value="jumlah">Qty Transaksi</option>
+              </select>
+            </div>
+
+            <div className="min-w-[220px]">
+              <div className={label}>Top Produk berdasarkan</div>
+              <select className={input} value={productMetric} onChange={(e) => setProductMetric(e.target.value)}>
+                <option value="qty">Qty</option>
+                <option value="nominal">Nominal</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Top 5 Produk berdasarkan</div>
-            <select
-              className="border px-3 py-2 rounded-lg bg-white"
-              value={productMetric}
-              onChange={(e) => setProductMetric(e.target.value)}
-            >
-              <option value="qty">Qty</option>
-              <option value="nominal">Nominal</option>
-            </select>
-          </div>
-
-          <div className="flex-1" />
-
-          <div className="flex gap-2">
-            <button
-              onClick={exportTopCustomersExcel}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
-            >
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={exportTopCustomersExcel} className={btnSuccess} type="button">
               Download Excel (Customer)
             </button>
-            <button
-              onClick={exportTopProductsExcel}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm"
-            >
+            <button onClick={exportTopProductsExcel} className={btnSuccess} type="button">
               Download Excel (Produk)
             </button>
           </div>
         </div>
 
-        {/* TOP 5 TABLES */}
-        <div className="grid gap-6 md:grid-cols-2 mb-6">
-          <div className="bg-white rounded-2xl border shadow-sm p-4">
+        {/* TOP TABLES */}
+        <div className="grid gap-4 md:grid-cols-2 mb-6">
+          {/* TOP CUSTOMER */}
+          <div className={`${card} p-4`}>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold text-gray-800">Top 5 Customer</div>
+              <div className="font-bold text-gray-900">Top 5 Customer</div>
               <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
             </div>
 
-            <div className="overflow-x-auto border rounded-xl">
+            <div className="overflow-x-auto border border-gray-200 rounded-xl">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="border-b px-3 py-2 text-left">Nama</th>
-                    <th className="border-b px-3 py-2 text-left">No WA</th>
-                    <th className="border-b px-3 py-2 text-center">Trx</th>
-                    <th className="border-b px-3 py-2 text-right">Nominal</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left">Nama</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left">No WA</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-center">Trx</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-right">Nominal</th>
                   </tr>
                 </thead>
                 <tbody>
                   {customersTop.slice(0, 5).map((c) => (
                     <tr key={c.key} className="hover:bg-gray-50">
-                      <td className="border-b px-3 py-2 font-bold text-blue-800">{c.nama}</td>
-                      <td className="border-b px-3 py-2">{c.no_wa || '-'}</td>
-                      <td className="border-b px-3 py-2 text-center">{c.jumlah}</td>
-                      <td className="border-b px-3 py-2 text-right">{formatRp(c.nominal)}</td>
+                      <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700">{c.nama}</td>
+                      <td className="border-b border-gray-200 px-3 py-2">{c.no_wa || '-'}</td>
+                      <td className="border-b border-gray-200 px-3 py-2 text-center">{c.jumlah}</td>
+                      <td className="border-b border-gray-200 px-3 py-2 text-right">{formatRp(c.nominal)}</td>
                     </tr>
                   ))}
                   {customersTop.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-3 py-6 text-center text-gray-500">
+                      <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
                         Tidak ada data.
                       </td>
                     </tr>
@@ -723,32 +675,33 @@ export default function DataCustomer() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border shadow-sm p-4">
+          {/* TOP PRODUK */}
+          <div className={`${card} p-4`}>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold text-gray-800">Top 5 Produk</div>
+              <div className="font-bold text-gray-900">Top 5 Produk</div>
               <div className="text-xs text-gray-500">Bonus tidak dihitung</div>
             </div>
 
-            <div className="overflow-x-auto border rounded-xl">
+            <div className="overflow-x-auto border border-gray-200 rounded-xl">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="border-b px-3 py-2 text-left">Produk</th>
-                    <th className="border-b px-3 py-2 text-center">Qty</th>
-                    <th className="border-b px-3 py-2 text-right">Nominal</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-left">Produk</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-center">Qty</th>
+                    <th className="border-b border-gray-200 px-3 py-2 text-right">Nominal</th>
                   </tr>
                 </thead>
                 <tbody>
                   {productsTop.slice(0, 5).map((p) => (
                     <tr key={p.nama_produk} className="hover:bg-gray-50">
-                      <td className="border-b px-3 py-2 font-semibold">{p.nama_produk}</td>
-                      <td className="border-b px-3 py-2 text-center">{p.qty}</td>
-                      <td className="border-b px-3 py-2 text-right">{formatRp(p.nominal)}</td>
+                      <td className="border-b border-gray-200 px-3 py-2 font-semibold">{p.nama_produk}</td>
+                      <td className="border-b border-gray-200 px-3 py-2 text-center">{p.qty}</td>
+                      <td className="border-b border-gray-200 px-3 py-2 text-right">{formatRp(p.nominal)}</td>
                     </tr>
                   ))}
                   {productsTop.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="px-3 py-6 text-center text-gray-500">
+                      <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
                         Tidak ada data.
                       </td>
                     </tr>
@@ -762,24 +715,19 @@ export default function DataCustomer() {
         </div>
 
         {/* DIRECTORY */}
-        <div className="bg-white rounded-2xl border shadow-sm p-4">
-          <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between mb-4">
+        <div className={`${card} p-4`}>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-3">
             <div>
-              <div className="text-sm font-semibold text-gray-800">Customer Directory (Editable)</div>
+              <div className="font-bold text-gray-900">Customer Directory (Editable)</div>
               <div className="text-xs text-gray-500">
                 Data diambil dari <b>penjualan_baru</b>. Edit di sini akan update seluruh riwayat yang match Nama+WA.
               </div>
             </div>
 
-            {/* ✅ SORT + SEARCH */}
             <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-end">
               <div className="w-full md:w-[240px]">
-                <div className="text-xs text-gray-500 mb-1">Sort Directory</div>
-                <select
-                  className="border border-gray-200 px-3 py-2 rounded-lg w-full bg-white"
-                  value={dirSortKey}
-                  onChange={(e) => setDirSortKey(e.target.value)}
-                >
+                <div className={label}>Sort Directory</div>
+                <select className={input} value={dirSortKey} onChange={(e) => setDirSortKey(e.target.value)}>
                   <option value="last">Transaksi Terakhir</option>
                   <option value="nominal">Nominal</option>
                   <option value="trx">Jumlah Transaksi</option>
@@ -788,21 +736,21 @@ export default function DataCustomer() {
               </div>
 
               <div className="w-full md:w-[140px]">
-                <div className="text-xs text-gray-500 mb-1">Urutan</div>
+                <div className={label}>Urutan</div>
                 <button
                   type="button"
                   onClick={() => setDirSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}
-                  className="border border-gray-200 px-3 py-2 rounded-lg w-full text-sm bg-white hover:bg-gray-50"
+                  className={btn}
                 >
                   {dirSortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
                 </button>
               </div>
 
               <div className="w-full md:w-[360px]">
-                <div className="text-xs text-gray-500 mb-1">Search Directory</div>
+                <div className={label}>Search Directory</div>
                 <input
-                  className="border border-gray-200 px-3 py-2 rounded-lg w-full"
-                  placeholder="Cari nama / WA / email / alamat..."
+                  className={input}
+                  placeholder="Cari nama / WA / email / alamat…"
                   value={searchDir}
                   onChange={(e) => setSearchDir(e.target.value)}
                 />
@@ -817,24 +765,24 @@ export default function DataCustomer() {
             </b>
           </div>
 
-          <div className="overflow-x-auto border rounded-xl">
+          <div className="overflow-x-auto border border-gray-200 rounded-xl">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="border-b px-3 py-2 text-left">Nama</th>
-                  <th className="border-b px-3 py-2 text-left">Alamat</th>
-                  <th className="border-b px-3 py-2 text-left">No WA</th>
-                  <th className="border-b px-3 py-2 text-left">Email</th>
-                  <th className="border-b px-3 py-2 text-center">Trx</th>
-                  <th className="border-b px-3 py-2 text-right">Nominal</th>
-                  <th className="border-b px-3 py-2 text-left">Terakhir</th>
-                  <th className="border-b px-3 py-2 text-center">Aksi</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-left">Nama</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-left">Alamat</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-left">No WA</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-left">Email</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-center">Trx</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-right">Nominal</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-left">Terakhir</th>
+                  <th className="border-b border-gray-200 px-3 py-2 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingDir && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
                       Memuat…
                     </td>
                   </tr>
@@ -842,7 +790,7 @@ export default function DataCustomer() {
 
                 {!loadingDir && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
                       Tidak ada data.
                     </td>
                   </tr>
@@ -850,18 +798,15 @@ export default function DataCustomer() {
 
                 {pageRows.map((c) => (
                   <tr key={c.key} className="hover:bg-gray-50">
-                    <td className="border-b px-3 py-2 font-bold text-blue-800">{c.nama}</td>
-                    <td className="border-b px-3 py-2">{c.alamat || '-'}</td>
-                    <td className="border-b px-3 py-2">{c.no_wa || '-'}</td>
-                    <td className="border-b px-3 py-2">{c.email || '-'}</td>
-                    <td className="border-b px-3 py-2 text-center">{c.trx}</td>
-                    <td className="border-b px-3 py-2 text-right">{formatRp(c.nominal)}</td>
-                    <td className="border-b px-3 py-2">{c.last_tanggal ? c.last_tanggal : '-'}</td>
-                    <td className="border-b px-3 py-2 text-center">
-                      <button
-                        onClick={() => openEditModal(c)}
-                        className="border border-gray-200 px-3 py-1.5 rounded-lg text-xs bg-white hover:bg-gray-50"
-                      >
+                    <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700">{c.nama}</td>
+                    <td className="border-b border-gray-200 px-3 py-2">{c.alamat || '-'}</td>
+                    <td className="border-b border-gray-200 px-3 py-2">{c.no_wa || '-'}</td>
+                    <td className="border-b border-gray-200 px-3 py-2">{c.email || '-'}</td>
+                    <td className="border-b border-gray-200 px-3 py-2 text-center">{c.trx}</td>
+                    <td className="border-b border-gray-200 px-3 py-2 text-right">{formatRp(c.nominal)}</td>
+                    <td className="border-b border-gray-200 px-3 py-2">{c.last_tanggal ? c.last_tanggal : '-'}</td>
+                    <td className="border-b border-gray-200 px-3 py-2 text-center">
+                      <button onClick={() => openEditModal(c)} className={btn} type="button">
                         Edit
                       </button>
                     </td>
@@ -874,40 +819,26 @@ export default function DataCustomer() {
           {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">
-              Menampilkan{' '}
-              <b className="text-gray-900">
-                {totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalRows)}
-              </b>{' '}
-              dari <b className="text-gray-900">{totalRows}</b>
+              Menampilkan <b className="text-gray-900">{shownFrom}–{shownTo}</b> dari{' '}
+              <b className="text-gray-900">{totalRows}</b>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
-                onClick={() => setPage(1)}
-                disabled={safePage === 1}
-              >
+            <div className="flex gap-2 flex-wrap">
+              <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1} type="button">
                 « First
               </button>
-              <button
-                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1}
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} type="button">
                 ‹ Prev
               </button>
               <button
-                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+                className={btn}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage === totalPages}
+                type="button"
               >
                 Next ›
               </button>
-              <button
-                className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages}
-              >
+              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages} type="button">
                 Last »
               </button>
             </div>
@@ -917,51 +848,51 @@ export default function DataCustomer() {
         {/* EDIT MODAL */}
         {openEdit && editRow && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-            <div className="bg-white w-full max-w-lg rounded-2xl border shadow-lg p-5">
+            <div className={`${card} w-full max-w-lg p-5`}>
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
                   <div className="text-lg font-bold text-gray-900">Edit Customer</div>
-                  <div className="text-xs text-gray-500">Save akan update semua transaksi penjualan_baru yang match Nama+WA.</div>
+                  <div className="text-xs text-gray-500">
+                    Save akan update semua transaksi penjualan_baru yang match Nama+WA.
+                  </div>
                 </div>
-                <button
-                  onClick={closeEditModal}
-                  className="border border-gray-200 px-3 py-2 rounded-lg text-sm bg-white hover:bg-gray-50"
-                  disabled={savingEdit}
-                >
+                <button onClick={closeEditModal} className={btn} disabled={savingEdit} type="button">
                   Tutup
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid gap-3">
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">Nama</div>
+                  <div className={label}>Nama</div>
                   <input
-                    className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                    className={input}
                     value={editRow.nama}
                     onChange={(e) => setEditRow((p) => ({ ...p, nama: e.target.value }))}
                   />
                 </div>
+
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">Alamat</div>
+                  <div className={label}>Alamat</div>
                   <input
-                    className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                    className={input}
                     value={editRow.alamat}
                     onChange={(e) => setEditRow((p) => ({ ...p, alamat: e.target.value }))}
                   />
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">No WA</div>
+                    <div className={label}>No WA</div>
                     <input
-                      className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                      className={input}
                       value={editRow.no_wa}
                       onChange={(e) => setEditRow((p) => ({ ...p, no_wa: e.target.value }))}
                     />
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">Email</div>
+                    <div className={label}>Email</div>
                     <input
-                      className="border border-gray-200 px-3 py-2 rounded-lg w-full"
+                      className={input}
                       value={editRow.email || ''}
                       onChange={(e) => setEditRow((p) => ({ ...p, email: e.target.value }))}
                       placeholder="contoh: customer@email.com"
@@ -969,13 +900,13 @@ export default function DataCustomer() {
                   </div>
                 </div>
 
-                <button
-                  onClick={saveEdit}
-                  disabled={savingEdit}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl w-full disabled:opacity-60"
-                >
+                <button onClick={saveEdit} disabled={savingEdit} className={btnPrimary} type="button">
                   {savingEdit ? 'Menyimpan…' : 'Simpan Perubahan'}
                 </button>
+
+                <div className="text-xs text-gray-500">
+                  Setelah disimpan, directory akan auto refresh supaya data langsung berubah.
+                </div>
               </div>
             </div>
           </div>
