@@ -257,10 +257,6 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 </html>`
 }
 
-
-
-
-
 // ====== download helpers (ikut pricelist.js) ======
 async function canvasToJpegBlob(canvas, quality = 0.95) {
   return await new Promise((resolve, reject) => {
@@ -339,6 +335,17 @@ export default function RiwayatPenjualan() {
   const getUniqueText = (produk = [], key) => {
     const vals = (produk || [])
       .map((p) => (p?.[key] || '').toString().trim())
+      .filter(Boolean)
+      .filter((v) => v !== '-')
+    const uniq = Array.from(new Set(vals))
+    if (uniq.length === 0) return '-'
+    return uniq.join(', ')
+  }
+
+  // ✅ NEW: METODE PEMBAYARAN (per-invoice)
+  const getUniqueMetode = (produk = []) => {
+    const vals = (produk || [])
+      .map((p) => (p?.metode_pembayaran || '').toString().trim().toUpperCase())
       .filter(Boolean)
       .filter((v) => v !== '-')
     const uniq = Array.from(new Set(vals))
@@ -712,6 +719,7 @@ export default function RiwayatPenjualan() {
                   <th className="px-4 py-3 text-left">Tanggal</th>
                   <th className="px-4 py-3 text-left">Nama</th>
                   <th className="px-4 py-3 text-left min-w-[320px]">Produk</th>
+                  <th className="px-4 py-3 text-left">Metode Bayar</th> {/* ✅ NEW */}
                   <th className="px-4 py-3 text-left">Dilayani</th>
                   <th className="px-4 py-3 text-left">Referral</th>
                   <th className="px-4 py-3 text-right">Harga Jual</th>
@@ -745,10 +753,19 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3 font-semibold text-gray-900">{item.nama_pembeli}</td>
 
                       <td className="px-4 py-3">
-                        <div className="text-gray-900">{item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}</div>
+                        <div className="text-gray-900">
+                          {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
+                        </div>
                         <div className="text-xs text-gray-500 mt-1">
                           Item: <b className="text-gray-900">{item.produk.length}</b>
                         </div>
+                      </td>
+
+                      {/* ✅ NEW: METODE BAYAR */}
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-800 border border-gray-200">
+                          {getUniqueMetode(item.produk)}
+                        </span>
                       </td>
 
                       <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
@@ -757,11 +774,18 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3 text-right">{formatRp(totalInvoice(item.produk))}</td>
 
                       <td className="px-4 py-3 text-right">
-                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>{formatRp(totalLaba(item.produk))}</span>
+                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>
+                          {formatRp(totalLaba(item.produk))}
+                        </span>
                       </td>
 
                       <td className="px-4 py-3">
-                        <button onClick={() => handleDelete(inv)} className={btnDanger} disabled={loading || busy} type="button">
+                        <button
+                          onClick={() => handleDelete(inv)}
+                          className={btnDanger}
+                          disabled={loading || busy}
+                          type="button"
+                        >
                           Hapus
                         </button>
                       </td>
@@ -771,7 +795,7 @@ export default function RiwayatPenjualan() {
 
                 {!loading && rows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-10 text-center text-gray-500" colSpan={9}>
+                    <td className="px-4 py-10 text-center text-gray-500" colSpan={10}>
                       Tidak ada data.
                     </td>
                   </tr>
@@ -779,7 +803,7 @@ export default function RiwayatPenjualan() {
 
                 {loading && rows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-10 text-center text-gray-500" colSpan={9}>
+                    <td className="px-4 py-10 text-center text-gray-500" colSpan={10}>
                       Memuat…
                     </td>
                   </tr>
@@ -799,7 +823,12 @@ export default function RiwayatPenjualan() {
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1 || loading}
+                type="button"
+              >
                 ‹ Prev
               </button>
 
@@ -807,10 +836,20 @@ export default function RiwayatPenjualan() {
                 {safePage}/{totalPages}
               </div>
 
-              <button className={btn} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Next ›
               </button>
-              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Last »
               </button>
             </div>
