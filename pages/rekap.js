@@ -14,8 +14,14 @@ const toNumber = (v) =>
 
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 
-// ✅ normalize tanggal: aman untuk YYYY-MM-DD maupun timestamp (YYYY-MM-DDTHH:mm:ssZ)
-const normDate = (d) => String(d || '').slice(0, 10)
+// ✅ robust: boolean / number / string "true"
+const isBonusRow = (row) => {
+  const v = row?.is_bonus
+  if (v === true) return true
+  if (v === 1) return true
+  const s = String(v ?? '').trim().toLowerCase()
+  return s === 'true' || s === '1' || s === 'yes'
+}
 
 const pctChange = (cur, prev) => {
   const c = toNumber(cur)
@@ -324,7 +330,9 @@ function InteractiveLineChart({ title, categories, data, height = 260, fmt = (v)
               stroke="#CBD5E1"
               strokeDasharray="4 4"
             />
-            <g transform={`translate(${Math.min(Math.max(hover.x - 70, padding.left), width - 190)}, ${padding.top + 8})`}>
+            <g
+              transform={`translate(${Math.min(Math.max(hover.x - 70, padding.left), width - 190)}, ${padding.top + 8})`}
+            >
               <rect width="180" height="58" rx="12" fill="white" stroke="#E5E7EB" />
               <text x="12" y="22" fontSize="12" fill="#6B7280">
                 {categories[hover.i]}
@@ -529,10 +537,9 @@ export default function RekapBulanan() {
 
   // ===================== PENDAPATAN SOURCE =====================
   const normalizeRow = (row) => {
-    const isBonus = row?.is_bonus === true
+    const isBonus = isBonusRow(row)
     return {
-      // ✅ pastikan tanggal selalu YYYY-MM-DD
-      tanggal: normDate(row?.tanggal),
+      tanggal: row?.tanggal,
       omset: toNumber(row?.harga_jual),
       laba: toNumber(row?.laba),
       isBonus,
@@ -686,22 +693,12 @@ export default function RekapBulanan() {
   }, [monthCats, snapshotMap])
 
   // ===== Rekap by tanggal (tabel) =====
-  // ✅ FIX: filter pakai dayjs + inclusive range + normalize tanggal
   function lihatRekap() {
     if (!tanggalAwal || !tanggalAkhir) return alert('Lengkapi tanggal terlebih dahulu!')
-
-    const start = dayjs(tanggalAwal).startOf('day')
-    const end = dayjs(tanggalAkhir).endOf('day')
-
+    // ✅ samakan dengan Insight/Finance: exclude bonus
     const hasil = (data || [])
-      .filter((item) => item?.tanggal)
-      .filter((item) => {
-        const t = dayjs(normDate(item.tanggal))
-        return !t.isBefore(start, 'day') && !t.isAfter(end, 'day') // inclusive
-      })
-      .map((item) => ({ ...item, tanggal: normDate(item.tanggal) }))
-      .sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0))
-
+      .filter((item) => item?.tanggal >= tanggalAwal && item?.tanggal <= tanggalAkhir)
+      .filter((item) => !isBonusRow(item))
     setRekap(hasil)
   }
 
@@ -727,9 +724,8 @@ export default function RekapBulanan() {
     XLSX.writeFile(wb, `Rekap_Penjualan_${tanggalAwal}_${tanggalAkhir}.xlsx`)
   }
 
-  // ✅ total ikut konsisten & tidak “nyangkut”
-  const totalOmset = useMemo(() => (rekap || []).reduce((sum, item) => sum + toNumber(item.harga_jual), 0), [rekap])
-  const totalLaba = useMemo(() => (rekap || []).reduce((sum, item) => sum + toNumber(item.laba), 0), [rekap])
+  const totalOmset = (rekap || []).reduce((sum, item) => sum + toNumber(item.harga_jual), 0)
+  const totalLaba = (rekap || []).reduce((sum, item) => sum + toNumber(item.laba), 0)
 
   function setQuickRange(type) {
     const now = dayjs()
@@ -738,7 +734,6 @@ export default function RekapBulanan() {
       setTanggalAkhir(now.format('YYYY-MM-DD'))
     }
     if (type === 'week') {
-      // ✅ pakai ISO week biar Senin-Minggu rapi
       setTanggalAwal(now.startOf('isoWeek').format('YYYY-MM-DD'))
       setTanggalAkhir(now.endOf('isoWeek').format('YYYY-MM-DD'))
     }
@@ -770,7 +765,7 @@ export default function RekapBulanan() {
     let lastLaba = 0
 
     for (const r of incomeSource) {
-      const d = r.tanggal // ✅ sudah normDate
+      const d = r.tanggal
       const m = String(d || '').slice(0, 7)
 
       if (d === today) {
@@ -839,7 +834,7 @@ export default function RekapBulanan() {
     const start = incomeStart ? dayjs(incomeStart) : null
     const end = incomeEnd ? dayjs(incomeEnd) : null
     return incomeSource.filter((r) => {
-      const t = dayjs(r.tanggal) // ✅ YYYY-MM-DD
+      const t = dayjs(r.tanggal)
       if (start && t.isBefore(start, 'day')) return false
       if (end && t.isAfter(end, 'day')) return false
       return true
@@ -886,10 +881,10 @@ export default function RekapBulanan() {
     const end = insightEnd ? dayjs(insightEnd) : null
     return (data || []).filter((r) => {
       if (!r?.tanggal) return false
-      const t = dayjs(normDate(r.tanggal))
+      const t = dayjs(r.tanggal)
       if (start && t.isBefore(start, 'day')) return false
       if (end && t.isAfter(end, 'day')) return false
-      if (r?.is_bonus === true) return false
+      if (isBonusRow(r)) return false
       return true
     })
   }, [data, insightStart, insightEnd])
