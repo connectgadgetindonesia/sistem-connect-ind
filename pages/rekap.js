@@ -14,6 +14,9 @@ const toNumber = (v) =>
 
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 
+// ✅ normalize tanggal: aman untuk YYYY-MM-DD maupun timestamp (YYYY-MM-DDTHH:mm:ssZ)
+const normDate = (d) => String(d || '').slice(0, 10)
+
 const pctChange = (cur, prev) => {
   const c = toNumber(cur)
   const p = toNumber(prev)
@@ -414,10 +417,7 @@ export default function RekapBulanan() {
   }, [mainTab, financeMonth, financeSearch, financeType, financePage])
 
   async function fetchPenjualan() {
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('*')
-      .order('tanggal', { ascending: false })
+    const { data, error } = await supabase.from('penjualan_baru').select('*').order('tanggal', { ascending: false })
     if (!error) setData(data || [])
   }
 
@@ -531,7 +531,8 @@ export default function RekapBulanan() {
   const normalizeRow = (row) => {
     const isBonus = row?.is_bonus === true
     return {
-      tanggal: row?.tanggal,
+      // ✅ pastikan tanggal selalu YYYY-MM-DD
+      tanggal: normDate(row?.tanggal),
       omset: toNumber(row?.harga_jual),
       laba: toNumber(row?.laba),
       isBonus,
@@ -685,9 +686,22 @@ export default function RekapBulanan() {
   }, [monthCats, snapshotMap])
 
   // ===== Rekap by tanggal (tabel) =====
+  // ✅ FIX: filter pakai dayjs + inclusive range + normalize tanggal
   function lihatRekap() {
     if (!tanggalAwal || !tanggalAkhir) return alert('Lengkapi tanggal terlebih dahulu!')
-    const hasil = (data || []).filter((item) => item.tanggal >= tanggalAwal && item.tanggal <= tanggalAkhir)
+
+    const start = dayjs(tanggalAwal).startOf('day')
+    const end = dayjs(tanggalAkhir).endOf('day')
+
+    const hasil = (data || [])
+      .filter((item) => item?.tanggal)
+      .filter((item) => {
+        const t = dayjs(normDate(item.tanggal))
+        return !t.isBefore(start, 'day') && !t.isAfter(end, 'day') // inclusive
+      })
+      .map((item) => ({ ...item, tanggal: normDate(item.tanggal) }))
+      .sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0))
+
     setRekap(hasil)
   }
 
@@ -713,8 +727,9 @@ export default function RekapBulanan() {
     XLSX.writeFile(wb, `Rekap_Penjualan_${tanggalAwal}_${tanggalAkhir}.xlsx`)
   }
 
-  const totalOmset = (rekap || []).reduce((sum, item) => sum + toNumber(item.harga_jual), 0)
-  const totalLaba = (rekap || []).reduce((sum, item) => sum + toNumber(item.laba), 0)
+  // ✅ total ikut konsisten & tidak “nyangkut”
+  const totalOmset = useMemo(() => (rekap || []).reduce((sum, item) => sum + toNumber(item.harga_jual), 0), [rekap])
+  const totalLaba = useMemo(() => (rekap || []).reduce((sum, item) => sum + toNumber(item.laba), 0), [rekap])
 
   function setQuickRange(type) {
     const now = dayjs()
@@ -755,7 +770,7 @@ export default function RekapBulanan() {
     let lastLaba = 0
 
     for (const r of incomeSource) {
-      const d = r.tanggal
+      const d = r.tanggal // ✅ sudah normDate
       const m = String(d || '').slice(0, 7)
 
       if (d === today) {
@@ -824,7 +839,7 @@ export default function RekapBulanan() {
     const start = incomeStart ? dayjs(incomeStart) : null
     const end = incomeEnd ? dayjs(incomeEnd) : null
     return incomeSource.filter((r) => {
-      const t = dayjs(r.tanggal)
+      const t = dayjs(r.tanggal) // ✅ YYYY-MM-DD
       if (start && t.isBefore(start, 'day')) return false
       if (end && t.isAfter(end, 'day')) return false
       return true
@@ -871,7 +886,7 @@ export default function RekapBulanan() {
     const end = insightEnd ? dayjs(insightEnd) : null
     return (data || []).filter((r) => {
       if (!r?.tanggal) return false
-      const t = dayjs(r.tanggal)
+      const t = dayjs(normDate(r.tanggal))
       if (start && t.isBefore(start, 'day')) return false
       if (end && t.isAfter(end, 'day')) return false
       if (r?.is_bonus === true) return false
