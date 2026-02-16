@@ -1015,12 +1015,441 @@ export default function RekapBulanan() {
 
         {mainTab === 'dashboard' && (
           <>
-            {/* ... BAGIAN DASHBOARD TETAP (tidak aku ubah) ... */}
-            {/* (Isi dashboard sama seperti versi kamu sebelumnya) */}
-            {/* NOTE: untuk hemat panjang, dashboard tidak aku potong di sini pada jawaban aslinya.
-               Di repo, file ini tetap FULL sesuai yang kamu paste, selain perubahan finance tracker saja. */}
-          </>
+            {mainTab === 'dashboard' && (
+  <>
+    {/* ====== 1) REKAP TANGGAL DIPINDAH PALING ATAS ====== */}
+    <div className={`${card} p-4 md:p-5 mb-6`}>
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-3">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Rekap Penjualan Berdasarkan Tanggal</h2>
+          <div className="text-sm text-gray-600">Pilih cepat atau tentukan tanggal manual, lalu lihat detail tabel.</div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button onClick={() => setQuickRange('today')} className={btn}>
+          Hari ini
+        </button>
+        <button onClick={() => setQuickRange('week')} className={btn}>
+          Minggu ini
+        </button>
+        <button onClick={() => setQuickRange('month')} className={btn}>
+          Bulan ini
+        </button>
+        <button onClick={() => setQuickRange('year')} className={btn}>
+          Tahun ini
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2 items-end mb-4">
+        <div className="min-w-[180px]">
+          <div className={label}>Dari</div>
+          <input type="date" value={tanggalAwal} onChange={(e) => setTanggalAwal(e.target.value)} className={input} />
+        </div>
+        <div className="min-w-[180px]">
+          <div className={label}>Sampai</div>
+          <input type="date" value={tanggalAkhir} onChange={(e) => setTanggalAkhir(e.target.value)} className={input} />
+        </div>
+
+        <button onClick={lihatRekap} className={btnPrimary}>
+          Lihat Rekap
+        </button>
+
+        <div className="flex-1" />
+
+        {rekap.length > 0 && (
+          <button onClick={downloadExcel} className={btnSuccess}>
+            Download Excel
+          </button>
         )}
+      </div>
+
+      {rekap.length > 0 && (
+        <>
+          <div className="grid gap-3 md:grid-cols-3 mb-4">
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+              <div className="text-xs text-gray-500">Total Baris Produk</div>
+              <div className="text-xl font-bold">{rekap.length}</div>
+            </div>
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+              <div className="text-xs text-gray-500">Total Omset</div>
+              <div className="text-xl font-bold">{formatRp(totalOmset)}</div>
+            </div>
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+              <div className="text-xs text-gray-500">Total Laba Bersih</div>
+              <div className="text-xl font-bold">{formatRp(totalLaba)}</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto text-sm border border-gray-200 rounded-xl">
+            <table className="min-w-full">
+              <thead className="bg-gray-50">
+                <tr className="text-gray-600">
+                  <th className="border-b px-3 py-2 text-left">Tanggal</th>
+                  <th className="border-b px-3 py-2 text-left">Invoice</th>
+                  <th className="border-b px-3 py-2 text-left">Nama</th>
+                  <th className="border-b px-3 py-2 text-left">Produk</th>
+                  <th className="border-b px-3 py-2 text-left">SN/SKU</th>
+                  <th className="border-b px-3 py-2 text-right">Harga Jual</th>
+                  <th className="border-b px-3 py-2 text-right">Laba</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rekap.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50 border-b border-gray-200">
+                    <td className="px-3 py-2">{item.tanggal}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{item.invoice_id || '-'}</td>
+                    <td className="px-3 py-2">{item.nama_pembeli}</td>
+                    <td className="px-3 py-2">{item.nama_produk}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{item.sn_sku}</td>
+                    <td className="px-3 py-2 text-right">{formatRp(item.harga_jual)}</td>
+                    <td className="px-3 py-2 text-right">{formatRp(item.laba)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {rekap.length === 0 && (tanggalAwal || tanggalAkhir) && (
+        <div className="text-sm text-gray-500 mt-3">Belum ada data pada rentang ini.</div>
+      )}
+    </div>
+
+    {/* ====== 2) INSIGHT CEPAT: HARI INI & BULAN INI ====== */}
+    <div className={`${card} p-4 md:p-5 mb-6`}>
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-4">
+        <div>
+          <div className="text-lg font-bold text-gray-900">Insight Pendapatan (Auto)</div>
+          <div className="text-sm text-gray-600">
+            Ringkas pendapatan hari ini & bulan ini + perbandingan % terhadap periode sebelumnya.
+          </div>
+        </div>
+        <div className="text-xs text-gray-500">
+          Update otomatis dari <b>penjualan_baru</b> (exclude bonus).
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Omset Hari Ini</div>
+          <div className="text-xl font-bold text-gray-900">{formatRp(quickIncome.todayOmset)}</div>
+          <div className="mt-2">
+            <span
+              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border ${badgeDeltaClass(
+                quickIncome.dayDelta.dir
+              )}`}
+            >
+              {quickIncome.dayDelta.label} vs kemarin
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Laba Hari Ini</div>
+          <div className="text-xl font-bold text-gray-900">{formatRp(quickIncome.todayLaba)}</div>
+          <div className="mt-2 text-xs text-gray-500">Tanggal: {dayjs(quickIncome.today).format('DD MMM YYYY')}</div>
+        </div>
+
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Omset Bulan Ini</div>
+          <div className="text-xl font-bold text-gray-900">{formatRp(quickIncome.thisOmset)}</div>
+          <div className="mt-2">
+            <span
+              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border ${badgeDeltaClass(
+                quickIncome.monthDelta.dir
+              )}`}
+            >
+              {quickIncome.monthDelta.label} vs bulan lalu
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Laba Bulan Ini</div>
+          <div className="text-xl font-bold text-gray-900">{formatRp(quickIncome.thisLaba)}</div>
+          <div className="mt-2 text-xs text-gray-500">Bulan: {dayjs(quickIncome.thisM + '-01').format('MMMM YYYY')}</div>
+        </div>
+      </div>
+    </div>
+
+    {/* KPI Cards (aset) */}
+    <div className="grid gap-4 md:grid-cols-4 mb-6">
+      <div className={`${card} p-4`}>
+        <div className="text-xs text-gray-500 mb-1">Aset Unit READY</div>
+        <div className="text-2xl font-bold text-gray-900">{formatRp(assetReady)}</div>
+      </div>
+
+      <div className={`${card} p-4`}>
+        <div className="text-xs text-gray-500 mb-1">Aset Aksesoris (excl. OFC-365-1)</div>
+        <div className="text-2xl font-bold text-gray-900">{formatRp(assetAksesoris)}</div>
+      </div>
+
+      <div className={`${card} p-4`}>
+        <div className="text-xs text-gray-500 mb-1">Total Aset Saat Ini</div>
+        <div className="text-2xl font-bold text-gray-900">{formatRp(totalAsetNow)}</div>
+      </div>
+
+      <div className={`${card} p-4`}>
+        <div className="text-xs text-gray-500 mb-1">Growth Aset (bulan terakhir)</div>
+        <div className={`text-2xl font-bold ${assetDelta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          {assetDelta >= 0 ? '+' : ''}
+          {formatRp(assetDelta)}
+        </div>
+        <div className="text-xs text-gray-500 mt-1">
+          {assetPrev ? `vs ${formatRp(assetPrev)} bulan lalu` : 'Butuh minimal 2 snapshot'}
+        </div>
+      </div>
+    </div>
+
+    {/* Insight Cards (periode custom) */}
+    <div className={`${card} p-4 md:p-5 mb-6`}>
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
+        <div>
+          <div className="text-lg font-bold text-gray-900">Insight Detail (Periode)</div>
+          <div className="text-sm text-gray-600">
+            Average ticket, margin %, top produk, performa karyawan (invoice-based).
+          </div>
+        </div>
+
+        <div className="flex gap-2 flex-wrap items-end">
+          <div className="min-w-[180px]">
+            <div className={label}>Dari</div>
+            <input className={input} type="date" value={insightStart} onChange={(e) => setInsightStart(e.target.value)} />
+          </div>
+          <div className="min-w-[180px]">
+            <div className={label}>Sampai</div>
+            <input className={input} type="date" value={insightEnd} onChange={(e) => setInsightEnd(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            className={btn}
+            onClick={() => {
+              setInsightStart(dayjs().startOf('month').format('YYYY-MM-DD'))
+              setInsightEnd(dayjs().endOf('month').format('YYYY-MM-DD'))
+            }}
+          >
+            Bulan Ini
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Total Invoice</div>
+          <div className="text-xl font-bold text-gray-900">{insightAgg.totalInvoice}</div>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Total Omset</div>
+          <div className="text-xl font-bold text-gray-900">{formatRp(insightAgg.totalOmset)}</div>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Average Ticket / Invoice</div>
+          <div className="text-xl font-bold text-gray-900">{formatRp(insightAgg.avgTicket)}</div>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-500">Margin (%)</div>
+          <div className="text-xl font-bold text-gray-900">{insightAgg.marginPct}%</div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3 mt-4">
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm font-semibold">Top Produk (Omset)</div>
+          <div className="p-3 text-sm">
+            {insightAgg.topOmset.length === 0 ? (
+              <div className="text-gray-500">Belum ada data.</div>
+            ) : (
+              <div className="space-y-2">
+                {insightAgg.topOmset.map((x) => (
+                  <div key={x.nama} className="flex items-center justify-between gap-3">
+                    <div className="font-semibold text-gray-900 line-clamp-1">{x.nama}</div>
+                    <div className="text-xs text-gray-600 whitespace-nowrap">{formatRp(x.omset)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm font-semibold">Top Produk (Laba)</div>
+          <div className="p-3 text-sm">
+            {insightAgg.topLaba.length === 0 ? (
+              <div className="text-gray-500">Belum ada data.</div>
+            ) : (
+              <div className="space-y-2">
+                {insightAgg.topLaba.map((x) => (
+                  <div key={x.nama} className="flex items-center justify-between gap-3">
+                    <div className="font-semibold text-gray-900 line-clamp-1">{x.nama}</div>
+                    <div className="text-xs text-gray-600 whitespace-nowrap">{formatRp(x.laba)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm font-semibold">Kinerja Karyawan (Invoice)</div>
+          <div className="p-3 text-sm">
+            {insightAgg.karyawan.length === 0 ? (
+              <div className="text-gray-500">Belum ada data.</div>
+            ) : (
+              <div className="space-y-2">
+                {insightAgg.karyawan.slice(0, 8).map((k) => (
+                  <div key={k.nama} className="flex items-center justify-between gap-3">
+                    <div className="font-semibold text-gray-900">{k.nama}</div>
+                    <div className="text-xs text-gray-600 whitespace-nowrap">
+                      Dilayani: <b>{k.dilayani}</b> • Ref: <b>{k.referral}</b> • Total: <b>{k.total}</b>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Range Bulan (snapshot) */}
+    <div className={`${card} p-4 md:p-5 mb-6`}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-gray-900 mb-1">Rentang Grafik Aset (Bulanan)</div>
+          <div className="text-xs text-gray-500">
+            Grafik aset bulanan dibaca dari snapshot otomatis akhir bulan (23:59).
+          </div>
+        </div>
+
+        <div className="flex gap-3 flex-wrap">
+          <div className="min-w-[170px]">
+            <div className={label}>Mulai</div>
+            <input type="month" value={bulanMulai} onChange={(e) => setBulanMulai(e.target.value)} className={input} />
+          </div>
+          <div className="min-w-[170px]">
+            <div className={label}>Selesai</div>
+            <input type="month" value={bulanSelesai} onChange={(e) => setBulanSelesai(e.target.value)} className={input} />
+          </div>
+        </div>
+      </div>
+
+      {loadingSnap && <div className="text-sm text-gray-500 mt-3">Memuat data snapshot...</div>}
+
+      {!loadingSnap && snapshots.length === 0 && (
+        <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
+          Snapshot belum ada di rentang ini. Tunggu akhir bulan, atau klik “Rekam Aset Bulan Ini (Manual)” untuk testing.
+        </div>
+      )}
+    </div>
+
+    {/* Charts Aset */}
+    <div className="grid gap-6 mb-8">
+      <InteractiveLineChart title="Total Aset Akhir Bulan (Snapshot)" categories={monthCats} data={assetTotalBulanan} />
+      <InteractiveLineChart
+        title="Growth Aset Bulanan (Delta Snapshot)"
+        categories={monthCats}
+        data={growthAssetBulanan}
+        fmt={(v) => formatRp(v)}
+      />
+    </div>
+
+    {/* ===================== GRAFIK PENDAPATAN ===================== */}
+    <div className={`${card} p-4 md:p-5 mb-8`}>
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-3">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Grafik Perbandingan Pendapatan</h2>
+          <div className="text-sm text-gray-600">Omset vs Laba — pilih mingguan / bulanan / tahunan / custom.</div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button onClick={() => setIncomePreset('mingguan')} className={btnTab(incomeMode === 'mingguan')}>
+          Mingguan
+        </button>
+        <button onClick={() => setIncomePreset('bulanan')} className={btnTab(incomeMode === 'bulanan')}>
+          Bulanan
+        </button>
+        <button onClick={() => setIncomePreset('tahunan')} className={btnTab(incomeMode === 'tahunan')}>
+          Tahunan
+        </button>
+        <button onClick={() => setIncomePreset('custom')} className={btnTab(incomeMode === 'custom')}>
+          Custom
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2 items-end mb-4">
+        <div className="min-w-[180px]">
+          <div className={label}>Dari</div>
+          <input
+            type="date"
+            value={incomeStart}
+            onChange={(e) => setIncomeStart(e.target.value)}
+            className={input}
+            disabled={incomeMode !== 'custom'}
+          />
+        </div>
+        <div className="min-w-[180px]">
+          <div className={label}>Sampai</div>
+          <input
+            type="date"
+            value={incomeEnd}
+            onChange={(e) => setIncomeEnd(e.target.value)}
+            className={input}
+            disabled={incomeMode !== 'custom'}
+          />
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+            <div className="text-xs text-gray-500">Total Omset (range)</div>
+            <div className="text-lg font-bold">{formatRp(incomeTotalOmset)}</div>
+          </div>
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+            <div className="text-xs text-gray-500">Total Laba (range)</div>
+            <div className="text-lg font-bold">{formatRp(incomeTotalLaba)}</div>
+          </div>
+        </div>
+      </div>
+
+      {incomeChart.categories.length === 0 ? (
+        <div className="text-sm text-gray-500">Belum ada data pendapatan pada periode ini.</div>
+      ) : (
+        <InteractiveMultiLineChart
+          title={`Pendapatan (${incomeMode.toUpperCase()})`}
+          categories={incomeChart.categories}
+          series={[
+            { name: 'Omset', data: incomeChart.omset, color: '#2563EB' },
+            { name: 'Laba', data: incomeChart.laba, color: '#16A34A' },
+          ]}
+        />
+      )}
+    </div>
+
+    {/* ===== Saran fitur tambahan (opsional) ===== */}
+    <div className="mt-2 text-sm text-gray-600">
+      <div className="font-semibold text-gray-900 mb-2">Saran fitur analisis lanjutan (kalau mau ditambah)</div>
+      <ul className="list-disc pl-5 space-y-1">
+        <li>
+          <b>COGS vs Profit per kategori</b> (butuh kolom kategori produk di penjualan atau mapping dari stok) untuk tahu
+          kategori mana paling “sehat”.
+        </li>
+        <li>
+          <b>Repeat customer rate</b> (berapa % customer beli lagi dalam 30/60/90 hari) → bagus untuk strategi follow-up WhatsApp.
+        </li>
+        <li>
+          <b>Sales funnel indent (DP)</b>: DP masuk → pelunasan → selesai, dengan SLA H+3 supaya bisa pantau yang rawan telat.
+        </li>
+        <li>
+          <b>Alert stok menipis</b> untuk aksesoris (threshold) + rekomendasi reorder berdasarkan rata-rata penjualan periode.
+        </li>
+      </ul>
+    </div>
+  </>
+)}
 
         {mainTab === 'finance' && (
           <>
