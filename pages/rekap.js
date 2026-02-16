@@ -57,6 +57,27 @@ const btnTab = (active) =>
     active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200 hover:bg-gray-50'
   }`
 
+// ================= Modal sederhana =================
+function Modal({ open, title, onClose, children, wide = false }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
+        <div className={`bg-white rounded-2xl shadow-xl border border-gray-200 w-full ${wide ? 'max-w-3xl' : 'max-w-xl'}`}>
+          <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+            <div className="text-base font-bold text-gray-900">{title}</div>
+            <button className="text-sm text-gray-500 hover:text-gray-900" onClick={onClose}>
+              ✕
+            </button>
+          </div>
+          <div className="p-5">{children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ================= SVG Multi-LineChart Interaktif =================
 function InteractiveMultiLineChart({
   title,
@@ -353,7 +374,7 @@ export default function RekapBulanan() {
   // ===== ACCESS =====
   const [akses, setAkses] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
-  const passwordBenar = 'rekap123'
+  const passwordBenar = '1'
 
   // main tab
   const [mainTab, setMainTab] = useState('dashboard') // dashboard | finance
@@ -400,6 +421,15 @@ export default function RekapBulanan() {
   const [financePage, setFinancePage] = useState(1)
   const FINANCE_PAGE_SIZE = 12
 
+  // ✅ kategori master (dropdown + add/edit)
+  const [catReady, setCatReady] = useState(true)
+  const [catError, setCatError] = useState('')
+  const [categories, setCategories] = useState([])
+  const [openCatModal, setOpenCatModal] = useState(false)
+  const [catNewName, setCatNewName] = useState('')
+  const [catEditingId, setCatEditingId] = useState(null)
+  const [catEditingName, setCatEditingName] = useState('')
+
   const [financeForm, setFinanceForm] = useState({
     tanggal: dayjs().format('YYYY-MM-DD'),
     tipe: 'KELUAR',
@@ -420,7 +450,10 @@ export default function RekapBulanan() {
   }, [bulanMulai, bulanSelesai])
 
   useEffect(() => {
-    if (mainTab === 'finance') fetchFinance()
+    if (mainTab === 'finance') {
+      fetchFinance()
+      fetchCategories()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab, financeMonth, financeSearch, financeType, financePage])
 
@@ -520,6 +553,87 @@ export default function RekapBulanan() {
     }
   }
 
+  // ===================== KATEGORI MASTER =====================
+  // table: finance_kategori (id, nama, created_at)
+  async function fetchCategories() {
+    setCatError('')
+    try {
+      const { data, error } = await supabase.from('finance_kategori').select('*').order('nama', { ascending: true })
+      if (error) {
+        console.warn('finance_kategori not ready:', error)
+        setCatReady(false)
+        setCategories([])
+        setCatError('Kategori belum aktif (table "finance_kategori" belum ada / policy belum siap).')
+        return
+      }
+      setCatReady(true)
+      setCategories((data || []).map((x) => ({ ...x, nama: (x.nama || '').toString() })))
+    } catch (e) {
+      console.warn(e)
+      setCatReady(false)
+      setCategories([])
+      setCatError('Kategori belum aktif.')
+    }
+  }
+
+  async function addCategory() {
+    const name = (catNewName || '').trim()
+    if (!name) return alert('Nama kategori wajib diisi.')
+    if (!catReady) return alert('Kategori belum aktif.')
+
+    const { error } = await supabase.from('finance_kategori').insert([{ nama: name.toUpperCase() }])
+    if (error) {
+      console.error(error)
+      alert('Gagal tambah kategori. Cek console / policy.')
+      return
+    }
+    setCatNewName('')
+    fetchCategories()
+  }
+
+  async function startEditCategory(row) {
+    setCatEditingId(row.id)
+    setCatEditingName((row.nama || '').toString())
+  }
+
+  async function saveEditCategory() {
+    if (!catEditingId) return
+    const name = (catEditingName || '').trim()
+    if (!name) return alert('Nama kategori wajib diisi.')
+    const { error } = await supabase.from('finance_kategori').update({ nama: name.toUpperCase() }).eq('id', catEditingId)
+    if (error) {
+      console.error(error)
+      alert('Gagal update kategori. Cek console.')
+      return
+    }
+    setCatEditingId(null)
+    setCatEditingName('')
+    fetchCategories()
+  }
+
+  async function deleteCategory(id) {
+    const ok = confirm('Hapus kategori ini? (Tidak menghapus data transaksi lama)')
+    if (!ok) return
+    const { error } = await supabase.from('finance_kategori').delete().eq('id', id)
+    if (error) {
+      console.error(error)
+      alert('Gagal hapus kategori. Cek console.')
+      return
+    }
+    fetchCategories()
+  }
+
+  const categoryOptions = useMemo(() => {
+    // gabungkan: master + kategori yang sudah dipakai transaksi (biar aman)
+    const set = new Set((categories || []).map((c) => (c.nama || '').toString().trim().toUpperCase()).filter(Boolean))
+    for (const r of financeRows || []) {
+      const k = (r.kategori || '').toString().trim().toUpperCase()
+      if (k) set.add(k)
+    }
+    const arr = Array.from(set).sort((a, b) => (a > b ? 1 : -1))
+    return arr
+  }, [categories, financeRows])
+
   const financePaged = useMemo(() => {
     const startIdx = (financePage - 1) * FINANCE_PAGE_SIZE
     return (financeRows || []).slice(startIdx, startIdx + FINANCE_PAGE_SIZE)
@@ -606,16 +720,18 @@ export default function RekapBulanan() {
 
   async function addFinanceRow() {
     if (!financeReady) return alert('Finance Tracker belum aktif.')
+
     const payload = {
       tanggal: financeForm.tanggal,
       tipe: (financeForm.tipe || '').toUpperCase(),
-      kategori: (financeForm.kategori || '').trim(),
+      kategori: (financeForm.kategori || '').trim().toUpperCase(),
       deskripsi: (financeForm.deskripsi || '').trim(),
       nominal: toNumber(financeForm.nominal),
     }
 
     if (!payload.tanggal) return alert('Tanggal wajib diisi.')
     if (!payload.tipe) return alert('Tipe wajib diisi.')
+    if (!payload.kategori) return alert('Kategori wajib diisi.')
     if (!payload.nominal) return alert('Nominal wajib diisi.')
 
     const { error } = await supabase.from('finance_tracker').insert([payload])
@@ -1017,7 +1133,10 @@ export default function RekapBulanan() {
                 fetchPenjualan()
                 fetchAssetNow()
                 fetchAssetSnapshots()
-                if (mainTab === 'finance') fetchFinance()
+                if (mainTab === 'finance') {
+                  fetchFinance()
+                  fetchCategories()
+                }
               }}
               className={btnPrimary}
             >
@@ -1461,6 +1580,12 @@ export default function RekapBulanan() {
                   <button onClick={() => setFinanceTab('transaksi')} className={btnTab(financeTab === 'transaksi')}>
                     Transaksi
                   </button>
+
+                  <div className="w-2" />
+
+                  <button className={btn} onClick={() => setOpenCatModal(true)} disabled={!catReady}>
+                    Kelola Kategori
+                  </button>
                 </div>
               </div>
 
@@ -1473,6 +1598,17 @@ export default function RekapBulanan() {
 
               {financeReady && (
                 <>
+                  {!catReady && (
+                    <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                      <div className="font-semibold mb-1">Kategori belum aktif</div>
+                      <div>{catError || 'Table/policy belum tersedia.'}</div>
+                      <div className="mt-1 text-xs text-amber-900">
+                        Sistem tetap jalan: kamu masih bisa ketik kategori manual di transaksi lama, tapi dropdown & kelola kategori butuh table
+                        <b> finance_kategori</b>.
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid gap-3 md:grid-cols-4 mb-4">
                     <div>
                       <div className={label}>Bulan</div>
@@ -1593,15 +1729,43 @@ export default function RekapBulanan() {
                                   <option value="KELUAR">KELUAR</option>
                                 </select>
                               </div>
-                              <div>
-                                <div className={label}>Kategori</div>
-                                <input
-                                  className={input}
-                                  value={financeForm.kategori}
-                                  onChange={(e) => setFinanceForm((p) => ({ ...p, kategori: e.target.value }))}
-                                  placeholder="contoh: SEWA, LISTRIK, GAJI"
-                                />
+
+                              <div className="md:col-span-2">
+                                <div className="flex items-center justify-between">
+                                  <div className={label}>Kategori</div>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-blue-600 hover:underline"
+                                    onClick={() => setOpenCatModal(true)}
+                                    disabled={!catReady}
+                                  >
+                                    Kelola
+                                  </button>
+                                </div>
+
+                                {catReady ? (
+                                  <select
+                                    className={input}
+                                    value={financeForm.kategori}
+                                    onChange={(e) => setFinanceForm((p) => ({ ...p, kategori: e.target.value }))}
+                                  >
+                                    <option value="">Pilih kategori</option>
+                                    {categoryOptions.map((k) => (
+                                      <option key={k} value={k}>
+                                        {k}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    className={input}
+                                    value={financeForm.kategori}
+                                    onChange={(e) => setFinanceForm((p) => ({ ...p, kategori: e.target.value }))}
+                                    placeholder="contoh: SEWA, LISTRIK, GAJI"
+                                  />
+                                )}
                               </div>
+
                               <div>
                                 <div className={label}>Nominal</div>
                                 <input
@@ -1611,6 +1775,7 @@ export default function RekapBulanan() {
                                   placeholder="contoh: 150000"
                                 />
                               </div>
+
                               <div className="md:col-span-2">
                                 <div className={label}>Deskripsi</div>
                                 <input
@@ -1630,6 +1795,10 @@ export default function RekapBulanan() {
                                 Download Excel
                               </button>
                             </div>
+
+                            <div className="mt-3 text-xs text-gray-500">
+                              * Dropdown kategori diambil dari table <b>finance_kategori</b>. Kalau table belum ada, input berubah jadi manual.
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1644,7 +1813,11 @@ export default function RekapBulanan() {
                         </div>
 
                         <div className="flex gap-2">
-                          <button className={btn} onClick={() => setFinancePage((p) => Math.max(1, p - 1))} disabled={financePage <= 1}>
+                          <button
+                            className={btn}
+                            onClick={() => setFinancePage((p) => Math.max(1, p - 1))}
+                            disabled={financePage <= 1}
+                          >
                             Prev
                           </button>
                           <div className="text-sm text-gray-600 self-center">
@@ -1720,6 +1893,115 @@ export default function RekapBulanan() {
 
               {financeLoading && <div className="text-sm text-gray-500 mt-3">Memuat finance tracker...</div>}
             </div>
+
+            {/* ===== Modal Kelola Kategori ===== */}
+            <Modal
+              open={openCatModal}
+              title="Kelola Kategori Finance"
+              onClose={() => {
+                setOpenCatModal(false)
+                setCatEditingId(null)
+                setCatEditingName('')
+              }}
+              wide
+            >
+              {!catReady ? (
+                <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <div className="font-semibold mb-1">Table kategori belum ada</div>
+                  <div className="text-xs">
+                    Buat table <b>finance_kategori</b> di Supabase dulu (kolom minimal: <b>id</b>, <b>nama</b>, <b>created_at</b>),
+                    lalu aktifkan RLS/policy sesuai user kamu.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-2 md:grid-cols-[1fr_auto] items-end mb-4">
+                    <div>
+                      <div className={label}>Tambah Kategori Baru</div>
+                      <input
+                        className={input}
+                        value={catNewName}
+                        onChange={(e) => setCatNewName(e.target.value)}
+                        placeholder="contoh: SEWA, LISTRIK, GAJI"
+                      />
+                    </div>
+                    <button className={btnPrimary} onClick={addCategory}>
+                      Tambah
+                    </button>
+                  </div>
+
+                  <div className="text-xs text-gray-500 mb-2">
+                    Total kategori: <b>{categories.length}</b>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr className="text-gray-600">
+                          <th className="border-b px-3 py-2 text-left">Kategori</th>
+                          <th className="border-b px-3 py-2 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categories.map((c) => (
+                          <tr key={c.id} className="border-b border-gray-200 hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              {catEditingId === c.id ? (
+                                <input
+                                  className={input}
+                                  value={catEditingName}
+                                  onChange={(e) => setCatEditingName(e.target.value)}
+                                />
+                              ) : (
+                                <span className="font-semibold">{(c.nama || '').toString().toUpperCase()}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                              {catEditingId === c.id ? (
+                                <div className="flex justify-end gap-2">
+                                  <button className={btnPrimary} onClick={saveEditCategory}>
+                                    Simpan
+                                  </button>
+                                  <button
+                                    className={btn}
+                                    onClick={() => {
+                                      setCatEditingId(null)
+                                      setCatEditingName('')
+                                    }}
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex justify-end gap-3">
+                                  <button className="text-blue-600 hover:underline" onClick={() => startEditCategory(c)}>
+                                    Edit
+                                  </button>
+                                  <button className="text-red-600 hover:underline" onClick={() => deleteCategory(c.id)}>
+                                    Hapus
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {categories.length === 0 && (
+                          <tr>
+                            <td colSpan={2} className="px-3 py-6 text-center text-gray-500">
+                              Belum ada kategori.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-3 text-xs text-gray-500">
+                    Catatan: menghapus kategori tidak menghapus transaksi finance yang sudah tersimpan.
+                  </div>
+                </>
+              )}
+            </Modal>
           </>
         )}
       </div>
