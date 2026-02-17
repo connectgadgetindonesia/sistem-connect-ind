@@ -53,7 +53,71 @@ const formatRupiahInput = (n) => {
   return 'Rp ' + x.toLocaleString('id-ID')
 }
 
-// hitung total (ikuti invoicepdf.jsx)
+// ======================
+// ✅ MEMBERSHIP / POINTS RULES
+// (disamakan dengan membership.js)
+// ======================
+const POINT_RATE = 0.005 // 0.5%
+const THRESHOLD_GOLD_OMZET = 50_000_000
+const THRESHOLD_PLATINUM_OMZET = 100_000_000
+const THRESHOLD_GOLD_UNIT_TRX = 3
+const THRESHOLD_PLATINUM_UNIT_TRX = 5
+const EXPIRY_DAYS = 365
+
+const normalizeWa = (no_wa) => {
+  const raw = safe(no_wa)
+  if (!raw) return ''
+  return raw.replace(/[^\d+]/g, '')
+}
+
+function isUnitRow(r) {
+  const storage = safe(r?.storage)
+  const garansi = safe(r?.garansi)
+  return Boolean(storage || garansi)
+}
+
+function getTier({ omzetRolling, unitTrxRolling }) {
+  const omz = toNumber(omzetRolling)
+  const trxUnit = toNumber(unitTrxRolling)
+
+  if (trxUnit >= THRESHOLD_PLATINUM_UNIT_TRX || omz >= THRESHOLD_PLATINUM_OMZET) return 'PLATINUM'
+  if (trxUnit >= THRESHOLD_GOLD_UNIT_TRX || omz >= THRESHOLD_GOLD_OMZET) return 'GOLD'
+  return 'SILVER'
+}
+
+function getTierBenefits(tier) {
+  const t = String(tier || 'SILVER').toUpperCase()
+  if (t === 'PLATINUM') {
+    return [
+      'Prioritas info stok & promo tertentu (jika tersedia)',
+      'Prioritas bantuan fast response',
+      'Kesempatan penawaran khusus member tertentu (jika ada)',
+    ]
+  }
+  if (t === 'GOLD') {
+    return [
+      'Info promo member tertentu (jika tersedia)',
+      'Prioritas antrian (jika ramai)',
+      'Kesempatan penawaran khusus member tertentu (jika ada)',
+    ]
+  }
+  return [
+    'Mendapatkan point dari transaksi',
+    'Bisa naik level membership otomatis sesuai total transaksi',
+    'Akses info promo member (jika tersedia)',
+  ]
+}
+
+function formatDateIndo(ymdOrIso) {
+  if (!ymdOrIso) return ''
+  const d = dayjs(ymdOrIso)
+  if (!d.isValid()) return String(ymdOrIso)
+  return d.format('DD/MM/YYYY')
+}
+
+// ======================
+// ✅ compute total (ikuti invoicepdf.jsx)
+// ======================
 function computeTotals(rows = []) {
   const data = Array.isArray(rows) ? rows : []
 
@@ -74,6 +138,7 @@ function computeTotals(rows = []) {
 
 /**
  * ✅ TEMPLATE EMAIL INVOICE (HTML) — MOBILE SAFE
+ * ✅ + Membership & Points block
  */
 function buildInvoiceEmailTemplate(payload) {
   const {
@@ -86,6 +151,9 @@ function buildInvoiceEmailTemplate(payload) {
     subtotal = 0,
     discount = 0,
     total = 0,
+
+    // ✅ injected
+    membership = null,
   } = payload || {}
 
   const itemCards =
@@ -194,6 +262,62 @@ function buildInvoiceEmailTemplate(payload) {
         </tr>
       `
 
+  // ✅ membership block
+  const membershipBlock = (() => {
+    if (!membership) return ''
+    const earned = toNumber(membership.earned_points)
+    const totalPts = toNumber(membership.total_points)
+    const tier = safe(membership.tier || 'SILVER')
+    const expireAt = safe(membership.expire_at || '')
+    const benefits = Array.isArray(membership.benefits) ? membership.benefits : []
+
+    const expText = expireAt
+      ? `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
+      : `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
+
+    const benefitRows =
+      benefits.length > 0
+        ? benefits
+            .map(
+              (b) => `
+              <tr>
+                <td style="vertical-align:top; padding:3px 0; width:16px; color:#111827; font-weight:900;">•</td>
+                <td style="padding:3px 0; color:#374151; font-size:13px; line-height:1.6;">${safe(b)}</td>
+              </tr>
+            `
+            )
+            .join('')
+        : ''
+
+    return `
+      <div style="margin-top:18px; padding:14px 14px; background:#f7f9fc; border:1px solid #e5e7eb; border-radius:14px;">
+        <div style="font-weight:900; color:#111827; font-size:14px;">Membership & Points</div>
+
+        <div style="margin-top:8px; color:#374151; font-size:13px; line-height:1.7;">
+          Selamat! Anda mendapatkan tambahan point <b style="color:#111827;">${formatRupiah(earned)}</b> dari transaksi ini.<br/>
+          Total point Anda sekarang <b style="color:#111827;">${formatRupiah(totalPts)}</b>.<br/>
+          ${expText}<br/>
+          Level membership Anda: <b style="color:#111827;">${tier}</b>.
+        </div>
+
+        ${
+          benefitRows
+            ? `
+            <div style="margin-top:10px; font-weight:800; color:#111827; font-size:13px;">Benefit yang bisa Anda dapatkan:</div>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:6px;">
+              ${benefitRows}
+            </table>
+          `
+            : ''
+        }
+
+        <div style="margin-top:10px; color:#6b7280; font-size:11px; line-height:1.6;">
+          Catatan: Point dihitung dari omzet rolling 365 hari terakhir.
+        </div>
+      </div>
+    `
+  })()
+
   return `
 <!doctype html>
 <html>
@@ -272,6 +396,8 @@ function buildInvoiceEmailTemplate(payload) {
                     </td>
                   </tr>
                 </table>
+
+                ${membershipBlock}
 
                 <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
                   Halo <b style="color:#111827;">${safe(nama_pembeli) || 'Customer'}</b>,<br/>
@@ -848,6 +974,10 @@ export default function EmailPage() {
   const [dataInvoice, setDataInvoice] = useState(null)
   const [htmlBody, setHtmlBody] = useState('')
 
+  // ✅ membership snapshot (for invoice html)
+  const [membershipSnap, setMembershipSnap] = useState(null)
+  const [membershipLoading, setMembershipLoading] = useState(false)
+
   // composer
   const [toEmail, setToEmail] = useState('')
   const [toEmailTouched, setToEmailTouched] = useState(false)
@@ -959,6 +1089,101 @@ export default function EmailPage() {
     }
   }
 
+  // ======================
+  // ✅ MEMBERSHIP SNAPSHOT FETCH
+  // hitung rolling 365 hari sampai tanggal invoice (payload.tanggal)
+  // ======================
+  const fetchMembershipSnapshot = async (invPayload) => {
+    const p = invPayload || {}
+    const invDate = p?.tanggal ? dayjs(p.tanggal) : dayjs()
+    const end = invDate.isValid() ? invDate.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')
+    const start = dayjs(end).subtract(EXPIRY_DAYS, 'day').format('YYYY-MM-DD')
+
+    const wa = normalizeWa(p.no_wa)
+    const nama = safe(p.nama_pembeli).toUpperCase()
+
+    if (!wa && !nama) return null
+
+    setMembershipLoading(true)
+    try {
+      let q = supabase
+        .from('penjualan_baru')
+        .select('invoice_id,tanggal,harga_jual,qty,storage,garansi,no_wa,nama_pembeli,is_bonus')
+        .gte('tanggal', start)
+        .lte('tanggal', end)
+        .eq('is_bonus', false)
+        .order('tanggal', { ascending: false })
+        .limit(5000)
+
+      if (wa) {
+        q = q.eq('no_wa', wa)
+      } else {
+        q = q.eq('nama_pembeli', nama)
+      }
+
+      const { data, error } = await q
+      if (error) throw error
+
+      const rows = Array.isArray(data) ? data : []
+      if (!rows.length) {
+        return {
+          earned_points: Math.floor(toNumber(p.total) * POINT_RATE),
+          total_points: Math.floor(toNumber(p.total) * POINT_RATE),
+          tier: 'SILVER',
+          expire_at: null,
+          benefits: getTierBenefits('SILVER'),
+        }
+      }
+
+      let omzet = 0
+      let oldest = null
+      const unitInv = new Set()
+
+      for (const r of rows) {
+        const qty = Math.max(1, toNumber(r.qty))
+        omzet += toNumber(r.harga_jual) * qty
+
+        const d = dayjs(r.tanggal)
+        if (d.isValid()) {
+          if (!oldest) oldest = d
+          else if (d.isBefore(oldest)) oldest = d
+        }
+
+        if (isUnitRow(r)) {
+          const inv = safe(r.invoice_id)
+          if (inv) unitInv.add(inv)
+        }
+      }
+
+      const tier = getTier({ omzetRolling: omzet, unitTrxRolling: unitInv.size })
+      const totalPoints = Math.floor(omzet * POINT_RATE)
+
+      const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
+
+      const expireAt = oldest && oldest.isValid() ? oldest.add(EXPIRY_DAYS, 'day').format('YYYY-MM-DD') : null
+
+      return {
+        earned_points: earnedPoints,
+        total_points: totalPoints,
+        tier,
+        expire_at: expireAt,
+        benefits: getTierBenefits(tier),
+      }
+    } catch (e) {
+      console.warn('fetchMembershipSnapshot error:', e?.message || e)
+      // fallback minimal
+      return {
+        earned_points: Math.floor(toNumber(invPayload?.total) * POINT_RATE),
+        total_points: null,
+        tier: null,
+        expire_at: null,
+        benefits: null,
+      }
+    } finally {
+      setMembershipLoading(false)
+    }
+  }
+
   // ===== build HTML based on mode =====
   useEffect(() => {
     if (mode === 'invoice') {
@@ -966,14 +1191,34 @@ export default function EmailPage() {
         setHtmlBody('')
         return
       }
-      setHtmlBody(buildInvoiceEmailTemplate(dataInvoice))
+      setHtmlBody(
+        buildInvoiceEmailTemplate({
+          ...dataInvoice,
+          membership: membershipSnap,
+        })
+      )
       return
     }
 
     const payload = getOfferPayload()
     setHtmlBody(buildOfferEmailTemplate(payload))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail])
+  }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail, membershipSnap])
+
+  // ✅ update membership snapshot ketika invoice berubah
+  useEffect(() => {
+    const run = async () => {
+      if (mode !== 'invoice') return
+      if (!dataInvoice?.invoice_id) {
+        setMembershipSnap(null)
+        return
+      }
+      const snap = await fetchMembershipSnapshot(dataInvoice)
+      setMembershipSnap(snap)
+    }
+    run()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, dataInvoice?.invoice_id])
 
   // ✅ auto-generate offerId saat masuk mode offer + kosong
   useEffect(() => {
@@ -1287,7 +1532,7 @@ export default function EmailPage() {
       tanggal_raw: inv.tanggal_raw,
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
-      no_wa: inv.no_wa || '',
+      no_wa: normalizeWa(inv.no_wa || '') || inv.no_wa || '',
       email: inv.email || '',
 
       email_sent_count: inv.email_sent_count || 0,
@@ -1653,6 +1898,33 @@ export default function EmailPage() {
           </div>
         </div>
 
+        {/* ✅ Membership quick status */}
+        <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] text-gray-500">Membership</div>
+            <div className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">
+              {membershipLoading ? 'Menghitung...' : membershipSnap?.tier || '-'}
+            </div>
+          </div>
+          <div className="mt-1 text-xs text-gray-600">
+            {membershipLoading ? (
+              <>Sedang hitung points rolling...</>
+            ) : membershipSnap ? (
+              <>
+                Earned: <b>{formatRupiah(membershipSnap.earned_points || 0)}</b> • Total: <b>{formatRupiah(membershipSnap.total_points || 0)}</b>
+                {membershipSnap.expire_at ? (
+                  <>
+                    {' '}
+                    • Exp: <b>{formatDateIndo(membershipSnap.expire_at)}</b>
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <>-</>
+            )}
+          </div>
+        </div>
+
         {historyEnabled ? (
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="flex items-center justify-between gap-2">
@@ -1687,7 +1959,7 @@ export default function EmailPage() {
         )}
       </div>
     )
-  }, [mode, dataInvoice, historyEnabled])
+  }, [mode, dataInvoice, historyEnabled, membershipSnap, membershipLoading])
 
   // default subject per mode
   useEffect(() => {
