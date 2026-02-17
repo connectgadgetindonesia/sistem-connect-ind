@@ -61,6 +61,14 @@ const dropOneLevel = (level) => {
   return 'SILVER'
 }
 
+// badge style membership
+const membershipBadge = (lvl) => {
+  const up = (lvl || 'SILVER').toString().trim().toUpperCase()
+  if (up === 'PLATINUM') return 'bg-slate-900 text-white'
+  if (up === 'GOLD') return 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+  return 'bg-gray-100 text-gray-800 border border-gray-200' // SILVER
+}
+
 // Membership dihitung dari UNIT saja (stok SN)
 function calcLevelByUnitPerYear({ unitCount, nominalUnit }) {
   const c = toNumber(unitCount)
@@ -204,6 +212,10 @@ export default function Penjualan() {
   const [poinAktif, setPoinAktif] = useState(0)
   const [usePoinDisplay, setUsePoinDisplay] = useState('')
   const [usePoin, setUsePoin] = useState(0)
+
+  // ✅ NEW: badge membership & poin earned (auto)
+  const [membershipLevel, setMembershipLevel] = useState('SILVER')
+  const [poinAkanDidapat, setPoinAkanDidapat] = useState(0)
 
   // ====== OPTIONS SN/SKU ======
   useEffect(() => {
@@ -364,6 +376,7 @@ export default function Penjualan() {
           setPoinAktif(0)
           setUsePoin(0)
           setUsePoinDisplay('')
+          setMembershipLevel('SILVER')
           return
         }
 
@@ -378,6 +391,20 @@ export default function Penjualan() {
         const bal = await getPointBalance(cid, onDate)
         setPoinAktif(bal)
 
+        // ✅ ambil membership level tahun berjalan untuk badge
+        const trxYear = parseInt(dayjs(onDate).format('YYYY'), 10)
+        const { data: myYear, error: myYearErr } = await supabase
+          .from('membership_yearly')
+          .select('level')
+          .eq('customer_id', cid)
+          .eq('tahun', trxYear)
+          .maybeSingle()
+
+        if (!myYearErr) {
+          const lvl = (myYear?.level || 'SILVER').toString().toUpperCase()
+          setMembershipLevel(LEVELS.includes(lvl) ? lvl : 'SILVER')
+        }
+
         // kalau poin yang sudah diinput melebihi limit setelah customer berubah, auto clamp
         const maxUse = Math.floor(bal * 0.5)
         if (usePoin > maxUse) {
@@ -389,6 +416,7 @@ export default function Penjualan() {
         // jangan ganggu flow input, tapi reset display poin
         setLoyaltyCustomerId(null)
         setPoinAktif(0)
+        setMembershipLevel('SILVER')
       }
     }
 
@@ -587,6 +615,11 @@ export default function Penjualan() {
 
   const poinDipakaiFinal = Math.max(0, Math.min(toNumber(usePoin), maxPoinDipakai))
   const totalAkhirBayar = Math.max(0, totalSetelahDiskonManual - poinDipakaiFinal)
+
+  // ✅ AUTO: poin akan didapat selalu ngikut total akhir bayar
+  useEffect(() => {
+    setPoinAkanDidapat(Math.floor(toNumber(totalAkhirBayar) * 0.005))
+  }, [totalAkhirBayar])
 
   const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
   const isOfficeSKUBonus = (bonusBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
@@ -907,6 +940,8 @@ export default function Penjualan() {
       setUsePoinDisplay('')
       setPoinAktif(0)
       setLoyaltyCustomerId(null)
+      setMembershipLevel('SILVER')
+      setPoinAkanDidapat(0)
     } catch (err) {
       console.error(err)
       alert(err?.message || 'Terjadi error saat simpan.')
@@ -1067,11 +1102,18 @@ export default function Penjualan() {
                 {/* LOYALTY CARD */}
                 <div className="md:col-span-2 mt-2">
                   <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="text-sm">
-                        <div className="font-semibold">Loyalty</div>
-                        <div className="text-xs text-gray-600">
-                          Poin aktif: <b>{toNumber(poinAktif).toLocaleString('id-ID')}</b> • Maks pakai: <b>{toNumber(maxPoinDipakai).toLocaleString('id-ID')}</b>
+                        <div className="flex items-center gap-2">
+                          <div className="font-semibold">Loyalty</div>
+                          <span className={`text-[11px] px-2 py-1 rounded-full font-semibold ${membershipBadge(membershipLevel)}`}>
+                            {membershipLevel}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          Poin aktif: <b>{toNumber(poinAktif).toLocaleString('id-ID')}</b> • Maks pakai:{' '}
+                          <b>{toNumber(maxPoinDipakai).toLocaleString('id-ID')}</b> • Poin akan didapat:{' '}
+                          <b>{toNumber(poinAkanDidapat).toLocaleString('id-ID')}</b>
                         </div>
                       </div>
                       <div className="text-xs text-gray-600">0.5% poin • Expired 1 tahun</div>
@@ -1288,7 +1330,7 @@ export default function Penjualan() {
               </div>
 
               <div className="mt-3 text-xs text-gray-600">
-                Poin akan didapat: <b>{Math.floor(totalAkhirBayar * 0.005).toLocaleString('id-ID')}</b>
+                Poin akan didapat: <b>{toNumber(poinAkanDidapat).toLocaleString('id-ID')}</b>
               </div>
             </div>
 
