@@ -19,15 +19,6 @@ const formatIDR = (val) => {
   return n ? n.toLocaleString('id-ID') : ''
 }
 
-// ✅ NEW: NORMALIZE WA (biar loyalty tidak ke-split karena 62/+62/spasi)
-const normalizeWA = (v) => {
-  let s = String(v || '').trim()
-  if (!s) return ''
-  s = s.replace(/[^\d]/g, '') // digits only
-  if (s.startsWith('62')) s = '0' + s.slice(2) // 62xxxx => 0xxxx
-  return s
-}
-
 const KARYAWAN = ['ERICK', 'SATRIA', 'ALVIN']
 const SKU_OFFICE = 'OFC-365-1'
 
@@ -60,7 +51,7 @@ const selectStyles = {
 }
 
 // ======================
-// LOYALTY HELPERS
+// LOYALTY / MEMBERSHIP HELPERS
 // ======================
 const LEVELS = ['SILVER', 'GOLD', 'PLATINUM']
 const dropOneLevel = (level) => {
@@ -70,23 +61,41 @@ const dropOneLevel = (level) => {
   return 'SILVER'
 }
 
-// Membership dihitung dari UNIT saja (stok SN)
+// Membership (internal penjualan.js) dihitung dari UNIT saja (stok SN)
 function calcLevelByUnitPerYear({ unitCount, nominalUnit }) {
   const c = toNumber(unitCount)
   const n = toNumber(nominalUnit)
 
-  // ✅ Threshold aman & realistis (per tahun) — bisa kamu ubah kapan saja:
-  // GOLD: >=2 unit ATAU >= 50jt
-  // PLATINUM: >=4 unit ATAU >= 120jt
   if (c >= 4 || n >= 120_000_000) return 'PLATINUM'
   if (c >= 2 || n >= 50_000_000) return 'GOLD'
   return 'SILVER'
 }
 
+// === Membership.js Tier (rolling omzet 365 hari) — biar badge di penjualan sinkron ===
+const POINT_RATE = 0.005
+const TIERS = [
+  { name: 'PLATINUM', minOmzet: 250_000_000 },
+  { name: 'GOLD', minOmzet: 120_000_000 },
+  { name: 'SILVER', minOmzet: 50_000_000 },
+  { name: 'BRONZE', minOmzet: 0 }
+]
+function getTierByRollingOmzet(omzetRolling) {
+  const x = toNumber(omzetRolling)
+  for (const t of TIERS) {
+    if (x >= t.minOmzet) return t.name
+  }
+  return 'BRONZE'
+}
+function normalizeWa(no_wa) {
+  const raw = String(no_wa || '').trim()
+  if (!raw) return ''
+  return raw.replace(/[^\d+]/g, '')
+}
+
 // Cari / create customer loyalty berdasarkan no_wa + nama
 async function upsertLoyaltyCustomer({ nama, no_wa, email }) {
   const namaUp = (nama || '').toString().trim().toUpperCase()
-  const wa = normalizeWA(no_wa) // ✅ FIX
+  const wa = (no_wa || '').toString().trim()
   const em = (email || '').toString().trim().toLowerCase()
 
   if (!namaUp) throw new Error('Nama pembeli kosong (loyalty_customer).')
@@ -104,7 +113,6 @@ async function upsertLoyaltyCustomer({ nama, no_wa, email }) {
 
   if (existing && existing.length > 0) {
     const id = existing[0].id
-    // update nama/email kalau berubah
     const patch = {
       nama_pembeli: namaUp,
       no_wa: wa,
@@ -132,13 +140,44 @@ async function upsertLoyaltyCustomer({ nama, no_wa, email }) {
   return ins.id
 }
 
-// Ambil saldo poin aktif per tanggal
+// Ambil saldo poin aktif per tanggal (ledger balance)
 async function getPointBalance(customerId, onDate) {
   if (!customerId) return 0
   const d = onDate || dayjs().format('YYYY-MM-DD')
   const { data, error } = await supabase.rpc('get_point_balance', { p_customer: customerId, p_on_date: d })
   if (error) throw new Error(`Gagal get_point_balance: ${error.message}`)
   return toNumber(data || 0)
+}
+
+// Ambil rolling omzet 365 hari dari penjualan_baru (untuk badge tier + estimasi points)
+async function getRollingOmzet365ByWa(no_wa) {
+  const wa = normalizeWa(no_wa)
+  if (!wa) return { omzet: 0, pointsEst: 0, tier: 'BRONZE' }
+
+  const end = dayjs().format('YYYY-MM-DD')
+  const start = dayjs().subtract(365, 'day').format('YYYY-MM-DD')
+
+  // Ambil yang berbayar saja (is_bonus false)
+  const { data, error } = await supabase
+    .from('penjualan_baru')
+    .select('harga_jual, qty, no_wa, tanggal, is_bonus')
+    .gte('tanggal', start)
+    .lte('tanggal', end)
+    .eq('is_bonus', false)
+    .eq('no_wa', wa)
+    .limit(50000)
+
+  if (error) throw new Error(`Gagal load rolling omzet: ${error.message}`)
+
+  const omzet = (data || []).reduce((acc, r) => {
+    const q = Math.max(1, toNumber(r.qty))
+    return acc + toNumber(r.harga_jual) * q
+  }, 0)
+
+  const tier = getTierByRollingOmzet(omzet)
+  const pointsEst = Math.floor(omzet * POINT_RATE)
+
+  return { omzet, pointsEst, tier }
 }
 
 // ======================
@@ -210,7 +249,14 @@ export default function Penjualan() {
   // LOYALTY UI STATES
   // ======================
   const [loyaltyCustomerId, setLoyaltyCustomerId] = useState(null)
+
+  // saldo ledger (yang bisa diredeem)
   const [poinAktif, setPoinAktif] = useState(0)
+
+  // estimasi points rolling (info + sinkron membership.js)
+  const [poinEstimasiRolling, setPoinEstimasiRolling] = useState(0)
+  const [tierRolling, setTierRolling] = useState('BRONZE')
+
   const [usePoinDisplay, setUsePoinDisplay] = useState('')
   const [usePoin, setUsePoin] = useState(0)
 
@@ -253,7 +299,7 @@ export default function Penjualan() {
       const map = new Map()
       ;(data || []).forEach((r) => {
         const nama = (r.nama_pembeli || '').toString().trim().toUpperCase()
-        const wa = normalizeWA(r.no_wa || '') // ✅ FIX
+        const wa = (r.no_wa || '').toString().trim()
         if (!nama) return
         const key = `${nama}__${wa}`
         if (!map.has(key)) {
@@ -297,7 +343,7 @@ export default function Penjualan() {
 
       const opts = (data || []).map((r) => {
         const nama = (r.nama || r.nama_pembeli || '').toString().trim().toUpperCase()
-        const wa = normalizeWA(r.no_wa || '') // ✅ FIX
+        const wa = (r.no_wa || '').toString().trim()
         const alamat = (r.alamat || '').toString().trim()
         const email = (r.email || '').toString().trim().toLowerCase()
 
@@ -344,7 +390,7 @@ export default function Penjualan() {
         ...prev,
         nama_pembeli: c.nama || '',
         alamat: c.alamat || '',
-        no_wa: normalizeWA(c.no_wa || ''), // ✅ FIX
+        no_wa: c.no_wa || '',
         email: c.email || ''
       }))
       setSelectedIndent(null)
@@ -355,27 +401,31 @@ export default function Penjualan() {
         ...prev,
         nama_pembeli: i.nama || '',
         alamat: i.alamat || '',
-        no_wa: normalizeWA(i.no_wa || ''), // ✅ FIX
+        no_wa: i.no_wa || '',
         email: i.email || ''
       }))
       setSelectedCustomer(null)
     }
   }, [buyerTab, selectedCustomer, selectedIndent])
 
-  // ====== LOAD LOYALTY CUSTOMER + POIN BALANCE (berdasarkan form tanggal) ======
+  // ====== LOAD LOYALTY CUSTOMER + POIN BALANCE + TIER ROLLING ======
   useEffect(() => {
     async function hydrateLoyalty() {
       try {
         const nama = (formData.nama_pembeli || '').toString().trim()
-        const wa = normalizeWA(formData.no_wa || '') // ✅ FIX
+        const wa = (formData.no_wa || '').toString().trim()
+
         if (!nama || !wa) {
           setLoyaltyCustomerId(null)
           setPoinAktif(0)
+          setPoinEstimasiRolling(0)
+          setTierRolling('BRONZE')
           setUsePoin(0)
           setUsePoinDisplay('')
           return
         }
 
+        // upsert customer loyalty
         const cid = await upsertLoyaltyCustomer({
           nama,
           no_wa: wa,
@@ -383,10 +433,30 @@ export default function Penjualan() {
         })
         setLoyaltyCustomerId(cid)
 
+        // saldo ledger redeem
         const onDate = formData.tanggal || dayjs().format('YYYY-MM-DD')
-        const bal = await getPointBalance(cid, onDate)
-        setPoinAktif(bal)
+        let bal = 0
+        try {
+          bal = await getPointBalance(cid, onDate)
+        } catch (e) {
+          console.error(e)
+          bal = 0
+        }
+        setPoinAktif(toNumber(bal))
 
+        // rolling tier + estimasi points (sinkron membership.js)
+        try {
+          const roll = await getRollingOmzet365ByWa(wa)
+          setPoinEstimasiRolling(toNumber(roll.pointsEst))
+          setTierRolling(roll.tier || 'BRONZE')
+        } catch (e) {
+          console.error(e)
+          setPoinEstimasiRolling(0)
+          setTierRolling('BRONZE')
+        }
+
+        // clamp poin input sesuai max redeem
+        // (max redeem = 50% dari saldo ledger, bukan estimasi)
         const maxUse = Math.floor(toNumber(bal) * 0.5)
         if (usePoin > maxUse) {
           setUsePoin(maxUse)
@@ -396,6 +466,8 @@ export default function Penjualan() {
         console.error(e)
         setLoyaltyCustomerId(null)
         setPoinAktif(0)
+        setPoinEstimasiRolling(0)
+        setTierRolling('BRONZE')
       }
     }
 
@@ -586,6 +658,7 @@ export default function Penjualan() {
   const sumDiskonInvoiceManual = Math.min(toNumber(diskonInvoice), sumHarga)
   const totalSetelahDiskonManual = Math.max(0, sumHarga - sumDiskonInvoiceManual)
 
+  // ✅ max redeem dihitung dari saldo ledger (yang bisa dipakai)
   const maxPoinDipakai = useMemo(() => {
     const bal = toNumber(poinAktif)
     const limit50 = Math.floor(bal * 0.5)
@@ -621,7 +694,7 @@ export default function Penjualan() {
 
       // ✅ Pastikan punya customer_id (loyalty)
       const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
-      const waTrim = normalizeWA(formData.no_wa || '') // ✅ FIX
+      const waTrim = normalizeWa(formData.no_wa)
       const emailLower = (formData.email || '').toString().trim().toLowerCase()
 
       const customerId =
@@ -668,7 +741,7 @@ export default function Penjualan() {
       }))
 
       // ======================
-      // DISKON TOTAL = diskon manual + poin dipakai (lebih akurat)
+      // DISKON TOTAL = diskon manual + poin dipakai
       // ======================
       const diskonManual = toNumber(diskonInvoice)
       const diskonTotal = Math.min(sumHarga, diskonManual + poinDipakaiFinal)
@@ -694,7 +767,7 @@ export default function Penjualan() {
       }
 
       // ======================
-      // Tentukan level tahun berjalan
+      // Tentukan level tahun berjalan:
       // ======================
       let currentLevel = 'SILVER'
       let curUnitCount = 0
@@ -815,6 +888,7 @@ export default function Penjualan() {
 
         const rowToInsert = {
           ...formData,
+          tanggal: trxDate,
           nama_pembeli: namaUpper,
           alamat: (formData.alamat || '').toString().trim(),
           no_wa: waTrim,
@@ -833,7 +907,8 @@ export default function Penjualan() {
           laba,
           invoice_id: invoice,
           diskon_invoice: diskonTotal,
-          diskon_item
+          diskon_item,
+          qty: 1 // karena di-expand per qty
         }
 
         if (!wroteLoyaltyMeta) {
@@ -904,6 +979,8 @@ export default function Penjualan() {
       setUsePoin(0)
       setUsePoinDisplay('')
       setPoinAktif(0)
+      setPoinEstimasiRolling(0)
+      setTierRolling('BRONZE')
       setLoyaltyCustomerId(null)
     } catch (err) {
       console.error(err)
@@ -912,6 +989,15 @@ export default function Penjualan() {
       setSubmitting(false)
     }
   }
+
+  // UI helper: warna badge tier
+  const tierBadgeClass = useMemo(() => {
+    const t = (tierRolling || 'BRONZE').toUpperCase()
+    if (t === 'PLATINUM') return 'bg-slate-900 text-white'
+    if (t === 'GOLD') return 'bg-amber-500 text-white'
+    if (t === 'SILVER') return 'bg-gray-700 text-white'
+    return 'bg-gray-200 text-gray-900'
+  }, [tierRolling])
 
   return (
     <Layout>
@@ -1002,12 +1088,7 @@ export default function Penjualan() {
 
                 <div>
                   <div className={label}>No. WA</div>
-                  <input
-                    className={input}
-                    value={formData.no_wa}
-                    onChange={(e) => setFormData({ ...formData, no_wa: normalizeWA(e.target.value) })} // ✅ FIX
-                    required
-                  />
+                  <input className={input} value={formData.no_wa} onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })} required />
                 </div>
 
                 <div className="md:col-span-2">
@@ -1070,14 +1151,27 @@ export default function Penjualan() {
                 {/* LOYALTY CARD */}
                 <div className="md:col-span-2 mt-2">
                   <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="text-sm">
-                        <div className="font-semibold">Loyalty</div>
-                        <div className="text-xs text-gray-600">
-                          Poin aktif: <b>{toNumber(poinAktif).toLocaleString('id-ID')}</b> • Maks pakai: <b>{toNumber(maxPoinDipakai).toLocaleString('id-ID')}</b>
+                        <div className="flex items-center gap-2">
+                          <div className="font-semibold">Loyalty</div>
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass}`}>
+                            {tierRolling || 'BRONZE'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-gray-600 mt-1">
+                          Poin aktif (redeem): <b>{toNumber(poinAktif).toLocaleString('id-ID')}</b> • Maks pakai: <b>{toNumber(maxPoinDipakai).toLocaleString('id-ID')}</b>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Estimasi poin (rolling 365 hari): <b>{toNumber(poinEstimasiRolling).toLocaleString('id-ID')}</b>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-600">0.5% poin • Expired 1 tahun</div>
+
+                      <div className="text-xs text-gray-600 text-right">
+                        <div>0.5% poin</div>
+                        <div>Expired 1 tahun</div>
+                      </div>
                     </div>
 
                     <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
@@ -1087,6 +1181,7 @@ export default function Penjualan() {
                           className={input}
                           inputMode="numeric"
                           placeholder={`maks ${toNumber(maxPoinDipakai).toLocaleString('id-ID')}`}
+                          disabled={toNumber(maxPoinDipakai) <= 0}
                           value={usePoinDisplay}
                           onChange={(e) => {
                             const raw = e.target.value
@@ -1095,9 +1190,8 @@ export default function Penjualan() {
                             setUsePoin(clamped)
                             setUsePoinDisplay(clamped ? clamped.toLocaleString('id-ID') : '')
                           }}
-                          disabled={maxPoinDipakai <= 0} // ✅ UX: kalau 0, jangan bikin user bingung
                         />
-                        {maxPoinDipakai <= 0 && (
+                        {toNumber(maxPoinDipakai) <= 0 && (
                           <div className="text-[11px] text-gray-500 mt-1">Belum ada poin aktif / poin tidak cukup.</div>
                         )}
                       </div>
@@ -1107,6 +1201,7 @@ export default function Penjualan() {
                     </div>
                   </div>
                 </div>
+
               </div>
             </div>
 
@@ -1267,7 +1362,9 @@ export default function Penjualan() {
                 </button>
               </div>
 
-              <div className="mt-3 text-xs text-gray-600">Catatan: Diskon total = diskon manual + poin. Biaya dicatat sebagai pengurang laba (harga jual 0).</div>
+              <div className="mt-3 text-xs text-gray-600">
+                Catatan: Diskon total = diskon manual + poin. Biaya dicatat sebagai pengurang laba (harga jual 0).
+              </div>
             </div>
 
             {/* SUBMIT */}
