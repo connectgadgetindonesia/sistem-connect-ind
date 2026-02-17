@@ -334,7 +334,7 @@ function buildInvoiceEmailTemplate(payload) {
         }
 
         <div style="margin-top:10px; color:#6b7280; font-size:11px; line-height:1.6;">
-          Catatan: Point dihitung dari omzet rolling 365 hari terakhir.
+          Catatan: -
         </div>
       </div>
     `
