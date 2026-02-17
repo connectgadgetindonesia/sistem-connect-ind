@@ -109,32 +109,35 @@ export default function MembershipPage() {
   async function fetchData() {
     setLoading(true)
     try {
-      const rollingStart = dayjs(today).subtract(365, 'day').format('YYYY-MM-DD')
-      const rollingEnd = dayjs(today).format('YYYY-MM-DD')
+      const rollingStartISO = dayjs(today).subtract(365, 'day').startOf('day').toISOString()
+      const rollingEndISO = dayjs(today).endOf('day').toISOString()
 
       // ===== penjualan rolling 365 hari (untuk list & tier rolling) =====
       const { data: jual, error: jualErr } = await supabase
         .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus,storage,garansi')
-        .gte('tanggal', rollingStart)
-        .lte('tanggal', rollingEnd)
+        .select(
+          'invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus,storage,garansi'
+        )
+        .gte('tanggal', dayjs(today).subtract(365, 'day').format('YYYY-MM-DD'))
+        .lte('tanggal', dayjs(today).format('YYYY-MM-DD'))
         .eq('is_bonus', false)
         .order('tanggal', { ascending: false })
         .limit(50000)
       if (jualErr) throw jualErr
       setRawRows(Array.isArray(jual) ? jual : [])
 
-      // ===== loy_member_v1 (jangan select kolom spesifik biar gak error schema) =====
+      // ===== loy_member_v1 (select * biar aman schema) =====
       const { data: mem, error: memErr } = await supabase.from('loy_member_v1').select('*').limit(50000)
       if (memErr) throw memErr
       setMemberRows(Array.isArray(mem) ? mem : [])
 
       // ===== ledger valid 365 hari (buat saldo + exp terdekat) =====
+      // ✅ FIX: kolom benar = points_delta (bukan points)
       const { data: led, error: ledErr } = await supabase
         .from('loy_ledger_v1')
-        .select('member_id,entry_type,points,created_at')
-        .gte('created_at', rollingStart)
-        .lte('created_at', dayjs(today).add(1, 'day').format('YYYY-MM-DD'))
+        .select('member_id,entry_type,points_delta,created_at')
+        .gte('created_at', rollingStartISO)
+        .lte('created_at', rollingEndISO)
         .limit(100000)
       if (ledErr) throw ledErr
       setLedgerRows(Array.isArray(led) ? led : [])
@@ -160,9 +163,9 @@ export default function MembershipPage() {
   const memberByWa = useMemo(() => {
     const m = new Map()
     for (const r of memberRows) {
-      const wa = normalizeDigits(r.wa_norm || r.no_wa || r.wa_raw || '')
+      // prioritas wa_norm, fallback wa_raw/no_wa
+      const wa = normalizeDigits(r.wa_norm || r.wa_raw || r.no_wa || '')
       if (!wa) continue
-      // simpan yang paling awal (stabil)
       if (!m.has(wa)) m.set(wa, r)
     }
     return m
@@ -180,11 +183,14 @@ export default function MembershipPage() {
         map.set(mid, { balance: 0, nearestExp: null })
       }
       const b = map.get(mid)
-      b.balance += toNumber(r.points)
+
+      // ✅ FIX: pakai points_delta
+      const delta = toNumber(r.points_delta)
+      b.balance += delta
 
       // nearest expiry diambil dari EARN yang exp paling dekat (created_at + 365)
       const type = String(r.entry_type || '').toUpperCase()
-      if (type === 'EARN' && toNumber(r.points) > 0 && r.created_at) {
+      if (type === 'EARN' && delta > 0 && r.created_at) {
         const earnDate = dayjs(r.created_at)
         if (earnDate.isValid()) {
           const exp = earnDate.add(365, 'day')
@@ -260,7 +266,7 @@ export default function MembershipPage() {
       invCountYear.set(wa, (invCountYear.get(wa) || 0) + 1)
     }
 
-    // build customer map dari rowsRange (tapi WA harus valid angka dan nama bukan blacklist)
+    // build customer map dari rowsRange (WA harus valid & nama bukan blacklist)
     const map = new Map()
 
     for (const r of rowsRange) {
@@ -304,7 +310,7 @@ export default function MembershipPage() {
       if (!it.alamat && r.alamat) it.alamat = r.alamat
     }
 
-    // inject rolling + tier
+    // inject rolling + tier + points
     for (const it of map.values()) {
       it.invoice_range = invCountRange.get(it.key) || 0
       it.invoice_year = invCountYear.get(it.key) || 0
@@ -314,7 +320,7 @@ export default function MembershipPage() {
       it.unit_trx_rolling = roll?.unitInv ? roll.unitInv.size : 0
       it.tier = getTier({ omzetRolling: it.omzet_rolling, unitTrxRolling: it.unit_trx_rolling })
 
-      // points dari ledger valid 365 hari (bukan dari omzet rolling)
+      // points dari ledger valid 365 hari (sum points_delta)
       const mem = memberByWa.get(it.key)
       const agg = mem ? ledgerAggByMember.get(mem.id) : null
       it.points = agg ? Math.max(0, toNumber(agg.balance)) : 0
@@ -535,14 +541,23 @@ export default function MembershipPage() {
           {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b>
+              Menampilkan{' '}
+              <b className="text-gray-900">
+                {showingFrom}–{showingTo}
+              </b>{' '}
+              dari <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1 || loading}
+                type="button"
+              >
                 ‹ Prev
               </button>
 
@@ -566,7 +581,7 @@ export default function MembershipPage() {
         </div>
 
         <div className="text-xs text-gray-500">
-          Catatan: Points aktif dihitung dari <b>loy_ledger_v1</b> dalam <b>365 hari terakhir</b>. “Point exp tgl …” diambil dari transaksi <b>EARN</b> yang masa berlakunya paling dekat habis (earn_date + 365 hari).
+          Catatan: Points aktif dihitung dari <b>loy_ledger_v1</b> dalam <b>365 hari terakhir</b> (sum <b>points_delta</b>). “Point exp tgl …” diambil dari transaksi <b>EARN</b> yang masa berlakunya paling dekat habis (earn_date + 365 hari).
         </div>
       </div>
     </Layout>
