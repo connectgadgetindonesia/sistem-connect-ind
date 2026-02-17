@@ -30,7 +30,10 @@ export default function Layout({ children }) {
     { label: 'Absensi & Tugas', path: '/absensi', icon: CalendarCheck2 },
     { label: 'Stok Barang', path: '/', icon: Package },
     { label: 'Input Penjualan', path: '/penjualan', icon: ShoppingCart },
-    { label: 'Membership & Loyalty', path: '/membership', icon: Users }
+
+    // ✅ FIX: wajib ada koma
+    { label: 'Membership & Loyalty', path: '/membership', icon: Users },
+
     { label: 'Transaksi Indent', path: '/indent', icon: CreditCard },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris', icon: Boxes },
     { label: 'Riwayat Penjualan', path: '/riwayat', icon: ClipboardList },
@@ -83,12 +86,7 @@ export default function Layout({ children }) {
             const Icon = item.icon
 
             return (
-              <Link
-                key={item.path}
-                href={item.path}
-                className="block"
-                onClick={() => onNavigate?.()}
-              >
+              <Link key={item.path} href={item.path} className="block" onClick={() => onNavigate?.()}>
                 <div
                   className={[
                     'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer',
@@ -100,10 +98,9 @@ export default function Layout({ children }) {
 
                   <Icon
                     size={18}
-                    className={[
-                      'shrink-0',
-                      active ? 'text-blue-300' : 'text-slate-300 group-hover:text-white',
-                    ].join(' ')}
+                    className={['shrink-0', active ? 'text-blue-300' : 'text-slate-300 group-hover:text-white'].join(
+                      ' '
+                    )}
                   />
                   <span className={[active ? 'font-semibold' : 'text-slate-200', 'text-sm'].join(' ')}>
                     {item.label}
@@ -114,11 +111,7 @@ export default function Layout({ children }) {
           })}
 
           {/* ✅ Logout persis di bawah Data Customer */}
-          <button
-            type="button"
-            onClick={logout}
-            className="w-full text-left"
-          >
+          <button type="button" onClick={logout} className="w-full text-left">
             <div className="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 hover:bg-red-600/20">
               <LogOut size={18} className="shrink-0 text-red-300 group-hover:text-red-200" />
               <span className="text-sm font-semibold text-red-200 group-hover:text-red-100">Logout</span>
@@ -126,9 +119,7 @@ export default function Layout({ children }) {
           </button>
         </nav>
 
-        <div className="px-4 py-3 text-[11px] text-slate-500">
-          © {new Date().getFullYear()} CONNECT.IND
-        </div>
+        <div className="px-4 py-3 text-[11px] text-slate-500">© {new Date().getFullYear()} CONNECT.IND</div>
       </div>
     </div>
   )
