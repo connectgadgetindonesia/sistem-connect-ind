@@ -68,7 +68,7 @@ function formatInvoiceDateLong(ymdOrIso) {
   return d.format('MMMM D, YYYY')
 }
 
-// ====== build HTML invoice A4 (MODEL CONTOH) ======
+// ====== build HTML invoice A4 ======
 function buildInvoiceA4Html({ invoice_id, rows, totals }) {
   const BLUE = '#2388ff'
   const first = rows?.[0] || {}
@@ -139,18 +139,12 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
   <div id="invoice-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
     <div style="padding:56px 56px 42px 56px; height:100%;">
 
-      <!-- TOP ROW -->
       <div style="display:flex; gap:22px; align-items:flex-start;">
-
-        <!-- ✅ LOGO (WIDTH FIX 360, HEIGHT 132) -->
         <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
           <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
-        <!-- ✅ META STACK (FIX WIDTH 360, TOTAL HEIGHT 132) -->
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
-
-          <!-- INVOICE DATE -->
           <div style="
             height:62px;
             border-radius:8px;
@@ -169,7 +163,6 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
             </div>
           </div>
 
-          <!-- INVOICE NUMBER -->
           <div style="
             height:62px;
             border-radius:8px;
@@ -187,11 +180,9 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
               ${safe(invoice_id)}
             </div>
           </div>
-
         </div>
       </div>
 
-      <!-- BILL ROW -->
       <div style="display:flex; gap:22px; margin-top:22px;">
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill from:</div>
@@ -220,7 +211,6 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
         </div>
       </div>
 
-      <!-- TABLE -->
       <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:8px; overflow:hidden;">
         <table style="width:100%; border-collapse:separate; border-spacing:0;">
           <thead>
@@ -235,7 +225,6 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
         </table>
       </div>
 
-      <!-- TOTALS -->
       <div style="display:flex; justify-content:flex-end; margin-top:24px;">
         <div style="min-width:320px;">
           <div style="display:flex; justify-content:space-between; gap:18px; margin-bottom:12px;">
@@ -254,14 +243,13 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
       </div>
     </div>
 
-    <!-- BOTTOM BAR -->
     <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
 }
 
-// ====== download helpers (ikut pricelist.js) ======
+// ====== download helpers ======
 async function canvasToJpegBlob(canvas, quality = 0.95) {
   return await new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -293,16 +281,14 @@ async function renderHtmlToOffscreen(html) {
   return { wrap, root }
 }
 
-// ====== NEW: util chunk ======
 function chunkArray(arr, size) {
   const out = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
   return out
 }
 
-// ====== NEW: parse point ledger row safely ======
+// ====== parse point_ledger row flex ======
 function parsePointLedgerRow(r) {
-  // attempt to detect "direction" / "type"
   const typeRaw =
     (r?.type || r?.tipe || r?.direction || r?.jenis || r?.kategori || '').toString().trim().toLowerCase()
 
@@ -310,11 +296,8 @@ function parsePointLedgerRow(r) {
   const masuk = toNumber(r?.poin_masuk ?? r?.points_in ?? r?.in ?? 0)
   const keluar = toNumber(r?.poin_keluar ?? r?.points_out ?? r?.out ?? 0)
 
-  // normalize:
-  // - if there is explicit masuk/keluar, use it
   if (masuk > 0 || keluar > 0) return { earned: masuk, used: keluar }
 
-  // - else infer from type
   if (typeRaw.includes('redeem') || typeRaw.includes('pakai') || typeRaw.includes('use') || typeRaw.includes('out')) {
     return { earned: 0, used: Math.abs(poinRaw) }
   }
@@ -322,7 +305,6 @@ function parsePointLedgerRow(r) {
     return { earned: Math.abs(poinRaw), used: 0 }
   }
 
-  // - else infer from sign
   if (poinRaw < 0) return { earned: 0, used: Math.abs(poinRaw) }
   if (poinRaw > 0) return { earned: poinRaw, used: 0 }
 
@@ -348,18 +330,27 @@ export default function RiwayatPenjualan() {
 
   const [page, setPage] = useState(1)
 
-  // ✅ loading per invoice (jpg)
   const [downloading, setDownloading] = useState({}) // { [invoice_id]: true/false }
 
-  // ✅ NEW: POIN per invoice (batch)
+  // poin batch
   const [loadingPoin, setLoadingPoin] = useState(false)
   const [poinByInvoice, setPoinByInvoice] = useState({}) // { [inv]: { earned, used } }
 
-  // ✅ NEW: Loyalty History modal
+  // ledger availability (biar ga spam error)
+  const [ledgerReady, setLedgerReady] = useState(true)
+
+  // modal loyalty
   const [openLoyalty, setOpenLoyalty] = useState(false)
   const [loyaltyInvoice, setLoyaltyInvoice] = useState('')
   const [loyaltyRows, setLoyaltyRows] = useState([])
   const [loadingLoyaltyModal, setLoadingLoyaltyModal] = useState(false)
+  const [loyaltyError, setLoyaltyError] = useState('')
+
+  useEffect(() => {
+    // cek sekali saat load
+    checkLedger()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (mode === 'harian') {
@@ -370,13 +361,29 @@ export default function RiwayatPenjualan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
+  async function checkLedger() {
+    try {
+      // head query, kalau tabel tidak ada -> error -> nonaktif
+      const { error } = await supabase.from('point_ledger').select('id', { head: true, count: 'exact' }).limit(1)
+      if (error) {
+        setLedgerReady(false)
+        return
+      }
+      setLedgerReady(true)
+    } catch {
+      setLedgerReady(false)
+    }
+  }
+
   function groupByInvoice(data) {
     const grouped = {}
     data.forEach((item) => {
-      if (!grouped[item.invoice_id]) {
-        grouped[item.invoice_id] = { ...item, produk: [item] }
+      const inv = (item.invoice_id || '').toString().trim()
+      if (!inv) return
+      if (!grouped[inv]) {
+        grouped[inv] = { ...item, invoice_id: inv, produk: [item] }
       } else {
-        grouped[item.invoice_id].produk.push(item)
+        grouped[inv].produk.push(item)
       }
     })
     return Object.values(grouped)
@@ -392,7 +399,6 @@ export default function RiwayatPenjualan() {
     return uniq.join(', ')
   }
 
-  // ✅ NEW: METODE PEMBAYARAN (per-invoice)
   const getUniqueMetode = (produk = []) => {
     const vals = (produk || [])
       .map((p) => (p?.metode_pembayaran || '').toString().trim().toUpperCase())
@@ -403,14 +409,14 @@ export default function RiwayatPenjualan() {
     return uniq.join(', ')
   }
 
-  // ✅ TOTAL INVOICE
   const totalInvoice = (produk = []) => {
     const { total } = computeInvoiceTotals(produk || [])
     return total
   }
 
-  const totalLaba = (produk = []) => produk.reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
+  const totalLaba = (produk = []) => (produk || []).reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
+  // ====== Kinerja: FIX referral -> referal ======
   const computeKinerjaFromRows = (data = []) => {
     const invMap = new Map()
 
@@ -418,37 +424,40 @@ export default function RiwayatPenjualan() {
       const inv = (r.invoice_id || '').toString().trim()
       if (!inv) continue
 
-      if (!invMap.has(inv)) invMap.set(inv, { dilayani: new Set(), referral: new Set() })
+      if (!invMap.has(inv)) invMap.set(inv, { dilayani: new Set(), referal: new Set() })
       const bucket = invMap.get(inv)
 
       const dil = (r.dilayani_oleh || '').toString().trim().toUpperCase()
       if (dil && dil !== '-') bucket.dilayani.add(dil)
 
-      const ref = (r.referral || '').toString().trim().toUpperCase()
-      if (ref && ref !== '-') bucket.referral.add(ref)
+      const ref = (r.referal || '').toString().trim().toUpperCase()
+      if (ref && ref !== '-') bucket.referal.add(ref)
     }
 
     const emp = new Map()
     for (const [, v] of invMap.entries()) {
       for (const name of v.dilayani) {
-        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referral: 0 })
+        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referal: 0 })
         emp.get(name).dilayani += 1
       }
-      for (const name of v.referral) {
-        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referral: 0 })
-        emp.get(name).referral += 1
+      for (const name of v.referal) {
+        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referal: 0 })
+        emp.get(name).referal += 1
       }
     }
 
-    const arr = Array.from(emp.values()).map((x) => ({ ...x, total: (x.dilayani || 0) + (x.referral || 0) }))
-    arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral)
+    const arr = Array.from(emp.values()).map((x) => ({
+      ...x,
+      total: (x.dilayani || 0) + (x.referal || 0)
+    }))
+    arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referal - a.referal)
     return arr
   }
 
   async function fetchKinerja() {
     setLoadingKinerja(true)
     try {
-      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referral')
+      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referal') // ✅ FIX
 
       if (mode === 'harian') {
         const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
@@ -474,8 +483,13 @@ export default function RiwayatPenjualan() {
     }
   }
 
-  // ✅ NEW: batch fetch poin by invoice_id (AMAN)
+  // ===== poin per invoice (batch) =====
   async function hydratePoinByInvoice(groupedInvoices = []) {
+    if (!ledgerReady) {
+      setPoinByInvoice({})
+      return
+    }
+
     const invoiceIds = clampArray(groupedInvoices)
       .map((x) => (x?.invoice_id || '').toString().trim())
       .filter(Boolean)
@@ -492,7 +506,6 @@ export default function RiwayatPenjualan() {
       let allLedger = []
 
       for (const ch of chunks) {
-        // pakai select('*') biar tidak crash kalau nama kolom beda
         const { data, error } = await supabase.from('point_ledger').select('*').in('invoice_id', ch)
         if (error) throw error
         allLedger = allLedger.concat(data || [])
@@ -510,9 +523,9 @@ export default function RiwayatPenjualan() {
 
       setPoinByInvoice(map)
     } catch (e) {
-      // Jangan bikin halaman error, cukup kosongkan poin
       console.warn('hydratePoinByInvoice skipped/error:', e)
       setPoinByInvoice({})
+      setLedgerReady(false) // ✅ sekali gagal, anggap ledger belum siap biar ga spam
     } finally {
       setLoadingPoin(false)
     }
@@ -531,9 +544,8 @@ export default function RiwayatPenjualan() {
       }
 
       if (filter.search) {
-        query = query.or(
-          `nama_pembeli.ilike.%${filter.search}%,nama_produk.ilike.%${filter.search}%,sn_sku.ilike.%${filter.search}%`
-        )
+        const s = filter.search.replace(/,/g, ' ')
+        query = query.or(`nama_pembeli.ilike.%${s}%,nama_produk.ilike.%${s}%,sn_sku.ilike.%${s}%`)
       }
 
       const { data, error } = await query.order('tanggal', { ascending: false }).order('invoice_id', { ascending: false })
@@ -545,7 +557,6 @@ export default function RiwayatPenjualan() {
       } else {
         const grouped = groupByInvoice(data || [])
         setRows(grouped)
-        // ✅ NEW: poin per invoice (tidak ganggu fungsi lama)
         hydratePoinByInvoice(grouped)
       }
 
@@ -562,23 +573,30 @@ export default function RiwayatPenjualan() {
 
     setLoading(true)
     try {
-      const { data: penjualan } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
+      const { data: penjualan, error: e1 } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
+      if (e1) throw e1
 
+      // restore stok hanya jika sn cocok di tabel stok
       for (const item of penjualan || []) {
-        const { data: stokData } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
-        if (stokData) await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+        const sn = (item.sn_sku || '').toString().trim()
+        if (!sn) continue
+        const { data: stokData } = await supabase.from('stok').select('id').eq('sn', sn).maybeSingle()
+        if (stokData?.id) await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
       }
 
       await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
 
       alert('Data berhasil dihapus!')
       fetchData()
+    } catch (e) {
+      console.error('handleDelete error:', e)
+      alert('Gagal hapus transaksi. Error: ' + (e?.message || String(e)))
     } finally {
       setLoading(false)
     }
   }
 
-  // ====== DOWNLOAD JPG invoice langsung dari RIWAYAT (A4 MODEL BARU) ======
+  // ====== DOWNLOAD JPG invoice langsung dari RIWAYAT ======
   async function downloadInvoiceJpg(invoice_id) {
     if (!invoice_id) return
 
@@ -600,7 +618,6 @@ export default function RiwayatPenjualan() {
       const html = buildInvoiceA4Html({ invoice_id, rows, totals })
       const { wrap, root } = await renderHtmlToOffscreen(html)
 
-      // tunggu logo load
       const imgs = Array.from(wrap.querySelectorAll('img'))
       await Promise.all(
         imgs.map(
@@ -636,13 +653,20 @@ export default function RiwayatPenjualan() {
     }
   }
 
-  // ✅ NEW: open loyalty history modal
+  // ====== Loyalty modal (NO ALERT) ======
   async function openLoyaltyModal(invoice_id) {
     if (!invoice_id) return
     setOpenLoyalty(true)
     setLoyaltyInvoice(invoice_id)
     setLoyaltyRows([])
+    setLoyaltyError('')
     setLoadingLoyaltyModal(true)
+
+    if (!ledgerReady) {
+      setLoadingLoyaltyModal(false)
+      setLoyaltyError('Loyalty History belum aktif. (Tabel point_ledger belum tersedia / belum sesuai).')
+      return
+    }
 
     try {
       const { data, error } = await supabase
@@ -655,8 +679,9 @@ export default function RiwayatPenjualan() {
       setLoyaltyRows(data || [])
     } catch (e) {
       console.error('openLoyaltyModal error:', e)
-      alert('Loyalty History belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
       setLoyaltyRows([])
+      setLedgerReady(false) // stop spam error
+      setLoyaltyError('Loyalty History belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
     } finally {
       setLoadingLoyaltyModal(false)
     }
@@ -666,6 +691,7 @@ export default function RiwayatPenjualan() {
     setOpenLoyalty(false)
     setLoyaltyInvoice('')
     setLoyaltyRows([])
+    setLoyaltyError('')
   }
 
   // ===================== PAGINATION (STOPPER) =====================
@@ -694,7 +720,9 @@ export default function RiwayatPenjualan() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Riwayat Penjualan CONNECT.IND</h1>
             <div className="text-sm text-gray-600">Mode harian untuk hari ini, mode history untuk periode tertentu.</div>
-            <div className="text-xs text-gray-500 mt-1">Poin: {loadingPoin ? 'memuat…' : 'aktif'}</div>
+            <div className="text-xs text-gray-500 mt-1">
+              Poin: {ledgerReady ? (loadingPoin ? 'memuat…' : 'aktif') : 'nonaktif'}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -785,7 +813,7 @@ export default function RiwayatPenjualan() {
           </div>
         </div>
 
-        {/* ✅ KINERJA */}
+        {/* KINERJA */}
         <div className={`${card} mb-4 overflow-hidden`}>
           <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
             <div className="font-semibold text-gray-900">Kinerja Karyawan</div>
@@ -798,7 +826,7 @@ export default function RiwayatPenjualan() {
                 <tr className="text-gray-600">
                   <th className="px-4 py-3 text-left">Nama</th>
                   <th className="px-4 py-3 text-center">Dilayani (Invoice)</th>
-                  <th className="px-4 py-3 text-center">Referral (Invoice)</th>
+                  <th className="px-4 py-3 text-center">Referal (Invoice)</th>
                   <th className="px-4 py-3 text-center">Total</th>
                 </tr>
               </thead>
@@ -816,7 +844,7 @@ export default function RiwayatPenjualan() {
                     <tr key={k.nama} className="border-t border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3 font-semibold text-gray-900">{k.nama}</td>
                       <td className="px-4 py-3 text-center">{k.dilayani}</td>
-                      <td className="px-4 py-3 text-center">{k.referral}</td>
+                      <td className="px-4 py-3 text-center">{k.referal}</td>
                       <td className="px-4 py-3 text-center font-bold text-gray-900">{k.total}</td>
                     </tr>
                   ))}
@@ -852,12 +880,9 @@ export default function RiwayatPenjualan() {
                   <th className="px-4 py-3 text-left min-w-[320px]">Produk</th>
                   <th className="px-4 py-3 text-left">Metode Bayar</th>
                   <th className="px-4 py-3 text-left">Dilayani</th>
-                  <th className="px-4 py-3 text-left">Referral</th>
-
-                  {/* ✅ NEW */}
+                  <th className="px-4 py-3 text-left">Referal</th>
                   <th className="px-4 py-3 text-right">Poin Dapat</th>
                   <th className="px-4 py-3 text-right">Poin Pakai</th>
-
                   <th className="px-4 py-3 text-right">Harga Jual</th>
                   <th className="px-4 py-3 text-right">Laba</th>
                   <th className="px-4 py-3 text-left w-[190px]">Aksi</th>
@@ -889,7 +914,7 @@ export default function RiwayatPenjualan() {
                           <button
                             className={btnMini}
                             type="button"
-                            disabled={loading || busy || loadingPoin}
+                            disabled={loading || busy}
                             onClick={() => openLoyaltyModal(inv)}
                             title="Lihat detail poin (earn/redeem) untuk invoice ini"
                           >
@@ -917,9 +942,8 @@ export default function RiwayatPenjualan() {
                       </td>
 
                       <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
-                      <td className="px-4 py-3">{getUniqueText(item.produk, 'referral')}</td>
+                      <td className="px-4 py-3">{getUniqueText(item.produk, 'referal')}</td>
 
-                      {/* ✅ NEW: poin */}
                       <td className="px-4 py-3 text-right tabular-nums">
                         {earned === null ? '-' : earned.toLocaleString('id-ID')}
                       </td>
@@ -968,7 +992,7 @@ export default function RiwayatPenjualan() {
             </table>
           </div>
 
-          {/* ✅ PAGINATION BAR (STOPPER) */}
+          {/* PAGINATION */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
               Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
@@ -1012,7 +1036,7 @@ export default function RiwayatPenjualan() {
           </div>
         </div>
 
-        {/* ✅ MODAL: Loyalty History */}
+        {/* MODAL: Loyalty History */}
         {openLoyalty && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
             <div className={`${card} w-full max-w-2xl`}>
@@ -1031,13 +1055,17 @@ export default function RiwayatPenjualan() {
                   <div className="py-10 text-center text-gray-500 text-sm">Memuat data loyalty…</div>
                 )}
 
-                {!loadingLoyaltyModal && loyaltyRows.length === 0 && (
-                  <div className="py-10 text-center text-gray-500 text-sm">
-                    Tidak ada data loyalty untuk invoice ini (atau tabel/kolom belum siap).
+                {!loadingLoyaltyModal && !!loyaltyError && (
+                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
+                    {loyaltyError}
                   </div>
                 )}
 
-                {!loadingLoyaltyModal && loyaltyRows.length > 0 && (
+                {!loadingLoyaltyModal && !loyaltyError && loyaltyRows.length === 0 && (
+                  <div className="py-10 text-center text-gray-500 text-sm">Tidak ada data loyalty untuk invoice ini.</div>
+                )}
+
+                {!loadingLoyaltyModal && !loyaltyError && loyaltyRows.length > 0 && (
                   <div className="border border-gray-200 rounded-xl overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
@@ -1056,9 +1084,7 @@ export default function RiwayatPenjualan() {
                             <td className="px-4 py-3">
                               {r.created_at ? dayjs(r.created_at).format('YYYY-MM-DD HH:mm') : '-'}
                             </td>
-                            <td className="px-4 py-3">
-                              {(r.type || r.tipe || r.direction || r.jenis || '-').toString()}
-                            </td>
+                            <td className="px-4 py-3">{(r.type || r.tipe || r.direction || r.jenis || '-').toString()}</td>
                             <td className="px-4 py-3 text-right tabular-nums">
                               {toNumber(r.poin ?? r.points ?? r.amount ?? 0).toLocaleString('id-ID')}
                             </td>
@@ -1076,12 +1102,9 @@ export default function RiwayatPenjualan() {
                   </div>
                 )}
 
-                {/* Summary (optional, aman) */}
-                {!loadingLoyaltyModal && (
-                  <div className="text-xs text-gray-500 mt-3">
-                    Catatan: mapping kolom poin dibuat fleksibel supaya tidak error walau struktur tabel berbeda.
-                  </div>
-                )}
+                <div className="text-xs text-gray-500 mt-3">
+                  Catatan: mapping kolom dibuat fleksibel supaya tidak error walau struktur tabel berbeda.
+                </div>
               </div>
             </div>
           </div>
