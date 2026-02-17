@@ -91,19 +91,32 @@ function getTier({ omzetRolling, unitTrxRolling }) {
  */
 const BENEFITS_BY_TIER = {
   SILVER: [
-    'Mendapatkan point dari transaksi',
-    'Bisa naik level membership otomatis sesuai total transaksi',
-    'Akses info promo member (jika tersedia)',
+    'Akses program poin',
+    'Free cleaning device',
+    'Free maintenance device',
+    'Free delivery dengan minimal pembelian Rp. 2.000.000',
   ],
   GOLD: [
-    'Info promo member tertentu (jika tersedia)',
-    'Prioritas antrian (jika ramai)',
-    'Kesempatan penawaran khusus member tertentu (jika ada)',
+    'Free tempered glass seumur hidup (klaim 2x setiap tahun)',
+    'Gratis Ongkir Instan 2x tiap tahun',
+    'Diskon aksesoris 5%',
+    'Cashback 100 rb tiap transaksi unit',
+    'Garansi upgrade privilege +250 ribu saat trade-in',
+    'Customer Service Prioritas',
+    'Free cleaning device',
+    'Free maintenance device',
+    'Free delivery dengan minimal pembelian Rp. 2.000.000'
   ],
   PLATINUM: [
-    'Prioritas info stok & promo tertentu (jika tersedia)',
-    'Prioritas bantuan fast response',
-    'Kesempatan penawaran khusus member tertentu (jika ada)',
+    'Free tempered glass seumur hidup (klaim 5x setiap tahun)',
+    'Gratis Ongkir Instan 5x tiap tahun',
+    'Diskon aksesoris 10%',
+    'Cashback 200 rb tiap transaksi unit',
+    'Garansi upgrade privilege +500 ribu saat trade-in',
+    'Customer Service Prioritas',
+    'Free cleaning device',
+    'Free maintenance device',
+    'Free delivery dengan minimal pembelian Rp. 2.000.000'
   ],
 }
 
