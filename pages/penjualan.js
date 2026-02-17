@@ -170,11 +170,10 @@ async function getMemberLevelForYear(customerId, trxYear) {
 }
 
 // ======================
-// ✅ SAFE INSERT point_ledger (FIX UUID ERROR)
+// ✅ SAFE INSERT point_ledger (EARN) - FIX UUID ERROR
+// ref_invoice_id di DB kamu UUID, jadi jangan kirim invoice string ke sana.
+// Invoice tetap kita simpan via keterangan.
 // ======================
-// Di DB kamu, kolom ref_invoice_id ternyata UUID, jadi invoice string bikin error.
-// Solusi: jangan kirim ref_invoice_id sama sekali. Invoice tetap disimpan lewat keterangan.
-// Kalau suatu saat kamu punya kolom text (misal ref_invoice_text), tinggal tambah di sini.
 async function insertPointLedgerEarnSafe({ customerId, trxDate, invoice, poinDidapat }) {
   const exp = dayjs(trxDate).add(1, 'year').format('YYYY-MM-DD')
 
@@ -185,7 +184,7 @@ async function insertPointLedgerEarnSafe({ customerId, trxDate, invoice, poinDid
     jenis: 'EARN',
     poin_awal: poinDidapat,
     poin_sisa: poinDidapat,
-    // ✅ invoice simpan di keterangan supaya bisa tracking tanpa ganggu tipe data UUID
+    // ✅ invoice simpan di keterangan
     keterangan: `EARN INVOICE ${invoice}`,
   }
 
@@ -472,7 +471,6 @@ export default function Penjualan() {
           setLoyaltyCustomerId(null)
           setPoinAktif(0)
           setMemberLevel('SILVER')
-          // reset poin input
           setUsePoinWanted(0)
           setUsePoinDisplay('')
           setAutoPoin(true)
@@ -648,7 +646,11 @@ export default function Penjualan() {
     const tahun = dayjs(tanggal).format('YYYY')
     const prefix = `INV-CTI-${bulan}-${tahun}-`
 
-    const { data, error } = await supabase.from('penjualan_baru').select('invoice_id').ilike('invoice_id', `${prefix}%`).range(0, 9999)
+    const { data, error } = await supabase
+      .from('penjualan_baru')
+      .select('invoice_id')
+      .ilike('invoice_id', `${prefix}%`)
+      .range(0, 9999)
 
     if (error) {
       console.error('generateInvoiceId error:', error)
@@ -683,7 +685,9 @@ export default function Penjualan() {
     if (submitting) return
 
     const ok = window.confirm(
-      'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' + 'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' + 'Klik OK untuk melanjutkan.'
+      'Pastikan MEJA PELAYANAN & iPad sudah DILAP,\n' +
+        'dan PERALATAN UNBOXING sudah DIKEMBALIKAN!\n\n' +
+        'Klik OK untuk melanjutkan.'
     )
     if (!ok) return
 
@@ -696,7 +700,6 @@ export default function Penjualan() {
       const trxDate = dayjs(formData.tanggal).format('YYYY-MM-DD')
       const trxYear = parseInt(dayjs(formData.tanggal).format('YYYY'), 10)
 
-      // ✅ Pastikan punya customer_id (loyalty)
       const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
       const waTrim = (formData.no_wa || '').toString().trim()
       const emailLower = (formData.email || '').toString().trim().toLowerCase()
@@ -709,9 +712,6 @@ export default function Penjualan() {
           email: emailLower,
         }))
 
-      // ======================
-      // EXPAND ITEM (qty -> rows)
-      // ======================
       const expandQty = (arr, isBonus) => {
         const out = []
         for (const it of arr) {
@@ -744,9 +744,6 @@ export default function Penjualan() {
         is_aksesoris: false,
       }))
 
-      // ======================
-      // DISKON TOTAL = diskon manual + poin dipakai (lebih akurat)
-      // ======================
       const diskonManual = toNumber(diskonInvoice)
       const diskonTotal = Math.min(sumHarga, diskonManual + poinDipakaiFinal)
 
@@ -760,7 +757,6 @@ export default function Penjualan() {
 
       // ======================
       // Membership yearly (UNIT saja, yg berbayar)
-      // hitung unitCount & nominalUnit (setelah diskon terdistribusi)
       // ======================
       const unitPaidItems = produkBerbayarExpanded.filter((x) => !x.is_aksesoris)
       const unitCountInvoice = unitPaidItems.length
@@ -771,12 +767,6 @@ export default function Penjualan() {
         nominalUnitInvoice += Math.max(0, toNumber(it.harga_jual) - dIt)
       }
 
-      // ======================
-      // Tentukan level tahun berjalan:
-      // - baca membership_yearly tahun ini
-      // - kalau belum ada, seed dari tahun lalu (turun 1 level)
-      // - lalu update setelah transaksi ini
-      // ======================
       let currentLevel = 'SILVER'
       let curUnitCount = 0
       let curNominalUnit = 0
@@ -845,7 +835,7 @@ export default function Penjualan() {
       if (upYearErr) throw new Error(`Gagal update membership_yearly: ${upYearErr.message}`)
 
       // ======================
-      // Redeem poin FIFO (kalau ada) — pakai poinDipakaiFinal
+      // ✅ Redeem poin FIFO (FIX UUID): kirim p_invoice = null (uuid)
       // ======================
       let poinDipakaiReal = 0
       if (poinDipakaiFinal > 0) {
@@ -853,7 +843,8 @@ export default function Penjualan() {
           p_customer: customerId,
           p_tanggal_transaksi: trxDate,
           p_max_redeem: poinDipakaiFinal,
-          p_invoice: invoice,
+          // ✅ WAJIB uuid -> kirim null saja (aman), invoice string taruh di keterangan
+          p_invoice: null,
           p_keterangan: `REDEEM INVOICE ${invoice}`,
         })
         if (redErr) throw new Error(`Gagal redeem poin: ${redErr.message}`)
@@ -862,7 +853,6 @@ export default function Penjualan() {
 
       // ======================
       // Earn poin (0.5% dari total bayar setelah diskon & redeem)
-      // ✅ FIX: jangan isi ref_invoice_id (di DB kamu itu UUID)
       // ======================
       const poinDidapat = Math.floor(totalAkhirBayar * 0.005)
       if (poinDidapat > 0) {
@@ -876,7 +866,6 @@ export default function Penjualan() {
 
       // ======================
       // INSERT penjualan rows
-      // poin_didapat/poin_dipakai/level_member/tahun_member disimpan hanya di 1 baris
       // ======================
       let wroteLoyaltyMeta = false
 
@@ -928,7 +917,11 @@ export default function Penjualan() {
 
         if (item.__is_fee) continue
 
-        const { data: stokUnit, error: cekErr } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
+        const { data: stokUnit, error: cekErr } = await supabase
+          .from('stok')
+          .select('id')
+          .eq('sn', item.sn_sku)
+          .maybeSingle()
         if (cekErr) throw new Error(`Gagal cek stok: ${cekErr.message}`)
 
         if (stokUnit) {
@@ -1071,7 +1064,12 @@ export default function Penjualan() {
 
                 <div>
                   <div className={label}>Nama Pembeli</div>
-                  <input className={input} value={formData.nama_pembeli} onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })} required />
+                  <input
+                    className={input}
+                    value={formData.nama_pembeli}
+                    onChange={(e) => setFormData({ ...formData, nama_pembeli: e.target.value })}
+                    required
+                  />
                 </div>
 
                 <div>
@@ -1092,12 +1090,7 @@ export default function Penjualan() {
 
                 <div className="md:col-span-2">
                   <div className={label}>Metode Pembayaran</div>
-                  <select
-                    className={input}
-                    value={formData.metode_pembayaran}
-                    onChange={(e) => setFormData({ ...formData, metode_pembayaran: e.target.value })}
-                    required
-                  >
+                  <select className={input} value={formData.metode_pembayaran} onChange={(e) => setFormData({ ...formData, metode_pembayaran: e.target.value })} required>
                     <option value="">Pilih Metode Pembayaran</option>
                     {METODE_PEMBAYARAN.map((m) => (
                       <option key={m} value={m}>
@@ -1161,9 +1154,7 @@ export default function Penjualan() {
                           <div className={label}>Gunakan Poin (Rp)</div>
                           <button
                             type="button"
-                            className={`text-xs px-2 py-1 rounded-lg border ${
-                              autoPoin ? 'bg-white border-gray-300' : 'bg-white border-gray-200'
-                            }`}
+                            className={`text-xs px-2 py-1 rounded-lg border ${autoPoin ? 'bg-white border-gray-300' : 'bg-white border-gray-200'}`}
                             onClick={() => setAutoPoin(true)}
                             title="Isi otomatis: 50% poin aktif"
                           >
@@ -1177,7 +1168,6 @@ export default function Penjualan() {
                           placeholder="0"
                           value={usePoinDisplay}
                           onChange={(e) => {
-                            // manual override -> auto OFF
                             const raw = e.target.value
                             const n = parseIDR(raw)
                             setAutoPoin(false)
@@ -1188,9 +1178,13 @@ export default function Penjualan() {
 
                         <div className="mt-1 text-xs text-gray-500">
                           {autoPoin ? (
-                            <>Auto isi otomatis: <b>{Math.floor(toNumber(poinAktif) * 0.5).toLocaleString('id-ID')}</b> (50% poin aktif).</>
+                            <>
+                              Auto isi otomatis: <b>{Math.floor(toNumber(poinAktif) * 0.5).toLocaleString('id-ID')}</b> (50% poin aktif).
+                            </>
                           ) : (
-                            <>Mode manual (klik <b>Auto</b> untuk isi otomatis).</>
+                            <>
+                              Mode manual (klik <b>Auto</b> untuk isi otomatis).
+                            </>
                           )}
                           <div className="mt-0.5">
                             Dipakai saat ini: <b>{toNumber(poinDipakaiFinal).toLocaleString('id-ID')}</b>
@@ -1248,13 +1242,7 @@ export default function Penjualan() {
                 <div>
                   <div className={label}>Qty</div>
                   {produkBaru.is_aksesoris ? (
-                    <input
-                      className={input}
-                      type="number"
-                      min="1"
-                      value={produkBaru.qty}
-                      onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })}
-                    />
+                    <input className={input} type="number" min="1" value={produkBaru.qty} onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })} />
                   ) : (
                     <div className={`${input} flex items-center text-sm text-gray-600`}>1 (unit SN)</div>
                   )}
@@ -1368,9 +1356,7 @@ export default function Penjualan() {
                 </button>
               </div>
 
-              <div className="mt-3 text-xs text-gray-600">
-                Catatan: Diskon total = diskon manual + poin. Biaya dicatat sebagai pengurang laba (harga jual 0).
-              </div>
+              <div className="mt-3 text-xs text-gray-600">Catatan: Diskon total = diskon manual + poin. Biaya dicatat sebagai pengurang laba (harga jual 0).</div>
             </div>
 
             {/* SUBMIT */}
