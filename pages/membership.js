@@ -1,3 +1,4 @@
+// pages/membership.js
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -15,15 +16,16 @@ const btnPrimary =
 const PAGE_SIZE = 15
 
 // ======================
-// ✅ RULES (UBAH DI SINI)
+// ✅ RULES (FINAL SESUAI KAMU)
 // ======================
-const POINT_RATE = 0.005 // 0.5% dari omset
-// ✅ 3 tier only (BRONZE DIHAPUS)
-const TIERS = [
-  { name: 'PLATINUM', minOmzet: 250_000_000 },
-  { name: 'GOLD', minOmzet: 120_000_000 },
-  { name: 'SILVER', minOmzet: 0 },
-]
+const POINT_RATE = 0.005 // 0.5% dari omzet rolling
+
+// 🥇 GOLD: min 3 transaksi unit ATAU rolling >= 50jt
+// 🏆 PLATINUM: min 5 transaksi unit ATAU rolling >= 100jt
+const THRESHOLD_GOLD_OMZET = 50_000_000
+const THRESHOLD_PLATINUM_OMZET = 100_000_000
+const THRESHOLD_GOLD_UNIT_TRX = 3
+const THRESHOLD_PLATINUM_UNIT_TRX = 5
 
 // ============ helpers ============
 const toNumber = (v) => {
@@ -34,14 +36,6 @@ const toNumber = (v) => {
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 const safe = (v) => String(v ?? '').trim()
 
-function getTier(omzetRolling) {
-  const x = toNumber(omzetRolling)
-  for (const t of TIERS) {
-    if (x >= t.minOmzet) return t.name
-  }
-  return 'SILVER'
-}
-
 function normalizeWa(no_wa) {
   const raw = safe(no_wa)
   if (!raw) return ''
@@ -49,6 +43,7 @@ function normalizeWa(no_wa) {
 }
 
 function groupByInvoice(rows = []) {
+  // invoice unik (ambil 1 row per invoice)
   const map = new Map()
   for (const r of rows) {
     const inv = safe(r.invoice_id)
@@ -56,6 +51,30 @@ function groupByInvoice(rows = []) {
     if (!map.has(inv)) map.set(inv, r)
   }
   return Array.from(map.values())
+}
+
+function isUnitRow(r) {
+  // ✅ klasifikasi unit tanpa join:
+  // jika storage/garansi terisi -> anggap UNIT
+  const storage = safe(r.storage)
+  const garansi = safe(r.garansi)
+  return Boolean(storage || garansi)
+}
+
+function getTier({ omzetRolling, unitTrxRolling }) {
+  const omz = toNumber(omzetRolling)
+  const trxUnit = toNumber(unitTrxRolling)
+
+  if (trxUnit >= THRESHOLD_PLATINUM_UNIT_TRX || omz >= THRESHOLD_PLATINUM_OMZET) return 'PLATINUM'
+  if (trxUnit >= THRESHOLD_GOLD_UNIT_TRX || omz >= THRESHOLD_GOLD_OMZET) return 'GOLD'
+  return 'SILVER'
+}
+
+function tierBadgeClass(tier) {
+  const t = String(tier || 'SILVER').toUpperCase()
+  if (t === 'PLATINUM') return 'bg-indigo-600 text-white'
+  if (t === 'GOLD') return 'bg-amber-500 text-white'
+  return 'bg-slate-700 text-white' // SILVER
 }
 
 export default function MembershipPage() {
@@ -76,6 +95,7 @@ export default function MembershipPage() {
   // ===== paging =====
   const [page, setPage] = useState(1)
 
+  // ===== load data =====
   async function fetchData() {
     setLoading(true)
     try {
@@ -84,7 +104,9 @@ export default function MembershipPage() {
 
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus')
+        .select(
+          'invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus,storage,garansi'
+        )
         .gte('tanggal', rollingStart)
         .lte('tanggal', rollingEnd)
         .eq('is_bonus', false)
@@ -108,6 +130,9 @@ export default function MembershipPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ======================
+  // ✅ BUILD DATA CUSTOMER
+  // ======================
   const customerRows = useMemo(() => {
     const y = toNumber(year)
     const startY = dayjs(`${y}-01-01`).startOf('day')
@@ -129,17 +154,28 @@ export default function MembershipPage() {
       return d.isValid() && (d.isAfter(startRange) || d.isSame(startRange)) && (d.isBefore(endRange) || d.isSame(endRange))
     })
 
-    // rolling omzet per customer
-    const rollMap = new Map()
+    // ======================
+    // Rolling totals per customer
+    // - omzet rolling: sum harga_jual * qty
+    // - unit trx rolling: hitung invoice unik yang mengandung minimal 1 unitRow
+    // ======================
+    const rollMap = new Map() // key -> { omzet, unitInvSet }
     for (const r of rowsRolling) {
       const wa = normalizeWa(r.no_wa)
       const key = wa || safe(r.nama_pembeli).toUpperCase() || 'UNKNOWN'
-      if (!rollMap.has(key)) rollMap.set(key, { omzet: 0 })
+      if (!rollMap.has(key)) rollMap.set(key, { omzet: 0, unitInv: new Set() })
       const b = rollMap.get(key)
+
       const qty = Math.max(1, toNumber(r.qty))
       b.omzet += toNumber(r.harga_jual) * qty
+
+      if (isUnitRow(r)) {
+        const inv = safe(r.invoice_id)
+        if (inv) b.unitInv.add(inv)
+      }
     }
 
+    // map year/range totals per customer
     const map = new Map()
 
     const invRange = groupByInvoice(rowsRange)
@@ -176,6 +212,7 @@ export default function MembershipPage() {
           omzet_year: 0,
           invoice_year: 0,
           omzet_rolling: 0,
+          unit_trx_rolling: 0,
           tier: 'SILVER',
           points: 0,
           last_date: null,
@@ -196,16 +233,22 @@ export default function MembershipPage() {
       if (!it.email && r.email) it.email = r.email
     }
 
+    // inject counts + rolling tier/points
     for (const it of map.values()) {
       it.invoice_range = invCountRange.get(it.key) || 0
       it.invoice_year = invCountYear.get(it.key) || 0
-      it.omzet_rolling = rollMap.get(it.key)?.omzet || 0
-      it.tier = getTier(it.omzet_rolling)
+
+      const roll = rollMap.get(it.key)
+      it.omzet_rolling = roll?.omzet || 0
+      it.unit_trx_rolling = roll?.unitInv ? roll.unitInv.size : 0
+
+      it.tier = getTier({ omzetRolling: it.omzet_rolling, unitTrxRolling: it.unit_trx_rolling })
       it.points = Math.floor(it.omzet_rolling * POINT_RATE)
     }
 
     let arr = Array.from(map.values())
 
+    // search
     const s = search.trim().toLowerCase()
     if (s) {
       arr = arr.filter((x) => {
@@ -218,10 +261,11 @@ export default function MembershipPage() {
       })
     }
 
+    // sort: tier rank desc, then omzet rolling desc
     const tierRank = { PLATINUM: 3, GOLD: 2, SILVER: 1 }
     arr.sort((a, b) => {
-      const ra = tierRank[a.tier] || 0
-      const rb = tierRank[b.tier] || 0
+      const ra = tierRank[String(a.tier || 'SILVER').toUpperCase()] || 0
+      const rb = tierRank[String(b.tier || 'SILVER').toUpperCase()] || 0
       if (rb !== ra) return rb - ra
       return toNumber(b.omzet_rolling) - toNumber(a.omzet_rolling)
     })
@@ -229,6 +273,7 @@ export default function MembershipPage() {
     return arr
   }, [rawRows, year, range.start, range.end, search])
 
+  // summary top
   const summary = useMemo(() => {
     const totalCustomer = customerRows.length
     const totalOmzetRange = customerRows.reduce((a, x) => a + toNumber(x.omzet_range), 0)
@@ -236,6 +281,7 @@ export default function MembershipPage() {
     return { totalCustomer, totalOmzetRange, totalLabaRange }
   }, [customerRows])
 
+  // pagination
   const totalRows = customerRows.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
   const safePage = Math.min(Math.max(1, page), totalPages)
@@ -255,6 +301,7 @@ export default function MembershipPage() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Membership & Loyalty</h1>
@@ -269,6 +316,7 @@ export default function MembershipPage() {
           </div>
         </div>
 
+        {/* Filters */}
         <div className={`${card} p-4 md:p-5`}>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             <div>
@@ -287,12 +335,22 @@ export default function MembershipPage() {
 
             <div>
               <div className={label}>Tanggal Awal (Filter list)</div>
-              <input type="date" className={input} value={range.start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
+              <input
+                type="date"
+                className={input}
+                value={range.start}
+                onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))}
+              />
             </div>
 
             <div>
               <div className={label}>Tanggal Akhir (Filter list)</div>
-              <input type="date" className={input} value={range.end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
+              <input
+                type="date"
+                className={input}
+                value={range.end}
+                onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))}
+              />
             </div>
 
             <div>
@@ -303,7 +361,11 @@ export default function MembershipPage() {
 
           <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div className="text-xs text-gray-500">
-              Rolling tier/points: <b>365 hari terakhir</b> • Points rate: <b>{POINT_RATE * 100}%</b> • Tier: <b>SILVER / GOLD / PLATINUM</b>
+              Rolling tier/points: <b>365 hari terakhir</b> • Points rate: <b>{POINT_RATE * 100}%</b>
+              <span className="ml-2">
+                • GOLD: <b>≥{THRESHOLD_GOLD_UNIT_TRX}</b> trx unit / <b>≥{formatRp(THRESHOLD_GOLD_OMZET)}</b> • PLATINUM:{' '}
+                <b>≥{THRESHOLD_PLATINUM_UNIT_TRX}</b> trx unit / <b>≥{formatRp(THRESHOLD_PLATINUM_OMZET)}</b>
+              </span>
             </div>
             <button
               className={btnPrimary}
@@ -322,6 +384,7 @@ export default function MembershipPage() {
           </div>
         </div>
 
+        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className={`${card} p-4`}>
             <div className="text-xs text-gray-500">Total Customer (hasil filter)</div>
@@ -337,10 +400,13 @@ export default function MembershipPage() {
           </div>
         </div>
 
+        {/* Table */}
         <div className={`${card} overflow-hidden`}>
           <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
             <div className="font-semibold text-gray-900">Daftar Membership</div>
-            <div className="text-xs text-gray-600">{loading ? 'Memuat…' : `Total: ${totalRows} • Halaman: ${safePage}/${totalPages}`}</div>
+            <div className="text-xs text-gray-600">
+              {loading ? 'Memuat…' : `Total: ${totalRows} • Halaman: ${safePage}/${totalPages}`}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -352,6 +418,7 @@ export default function MembershipPage() {
                   <th className="px-4 py-3 text-left">Tier</th>
                   <th className="px-4 py-3 text-right">Omzet (Rolling)</th>
                   <th className="px-4 py-3 text-right">Points</th>
+                  <th className="px-4 py-3 text-center">Trx Unit (Rolling)</th>
                   <th className="px-4 py-3 text-center">Invoice (Range)</th>
                   <th className="px-4 py-3 text-right">Omzet (Range)</th>
                   <th className="px-4 py-3 text-right">Laba (Range)</th>
@@ -362,7 +429,7 @@ export default function MembershipPage() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-gray-500">
+                    <td colSpan={10} className="px-4 py-10 text-center text-gray-500">
                       Memuat data…
                     </td>
                   </tr>
@@ -380,10 +447,13 @@ export default function MembershipPage() {
                       </td>
                       <td className="px-4 py-3">{r.no_wa || '-'}</td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-900 text-white">{r.tier}</span>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(r.tier)}`}>
+                          {String(r.tier || 'SILVER').toUpperCase()}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold">{formatRp(r.omzet_rolling)}</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatRp(r.points)}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{toNumber(r.unit_trx_rolling)}</td>
                       <td className="px-4 py-3 text-center">{r.invoice_range}</td>
                       <td className="px-4 py-3 text-right">{formatRp(r.omzet_range)}</td>
                       <td className="px-4 py-3 text-right">{formatRp(r.laba_range)}</td>
@@ -393,7 +463,7 @@ export default function MembershipPage() {
 
                 {!loading && totalRows === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-gray-500">
+                    <td colSpan={10} className="px-4 py-10 text-center text-gray-500">
                       Tidak ada data sesuai filter.
                     </td>
                   </tr>
@@ -402,6 +472,7 @@ export default function MembershipPage() {
             </table>
           </div>
 
+          {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
               Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b>
@@ -411,7 +482,12 @@ export default function MembershipPage() {
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1 || loading}
+                type="button"
+              >
                 ‹ Prev
               </button>
 
@@ -419,18 +495,30 @@ export default function MembershipPage() {
                 {safePage}/{totalPages}
               </div>
 
-              <button className={btn} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Next ›
               </button>
-              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Last »
               </button>
             </div>
           </div>
         </div>
 
+        {/* Note */}
         <div className="text-xs text-gray-500">
-          Catatan: Tier & points dihitung dari transaksi <b>365 hari terakhir</b> dan hanya ada <b>SILVER / GOLD / PLATINUM</b>.
+          Catatan: Tier & points dihitung dari transaksi <b>365 hari terakhir</b>.  
+          Transaksi unit dihitung dari invoice yang memiliki item dengan <b>storage/garansi</b> terisi.
         </div>
       </div>
     </Layout>

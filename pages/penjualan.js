@@ -833,7 +833,7 @@ export default function Penjualan() {
           p_customer: customerId,
           p_tanggal_transaksi: trxDate,
           p_max_redeem: poinDipakaiFinal,
-          p_invoice: null,
+          p_invoice: invoice,
           p_keterangan: `REDEEM INVOICE ${invoice}`,
         })
         if (redErr) throw new Error(`Gagal redeem poin: ${redErr.message}`)
@@ -853,7 +853,7 @@ export default function Penjualan() {
           jenis: 'EARN',
           poin_awal: poinDidapat,
           poin_sisa: poinDidapat,
-          ref_invoice_id: null,
+          ref_invoice_id: invoice,
           keterangan: `EARN INVOICE ${invoice}`,
         })
         if (ledErr) throw new Error(`Gagal insert point_ledger: ${ledErr.message}`)
