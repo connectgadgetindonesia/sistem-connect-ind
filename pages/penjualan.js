@@ -840,13 +840,14 @@ export default function Penjualan() {
       let poinDipakaiReal = 0
       if (poinDipakaiFinal > 0) {
         const { data: used, error: redErr } = await supabase.rpc('redeem_points', {
-          p_customer: customerId,
-          p_tanggal_transaksi: trxDate,
-          p_max_redeem: poinDipakaiFinal,
-          // ✅ WAJIB uuid -> kirim null saja (aman), invoice string taruh di keterangan
-          p_invoice: null,
-          p_keterangan: `REDEEM INVOICE ${invoice}`,
-        })
+  p_customer: customerId,
+  p_tanggal_transaksi: trxDate,
+  p_max_redeem: poinDipakaiFinal,
+  p_invoice: null,                 // uuid (boleh null)
+  p_invoice_code: invoice,         // ✅ invoice string masuk sini
+  p_keterangan: `REDEEM INVOICE ${invoice}`,
+})
+
         if (redErr) throw new Error(`Gagal redeem poin: ${redErr.message}`)
         poinDipakaiReal = toNumber(used || 0)
       }
