@@ -27,6 +27,9 @@ const THRESHOLD_PLATINUM_OMZET = 100_000_000
 const THRESHOLD_GOLD_UNIT_TRX = 3
 const THRESHOLD_PLATINUM_UNIT_TRX = 5
 
+// ✅ Expiry alert (ubah kalau mau)
+const EXPIRY_ALERT_DAYS = 30
+
 // ============ helpers ============
 const toNumber = (v) => {
   if (typeof v === 'number') return v
@@ -75,6 +78,40 @@ function tierBadgeClass(tier) {
   if (t === 'PLATINUM') return 'bg-indigo-600 text-white'
   if (t === 'GOLD') return 'bg-amber-500 text-white'
   return 'bg-slate-700 text-white' // SILVER
+}
+
+// ✅ Expiry badge class
+function expiryBadgeClass(kind) {
+  if (kind === 'expired') return 'bg-red-600 text-white'
+  if (kind === 'soon') return 'bg-amber-500 text-white'
+  return 'bg-emerald-600 text-white'
+}
+
+function pickKey(r) {
+  const wa = normalizeWa(r.no_wa)
+  const nama = safe(r.nama_pembeli).toUpperCase()
+  return wa || nama || 'UNKNOWN'
+}
+
+// ✅ hitung info expired dari oldest rolling date
+function getExpiryInfo(oldestDateRolling, todayYmd) {
+  if (!oldestDateRolling) return null
+  const oldest = dayjs(oldestDateRolling)
+  if (!oldest.isValid()) return null
+
+  const expiredAt = oldest.add(365, 'day')
+  const daysLeft = expiredAt.startOf('day').diff(dayjs(todayYmd).startOf('day'), 'day')
+
+  let kind = 'ok'
+  if (daysLeft <= 0) kind = 'expired'
+  else if (daysLeft <= EXPIRY_ALERT_DAYS) kind = 'soon'
+
+  return {
+    oldest: oldest.format('YYYY-MM-DD'),
+    expiredAt: expiredAt.format('YYYY-MM-DD'),
+    daysLeft,
+    kind,
+  }
 }
 
 export default function MembershipPage() {
@@ -141,6 +178,7 @@ export default function MembershipPage() {
     const startRange = range.start ? dayjs(range.start).startOf('day') : null
     const endRange = range.end ? dayjs(range.end).endOf('day') : null
 
+    // rowsRolling sudah = rolling 365 hari (karena fetchData pakai rolling start/end)
     const rowsRolling = rawRows
 
     const rowsYear = rawRows.filter((r) => {
@@ -151,23 +189,37 @@ export default function MembershipPage() {
     const rowsRange = rawRows.filter((r) => {
       if (!startRange || !endRange) return true
       const d = dayjs(r.tanggal)
-      return d.isValid() && (d.isAfter(startRange) || d.isSame(startRange)) && (d.isBefore(endRange) || d.isSame(endRange))
+      return (
+        d.isValid() && (d.isAfter(startRange) || d.isSame(startRange)) && (d.isBefore(endRange) || d.isSame(endRange))
+      )
     })
 
     // ======================
     // Rolling totals per customer
     // - omzet rolling: sum harga_jual * qty
-    // - unit trx rolling: hitung invoice unik yang mengandung minimal 1 unitRow
+    // - unit trx rolling: invoice unik yang ada unitRow
+    // - oldest_date_rolling: tanggal paling tua dalam rolling (buat expired checker)
     // ======================
-    const rollMap = new Map() // key -> { omzet, unitInvSet }
+    const rollMap = new Map() // key -> { omzet, unitInvSet, oldestDate }
     for (const r of rowsRolling) {
-      const wa = normalizeWa(r.no_wa)
-      const key = wa || safe(r.nama_pembeli).toUpperCase() || 'UNKNOWN'
-      if (!rollMap.has(key)) rollMap.set(key, { omzet: 0, unitInv: new Set() })
+      const key = pickKey(r)
+      if (!rollMap.has(key)) rollMap.set(key, { omzet: 0, unitInv: new Set(), oldestDate: null })
       const b = rollMap.get(key)
 
       const qty = Math.max(1, toNumber(r.qty))
       b.omzet += toNumber(r.harga_jual) * qty
+
+      // ✅ oldest rolling
+      if (r.tanggal) {
+        const d = dayjs(r.tanggal)
+        if (d.isValid()) {
+          if (!b.oldestDate) b.oldestDate = d.format('YYYY-MM-DD')
+          else {
+            const cur = dayjs(b.oldestDate)
+            if (d.isBefore(cur)) b.oldestDate = d.format('YYYY-MM-DD')
+          }
+        }
+      }
 
       if (isUnitRow(r)) {
         const inv = safe(r.invoice_id)
@@ -183,27 +235,24 @@ export default function MembershipPage() {
 
     const invCountRange = new Map()
     for (const r of invRange) {
-      const wa = normalizeWa(r.no_wa)
-      const key = wa || safe(r.nama_pembeli).toUpperCase() || 'UNKNOWN'
+      const key = pickKey(r)
       invCountRange.set(key, (invCountRange.get(key) || 0) + 1)
     }
 
     const invCountYear = new Map()
     for (const r of invYear) {
-      const wa = normalizeWa(r.no_wa)
-      const key = wa || safe(r.nama_pembeli).toUpperCase() || 'UNKNOWN'
+      const key = pickKey(r)
       invCountYear.set(key, (invCountYear.get(key) || 0) + 1)
     }
 
     for (const r of rowsRange) {
-      const wa = normalizeWa(r.no_wa)
-      const key = wa || safe(r.nama_pembeli).toUpperCase() || 'UNKNOWN'
+      const key = pickKey(r)
 
       if (!map.has(key)) {
         map.set(key, {
           key,
           nama_pembeli: r.nama_pembeli || '',
-          no_wa: wa || r.no_wa || '',
+          no_wa: normalizeWa(r.no_wa) || r.no_wa || '',
           alamat: r.alamat || '',
           email: r.email || '',
           omzet_range: 0,
@@ -216,6 +265,12 @@ export default function MembershipPage() {
           tier: 'SILVER',
           points: 0,
           last_date: null,
+
+          // ✅ NEW
+          oldest_date_rolling: null,
+          expired_at: null,
+          expiry_days_left: null,
+          expiry_kind: 'ok',
         })
       }
 
@@ -233,7 +288,7 @@ export default function MembershipPage() {
       if (!it.email && r.email) it.email = r.email
     }
 
-    // inject counts + rolling tier/points
+    // inject counts + rolling tier/points + expiry info
     for (const it of map.values()) {
       it.invoice_range = invCountRange.get(it.key) || 0
       it.invoice_year = invCountYear.get(it.key) || 0
@@ -244,6 +299,13 @@ export default function MembershipPage() {
 
       it.tier = getTier({ omzetRolling: it.omzet_rolling, unitTrxRolling: it.unit_trx_rolling })
       it.points = Math.floor(it.omzet_rolling * POINT_RATE)
+
+      // ✅ expiry info
+      const exp = getExpiryInfo(roll?.oldestDate || null, today)
+      it.oldest_date_rolling = exp?.oldest || null
+      it.expired_at = exp?.expiredAt || null
+      it.expiry_days_left = typeof exp?.daysLeft === 'number' ? exp.daysLeft : null
+      it.expiry_kind = exp?.kind || 'ok'
     }
 
     let arr = Array.from(map.values())
@@ -271,14 +333,19 @@ export default function MembershipPage() {
     })
 
     return arr
-  }, [rawRows, year, range.start, range.end, search])
+  }, [rawRows, year, range.start, range.end, search, today])
 
   // summary top
   const summary = useMemo(() => {
     const totalCustomer = customerRows.length
     const totalOmzetRange = customerRows.reduce((a, x) => a + toNumber(x.omzet_range), 0)
     const totalLabaRange = customerRows.reduce((a, x) => a + toNumber(x.laba_range), 0)
-    return { totalCustomer, totalOmzetRange, totalLabaRange }
+
+    // ✅ expiry alert count
+    const expSoon = customerRows.filter((x) => x.expiry_kind === 'soon').length
+    const expExpired = customerRows.filter((x) => x.expiry_kind === 'expired').length
+
+    return { totalCustomer, totalOmzetRange, totalLabaRange, expSoon, expExpired }
   }, [customerRows])
 
   // pagination
@@ -315,6 +382,28 @@ export default function MembershipPage() {
             </button>
           </div>
         </div>
+
+        {/* ✅ ALERT EXPIRY */}
+        {(summary.expSoon > 0 || summary.expExpired > 0) && (
+          <div className={`${card} p-4 border border-amber-200 bg-amber-50`}>
+            <div className="text-sm font-semibold text-gray-900">Peringatan Expired Points</div>
+            <div className="text-xs text-gray-700 mt-1">
+              {summary.expExpired > 0 && (
+                <span className="mr-3">
+                  <b>{summary.expExpired}</b> customer: <span className="font-semibold">POINT SUDAH EXPIRED</span>
+                </span>
+              )}
+              {summary.expSoon > 0 && (
+                <span>
+                  <b>{summary.expSoon}</b> customer: poin akan expired dalam <b>{EXPIRY_ALERT_DAYS} hari</b> ke depan
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-gray-600 mt-2">
+              Catatan: Expired dihitung dari transaksi paling tua di rolling 365 hari (oldest + 365 hari).
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className={`${card} p-4 md:p-5`}>
@@ -439,20 +528,64 @@ export default function MembershipPage() {
                   pageRows.map((r) => (
                     <tr key={r.key} className="border-t border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-gray-900">{r.nama_pembeli || '(Tanpa nama)'}</div>
+                        <div className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                          <span>{r.nama_pembeli || '(Tanpa nama)'}</span>
+
+                          {/* ✅ Badge expired */}
+                          {r.expiry_kind === 'soon' && (
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] ${expiryBadgeClass(
+                                'soon'
+                              )}`}
+                              title={`Poin akan expired pada ${r.expired_at}`}
+                            >
+                              EXPIRED {r.expiry_days_left} HARI
+                            </span>
+                          )}
+                          {r.expiry_kind === 'expired' && (
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] ${expiryBadgeClass(
+                                'expired'
+                              )}`}
+                              title={`Poin expired pada ${r.expired_at}`}
+                            >
+                              POINT EXPIRED
+                            </span>
+                          )}
+                        </div>
+
                         <div className="text-xs text-gray-500 truncate">
                           {r.email ? `Email: ${r.email}` : ''}
                           {r.last_date ? ` • Last: ${dayjs(r.last_date).format('DD/MM/YYYY')}` : ''}
+                          {r.expired_at ? ` • Exp: ${dayjs(r.expired_at).format('DD/MM/YYYY')}` : ''}
                         </div>
                       </td>
+
                       <td className="px-4 py-3">{r.no_wa || '-'}</td>
+
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(r.tier)}`}>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(
+                            r.tier
+                          )}`}
+                        >
                           {String(r.tier || 'SILVER').toUpperCase()}
                         </span>
                       </td>
+
                       <td className="px-4 py-3 text-right font-semibold">{formatRp(r.omzet_rolling)}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatRp(r.points)}</td>
+
+                      <td className="px-4 py-3 text-right font-semibold">
+                        <div className="flex flex-col items-end">
+                          <div>{formatRp(r.points)}</div>
+                          {r.oldest_date_rolling && (
+                            <div className="text-[11px] text-gray-500">
+                              Oldest: {dayjs(r.oldest_date_rolling).format('DD/MM/YYYY')}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
                       <td className="px-4 py-3 text-center font-semibold">{toNumber(r.unit_trx_rolling)}</td>
                       <td className="px-4 py-3 text-center">{r.invoice_range}</td>
                       <td className="px-4 py-3 text-right">{formatRp(r.omzet_range)}</td>
@@ -475,7 +608,8 @@ export default function MembershipPage() {
           {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b>
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
+              <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
@@ -517,8 +651,8 @@ export default function MembershipPage() {
 
         {/* Note */}
         <div className="text-xs text-gray-500">
-          Catatan: Tier & points dihitung dari transaksi <b>365 hari terakhir</b>.  
-          Transaksi unit dihitung dari invoice yang memiliki item dengan <b>storage/garansi</b> terisi.
+          Catatan: Tier & points dihitung dari transaksi <b>365 hari terakhir</b>. Transaksi unit dihitung dari invoice yang memiliki item dengan{' '}
+          <b>storage/garansi</b> terisi. Expired points dipantau dari transaksi paling tua di rolling window (oldest + 365 hari).
         </div>
       </div>
     </Layout>
