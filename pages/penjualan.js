@@ -843,7 +843,6 @@ export default function Penjualan() {
   p_customer: customerId,
   p_tanggal_transaksi: trxDate,
   p_max_redeem: poinDipakaiFinal,
-  p_invoice: null,                 // uuid (boleh null)
   p_invoice_code: invoice,         // ✅ invoice string masuk sini
   p_keterangan: `REDEEM INVOICE ${invoice}`,
 })
