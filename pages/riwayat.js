@@ -289,27 +289,26 @@ function chunkArray(arr, size) {
 
 // ====== parse point_ledger row flex ======
 function parsePointLedgerRow(r) {
-  const typeRaw =
-    (r?.type || r?.tipe || r?.direction || r?.jenis || r?.kategori || '').toString().trim().toLowerCase()
+  // schema point_ledger kamu: jenis, poin_awal, poin_sisa, ref_invoice_code, ...
+  const jenis = (r?.jenis || r?.type || r?.tipe || '').toString().trim().toUpperCase()
+  const poinAwal = toNumber(r?.poin_awal ?? r?.poin ?? r?.points ?? r?.amount ?? 0)
 
-  const poinRaw = toNumber(r?.poin ?? r?.points ?? r?.amount ?? r?.nilai ?? 0)
-  const masuk = toNumber(r?.poin_masuk ?? r?.points_in ?? r?.in ?? 0)
-  const keluar = toNumber(r?.poin_keluar ?? r?.points_out ?? r?.out ?? 0)
-
-  if (masuk > 0 || keluar > 0) return { earned: masuk, used: keluar }
-
-  if (typeRaw.includes('redeem') || typeRaw.includes('pakai') || typeRaw.includes('use') || typeRaw.includes('out')) {
-    return { earned: 0, used: Math.abs(poinRaw) }
-  }
-  if (typeRaw.includes('earn') || typeRaw.includes('dapat') || typeRaw.includes('in') || typeRaw.includes('add')) {
-    return { earned: Math.abs(poinRaw), used: 0 }
+  // EARN / BONUS / CASHBACK = poin masuk
+  if (['EARN', 'BONUS', 'CASHBACK'].includes(jenis)) {
+    return { earned: Math.abs(poinAwal), used: 0 }
   }
 
-  if (poinRaw < 0) return { earned: 0, used: Math.abs(poinRaw) }
-  if (poinRaw > 0) return { earned: poinRaw, used: 0 }
+  // REDEEM = poin keluar
+  if (jenis === 'REDEEM') {
+    return { earned: 0, used: Math.abs(poinAwal) }
+  }
 
+  // fallback
+  if (poinAwal > 0) return { earned: poinAwal, used: 0 }
+  if (poinAwal < 0) return { earned: 0, used: Math.abs(poinAwal) }
   return { earned: 0, used: 0 }
 }
+
 
 export default function RiwayatPenjualan() {
   const [rows, setRows] = useState([])
@@ -506,7 +505,11 @@ export default function RiwayatPenjualan() {
       let allLedger = []
 
       for (const ch of chunks) {
-        const { data, error } = await supabase.from('point_ledger').select('*').in('invoice_id', ch)
+        const { data, error } = await supabase
+  .from('point_ledger')
+  .select('*')
+  .in('ref_invoice_code', ch)
+
         if (error) throw error
         allLedger = allLedger.concat(data || [])
       }
@@ -672,7 +675,7 @@ export default function RiwayatPenjualan() {
       const { data, error } = await supabase
         .from('point_ledger')
         .select('*')
-        .eq('invoice_id', invoice_id)
+        .eq('ref_invoice_code', invoice_id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
