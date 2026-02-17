@@ -23,6 +23,9 @@ const btnDanger =
 const btnMiniDark =
   'bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed'
 
+const btnMini =
+  'bg-gray-100 hover:bg-gray-200 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 disabled:opacity-60 disabled:cursor-not-allowed'
+
 const badge = (type) =>
   `inline-flex items-center px-2.5 py-1 rounded-full text-xs border ${
     type === 'ok'
@@ -38,6 +41,7 @@ const toNumber = (v) => {
 }
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 const safe = (v) => String(v ?? '').trim()
+const clampArray = (arr) => (Array.isArray(arr) ? arr : [])
 
 // ====== hitungan total INVOICE ======
 function computeInvoiceTotals(rows = []) {
@@ -289,6 +293,42 @@ async function renderHtmlToOffscreen(html) {
   return { wrap, root }
 }
 
+// ====== NEW: util chunk ======
+function chunkArray(arr, size) {
+  const out = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
+// ====== NEW: parse point ledger row safely ======
+function parsePointLedgerRow(r) {
+  // attempt to detect "direction" / "type"
+  const typeRaw =
+    (r?.type || r?.tipe || r?.direction || r?.jenis || r?.kategori || '').toString().trim().toLowerCase()
+
+  const poinRaw = toNumber(r?.poin ?? r?.points ?? r?.amount ?? r?.nilai ?? 0)
+  const masuk = toNumber(r?.poin_masuk ?? r?.points_in ?? r?.in ?? 0)
+  const keluar = toNumber(r?.poin_keluar ?? r?.points_out ?? r?.out ?? 0)
+
+  // normalize:
+  // - if there is explicit masuk/keluar, use it
+  if (masuk > 0 || keluar > 0) return { earned: masuk, used: keluar }
+
+  // - else infer from type
+  if (typeRaw.includes('redeem') || typeRaw.includes('pakai') || typeRaw.includes('use') || typeRaw.includes('out')) {
+    return { earned: 0, used: Math.abs(poinRaw) }
+  }
+  if (typeRaw.includes('earn') || typeRaw.includes('dapat') || typeRaw.includes('in') || typeRaw.includes('add')) {
+    return { earned: Math.abs(poinRaw), used: 0 }
+  }
+
+  // - else infer from sign
+  if (poinRaw < 0) return { earned: 0, used: Math.abs(poinRaw) }
+  if (poinRaw > 0) return { earned: poinRaw, used: 0 }
+
+  return { earned: 0, used: 0 }
+}
+
 export default function RiwayatPenjualan() {
   const [rows, setRows] = useState([])
   const [mode, setMode] = useState('harian') // 'harian' | 'history'
@@ -297,7 +337,7 @@ export default function RiwayatPenjualan() {
   const [filter, setFilter] = useState({
     tanggal_awal: today,
     tanggal_akhir: today,
-    search: '',
+    search: ''
   })
 
   const [loading, setLoading] = useState(false)
@@ -310,6 +350,16 @@ export default function RiwayatPenjualan() {
 
   // ✅ loading per invoice (jpg)
   const [downloading, setDownloading] = useState({}) // { [invoice_id]: true/false }
+
+  // ✅ NEW: POIN per invoice (batch)
+  const [loadingPoin, setLoadingPoin] = useState(false)
+  const [poinByInvoice, setPoinByInvoice] = useState({}) // { [inv]: { earned, used } }
+
+  // ✅ NEW: Loyalty History modal
+  const [openLoyalty, setOpenLoyalty] = useState(false)
+  const [loyaltyInvoice, setLoyaltyInvoice] = useState('')
+  const [loyaltyRows, setLoyaltyRows] = useState([])
+  const [loadingLoyaltyModal, setLoadingLoyaltyModal] = useState(false)
 
   useEffect(() => {
     if (mode === 'harian') {
@@ -424,6 +474,50 @@ export default function RiwayatPenjualan() {
     }
   }
 
+  // ✅ NEW: batch fetch poin by invoice_id (AMAN)
+  async function hydratePoinByInvoice(groupedInvoices = []) {
+    const invoiceIds = clampArray(groupedInvoices)
+      .map((x) => (x?.invoice_id || '').toString().trim())
+      .filter(Boolean)
+
+    const uniq = Array.from(new Set(invoiceIds))
+    if (uniq.length === 0) {
+      setPoinByInvoice({})
+      return
+    }
+
+    setLoadingPoin(true)
+    try {
+      const chunks = chunkArray(uniq, 200)
+      let allLedger = []
+
+      for (const ch of chunks) {
+        // pakai select('*') biar tidak crash kalau nama kolom beda
+        const { data, error } = await supabase.from('point_ledger').select('*').in('invoice_id', ch)
+        if (error) throw error
+        allLedger = allLedger.concat(data || [])
+      }
+
+      const map = {}
+      for (const row of allLedger) {
+        const inv = (row?.invoice_id || '').toString().trim()
+        if (!inv) continue
+        const parsed = parsePointLedgerRow(row)
+        if (!map[inv]) map[inv] = { earned: 0, used: 0 }
+        map[inv].earned += toNumber(parsed.earned)
+        map[inv].used += toNumber(parsed.used)
+      }
+
+      setPoinByInvoice(map)
+    } catch (e) {
+      // Jangan bikin halaman error, cukup kosongkan poin
+      console.warn('hydratePoinByInvoice skipped/error:', e)
+      setPoinByInvoice({})
+    } finally {
+      setLoadingPoin(false)
+    }
+  }
+
   async function fetchData() {
     setLoading(true)
     try {
@@ -447,8 +541,12 @@ export default function RiwayatPenjualan() {
       if (error) {
         console.error('Fetch riwayat error:', error)
         setRows([])
+        setPoinByInvoice({})
       } else {
-        setRows(groupByInvoice(data || []))
+        const grouped = groupByInvoice(data || [])
+        setRows(grouped)
+        // ✅ NEW: poin per invoice (tidak ganggu fungsi lama)
+        hydratePoinByInvoice(grouped)
       }
 
       setPage(1)
@@ -523,7 +621,7 @@ export default function RiwayatPenjualan() {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
-        windowWidth: 794,
+        windowWidth: 794
       })
 
       const blob = await canvasToJpegBlob(canvas, 0.95)
@@ -536,6 +634,38 @@ export default function RiwayatPenjualan() {
     } finally {
       setDownloading((p) => ({ ...p, [invoice_id]: false }))
     }
+  }
+
+  // ✅ NEW: open loyalty history modal
+  async function openLoyaltyModal(invoice_id) {
+    if (!invoice_id) return
+    setOpenLoyalty(true)
+    setLoyaltyInvoice(invoice_id)
+    setLoyaltyRows([])
+    setLoadingLoyaltyModal(true)
+
+    try {
+      const { data, error } = await supabase
+        .from('point_ledger')
+        .select('*')
+        .eq('invoice_id', invoice_id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setLoyaltyRows(data || [])
+    } catch (e) {
+      console.error('openLoyaltyModal error:', e)
+      alert('Loyalty History belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
+      setLoyaltyRows([])
+    } finally {
+      setLoadingLoyaltyModal(false)
+    }
+  }
+
+  function closeLoyaltyModal() {
+    setOpenLoyalty(false)
+    setLoyaltyInvoice('')
+    setLoyaltyRows([])
   }
 
   // ===================== PAGINATION (STOPPER) =====================
@@ -564,6 +694,7 @@ export default function RiwayatPenjualan() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Riwayat Penjualan CONNECT.IND</h1>
             <div className="text-sm text-gray-600">Mode harian untuk hari ini, mode history untuk periode tertentu.</div>
+            <div className="text-xs text-gray-500 mt-1">Poin: {loadingPoin ? 'memuat…' : 'aktif'}</div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -719,12 +850,17 @@ export default function RiwayatPenjualan() {
                   <th className="px-4 py-3 text-left">Tanggal</th>
                   <th className="px-4 py-3 text-left">Nama</th>
                   <th className="px-4 py-3 text-left min-w-[320px]">Produk</th>
-                  <th className="px-4 py-3 text-left">Metode Bayar</th> {/* ✅ NEW */}
+                  <th className="px-4 py-3 text-left">Metode Bayar</th>
                   <th className="px-4 py-3 text-left">Dilayani</th>
                   <th className="px-4 py-3 text-left">Referral</th>
+
+                  {/* ✅ NEW */}
+                  <th className="px-4 py-3 text-right">Poin Dapat</th>
+                  <th className="px-4 py-3 text-right">Poin Pakai</th>
+
                   <th className="px-4 py-3 text-right">Harga Jual</th>
                   <th className="px-4 py-3 text-right">Laba</th>
-                  <th className="px-4 py-3 text-left w-[160px]">Aksi</th>
+                  <th className="px-4 py-3 text-left w-[190px]">Aksi</th>
                 </tr>
               </thead>
 
@@ -732,12 +868,15 @@ export default function RiwayatPenjualan() {
                 {pageRows.map((item) => {
                   const inv = item.invoice_id
                   const busy = !!downloading[inv]
+                  const poin = poinByInvoice?.[inv]
+                  const earned = poin ? toNumber(poin.earned) : null
+                  const used = poin ? toNumber(poin.used) : null
 
                   return (
                     <tr key={inv} className="border-t border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="text-[11px] text-gray-500 font-mono">{inv}</div>
-                        <div className="mt-2">
+                        <div className="mt-2 flex flex-col gap-2">
                           <button
                             className={btnMiniDark}
                             type="button"
@@ -745,6 +884,16 @@ export default function RiwayatPenjualan() {
                             onClick={() => downloadInvoiceJpg(inv)}
                           >
                             {busy ? 'Membuat…' : 'Download JPG'}
+                          </button>
+
+                          <button
+                            className={btnMini}
+                            type="button"
+                            disabled={loading || busy || loadingPoin}
+                            onClick={() => openLoyaltyModal(inv)}
+                            title="Lihat detail poin (earn/redeem) untuk invoice ini"
+                          >
+                            Loyalty History
                           </button>
                         </div>
                       </td>
@@ -761,7 +910,6 @@ export default function RiwayatPenjualan() {
                         </div>
                       </td>
 
-                      {/* ✅ NEW: METODE BAYAR */}
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-800 border border-gray-200">
                           {getUniqueMetode(item.produk)}
@@ -770,6 +918,14 @@ export default function RiwayatPenjualan() {
 
                       <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
                       <td className="px-4 py-3">{getUniqueText(item.produk, 'referral')}</td>
+
+                      {/* ✅ NEW: poin */}
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {earned === null ? '-' : earned.toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {used === null ? '-' : used.toLocaleString('id-ID')}
+                      </td>
 
                       <td className="px-4 py-3 text-right">{formatRp(totalInvoice(item.produk))}</td>
 
@@ -795,7 +951,7 @@ export default function RiwayatPenjualan() {
 
                 {!loading && rows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-10 text-center text-gray-500" colSpan={10}>
+                    <td className="px-4 py-10 text-center text-gray-500" colSpan={12}>
                       Tidak ada data.
                     </td>
                   </tr>
@@ -803,7 +959,7 @@ export default function RiwayatPenjualan() {
 
                 {loading && rows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-10 text-center text-gray-500" colSpan={10}>
+                    <td className="px-4 py-10 text-center text-gray-500" colSpan={12}>
                       Memuat…
                     </td>
                   </tr>
@@ -855,6 +1011,81 @@ export default function RiwayatPenjualan() {
             </div>
           </div>
         </div>
+
+        {/* ✅ MODAL: Loyalty History */}
+        {openLoyalty && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className={`${card} w-full max-w-2xl`}>
+              <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                <div>
+                  <div className="font-bold text-gray-900">Loyalty History</div>
+                  <div className="text-xs text-gray-600 font-mono">{loyaltyInvoice}</div>
+                </div>
+                <button className={btn} type="button" onClick={closeLoyaltyModal} disabled={loadingLoyaltyModal}>
+                  Tutup
+                </button>
+              </div>
+
+              <div className="p-4">
+                {loadingLoyaltyModal && (
+                  <div className="py-10 text-center text-gray-500 text-sm">Memuat data loyalty…</div>
+                )}
+
+                {!loadingLoyaltyModal && loyaltyRows.length === 0 && (
+                  <div className="py-10 text-center text-gray-500 text-sm">
+                    Tidak ada data loyalty untuk invoice ini (atau tabel/kolom belum siap).
+                  </div>
+                )}
+
+                {!loadingLoyaltyModal && loyaltyRows.length > 0 && (
+                  <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr className="text-gray-600">
+                          <th className="px-4 py-3 text-left">Waktu</th>
+                          <th className="px-4 py-3 text-left">Tipe</th>
+                          <th className="px-4 py-3 text-right">Poin</th>
+                          <th className="px-4 py-3 text-right">Masuk</th>
+                          <th className="px-4 py-3 text-right">Keluar</th>
+                          <th className="px-4 py-3 text-left">Catatan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loyaltyRows.map((r, idx) => (
+                          <tr key={r.id || idx} className="border-t border-gray-200 hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              {r.created_at ? dayjs(r.created_at).format('YYYY-MM-DD HH:mm') : '-'}
+                            </td>
+                            <td className="px-4 py-3">
+                              {(r.type || r.tipe || r.direction || r.jenis || '-').toString()}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums">
+                              {toNumber(r.poin ?? r.points ?? r.amount ?? 0).toLocaleString('id-ID')}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums">
+                              {toNumber(r.poin_masuk ?? r.points_in ?? r.in ?? 0).toLocaleString('id-ID')}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums">
+                              {toNumber(r.poin_keluar ?? r.points_out ?? r.out ?? 0).toLocaleString('id-ID')}
+                            </td>
+                            <td className="px-4 py-3">{safe(r.catatan || r.note || r.keterangan || '') || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Summary (optional, aman) */}
+                {!loadingLoyaltyModal && (
+                  <div className="text-xs text-gray-500 mt-3">
+                    Catatan: mapping kolom poin dibuat fleksibel supaya tidak error walau struktur tabel berbeda.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )

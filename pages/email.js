@@ -1,3 +1,4 @@
+// pages/email.js
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -27,7 +28,7 @@ const EMAIL_LOG_TABLE = 'email_log'
 // ==========================
 // DOC PREFIX (untuk nomor urut bulanan)
 // ==========================
-const OFFER_PREFIX = 'SP-CTI' // Surat Penawaran (samakan gaya invoice: PREFIX-CTI-MM-YYYY-URUT)
+const OFFER_PREFIX = 'SP-CTI' // Surat Penawaran (PREFIX-CTI-MM-YYYY-URUT)
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
 
@@ -497,6 +498,14 @@ function formatInvoiceDateLong(ymdOrIso) {
   return d.format('MMMM D, YYYY')
 }
 
+// ✅ FIX: extract body supaya iframe preview gak “nested html”
+function extractBodyHtml(fullHtml) {
+  const s = String(fullHtml || '')
+  const m = s.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+  if (m && m[1]) return m[1]
+  return s
+}
+
 // ====== INVOICE A4 HTML (JPG) — tidak diubah ======
 function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
   const BLUE = '#2388ff'
@@ -530,7 +539,9 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
       return `
         <tr>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; vertical-align:top;">
-            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(it.nama_produk)}</div>
+            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(
+              it.nama_produk
+            )}</div>
             ${
               metaTop
                 ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">${metaTop}</div>`
@@ -538,13 +549,19 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
             }
             ${
               it.sn_sku
-                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(it.sn_sku)}</div>`
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(
+                    it.sn_sku
+                  )}</div>`
                 : ''
             }
           </td>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0b1220;">${qty}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(unit)}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(line)}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
+            unit
+          )}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
+            line
+          )}</td>
         </tr>
       `
     })
@@ -584,7 +601,7 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 
           <div style="height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
-            <div style="font-size:12px; font-weight:600; color:#2388ff; white-space:nowrap; text-align:right;">
+            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
               ${safe(invoice_id || payload?.invoice_id)}
             </div>
           </div>
@@ -608,7 +625,9 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
           <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
-            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(payload?.nama_pembeli)}</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
+              payload?.nama_pembeli
+            )}</div>
             <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
               ${safe(payload?.no_wa)}<br/>
               ${safe(payload?.alamat)}
@@ -643,12 +662,12 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
           </div>
           <div style="display:flex; justify-content:space-between; gap:18px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220;">Grand Total:</div>
-            <div style="font-size:14px; font-weight:600; color:#2388ff;">${formatRp(_totals.total)}</div>
+            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(_totals.total)}</div>
           </div>
         </div>
       </div>
     </div>
-    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:#2388ff;"></div>
+    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
   </div>
 </body>
 </html>`
@@ -883,13 +902,9 @@ export default function EmailPage() {
   const generateOfferIdMonthly = async (ymd) => {
     const prefix = buildOfferPrefix(ymd)
 
-    // default fallback jika history belum aktif / error
-    const fallback = `${prefix}${dayjs().format('DD')}`
-
     if (!historyEnabled) return `${prefix}1`
 
     try {
-      // ambil beberapa terakhir yang match prefix bulan ini
       const { data, error } = await supabase
         .from(EMAIL_LOG_TABLE)
         .select('invoice_id, sent_at')
@@ -913,8 +928,7 @@ export default function EmailPage() {
       return `${prefix}${maxSeq + 1}`
     } catch (e) {
       console.warn('Offer numbering error:', e?.message || e)
-      // aman: tetap kasih nomor
-      return `${prefix}1` || fallback
+      return `${prefix}1`
     }
   }
 
@@ -961,7 +975,7 @@ export default function EmailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail])
 
-  // ✅ auto-generate offerId saat masuk mode offer + kosong, dan saat ganti bulan (offerDate berubah & offerId masih kosong)
+  // ✅ auto-generate offerId saat masuk mode offer + kosong
   useEffect(() => {
     const run = async () => {
       if (mode !== 'offer') return
@@ -973,7 +987,7 @@ export default function EmailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  // jika user ganti tanggal (bulan bisa beda) dan offerId masih kosong / masih prefix bulan lama, auto update prefix baru
+  // jika user ganti tanggal & prefix beda, auto update
   useEffect(() => {
     const run = async () => {
       if (mode !== 'offer') return
@@ -982,14 +996,12 @@ export default function EmailPage() {
       const newPrefix = buildOfferPrefix(offerDate)
       const cur = safe(offerId)
 
-      // kalau kosong => generate
       if (!cur) {
         const id = await generateOfferIdMonthly(offerDate)
         setOfferId(id)
         return
       }
 
-      // kalau prefix bulan berbeda, generate ulang (biar reset bulanan sesuai tanggal surat)
       if (!cur.startsWith(newPrefix)) {
         const id = await generateOfferIdMonthly(offerDate)
         setOfferId(id)
@@ -1134,13 +1146,111 @@ export default function EmailPage() {
     }
   }
 
-  // ✅ ambil H-1 sampai H+1 lalu filter client by YYYY-MM-DD (fix timezone)
-  const fetchInvoicesByDate = async (ymd) => {
-    const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
-    const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
+  // ✅ helper grouping list => pickerRows (dipakai oleh fetchInvoicesByDate)
+  const buildPickerGrouped = async (list, ymd) => {
+    const rawList = Array.isArray(list) ? list : []
+    if (rawList.length === 0) {
+      setPickerRows([])
+      return
+    }
 
+    const map = new Map()
+
+    for (const r of rawList) {
+      const inv = (r.invoice_id || '').trim()
+      if (!inv) continue
+
+      if (!map.has(inv)) {
+        map.set(inv, {
+          invoice_id: inv,
+          tanggal_raw: r.tanggal || null,
+          tanggal: r.tanggal ? dayjs(r.tanggal).format('YYYY-MM-DD') : ymd,
+          nama_pembeli: r.nama_pembeli || '',
+          alamat: r.alamat || '',
+          no_wa: r.no_wa || '',
+          email: r.email || '',
+
+          email_sent_count: 0,
+          email_last_to: '',
+          email_last_at: null,
+
+          items: [],
+          item_count: 0,
+          subtotal: 0,
+          discount: 0,
+          total: 0,
+        })
+      }
+
+      const it = map.get(inv)
+      it.items.push({
+        nama_produk: r.nama_produk,
+        warna: r.warna,
+        storage: r.storage,
+        garansi: r.garansi,
+        harga_jual: r.harga_jual,
+        qty: r.qty,
+        sn_sku: r.sn_sku,
+        diskon_item: r.diskon_item,
+        diskon_invoice: r.diskon_invoice,
+      })
+      it.item_count += 1
+
+      if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
+      if (!it.alamat && r.alamat) it.alamat = r.alamat
+      if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
+      if (!it.email && r.email) it.email = r.email
+    }
+
+    let grouped = Array.from(map.values()).map((inv) => {
+      const { subtotal, discount, total } = computeTotals(inv.items)
+      return { ...inv, subtotal, discount, total }
+    })
+
+    if (historyEnabled) {
+      const ids = grouped.map((g) => g.invoice_id).filter(Boolean)
+      const statusMap = await fetchEmailStatusForInvoices(ids)
+      grouped = grouped.map((g) => {
+        const st = statusMap.get(g.invoice_id)
+        if (!st) return g
+        return {
+          ...g,
+          email_sent_count: st.count || 0,
+          email_last_to: st.last_to || '',
+          email_last_at: st.last_at || null,
+        }
+      })
+    }
+
+    grouped.sort((a, b) => {
+      const ta = a.tanggal_raw ? new Date(a.tanggal_raw).getTime() : 0
+      const tb = b.tanggal_raw ? new Date(b.tanggal_raw).getTime() : 0
+      return tb - ta
+    })
+
+    setPickerRows(grouped)
+  }
+
+  // ✅ FIX: ambil by DATE dulu (kalau kolom tanggal tipe date), fallback range ISO (kalau timestamptz)
+  const fetchInvoicesByDate = async (ymd) => {
     setPickerLoading(true)
     try {
+      const q1 = await supabase
+        .from('penjualan_baru')
+        .select('*')
+        .eq('tanggal', ymd)
+        .eq('is_bonus', false)
+        .order('tanggal', { ascending: false })
+        .limit(1200)
+
+      if (!q1.error && Array.isArray(q1.data) && q1.data.length) {
+        await buildPickerGrouped(q1.data, ymd)
+        return
+      }
+
+      const start = dayjs(ymd).subtract(1, 'day').startOf('day').toISOString()
+      const end = dayjs(ymd).add(1, 'day').endOf('day').toISOString()
+
       const { data, error } = await supabase
         .from('penjualan_baru')
         .select('*')
@@ -1154,87 +1264,7 @@ export default function EmailPage() {
 
       const raw = Array.isArray(data) ? data : []
       const list = raw.filter((r) => r?.tanggal && dayjs(r.tanggal).format('YYYY-MM-DD') === ymd)
-
-      if (list.length === 0) {
-        setPickerRows([])
-        return
-      }
-
-      const map = new Map()
-
-      for (const r of list) {
-        const inv = (r.invoice_id || '').trim()
-        if (!inv) continue
-
-        if (!map.has(inv)) {
-          map.set(inv, {
-            invoice_id: inv,
-            tanggal_raw: r.tanggal || null,
-            tanggal: r.tanggal ? dayjs(r.tanggal).format('YYYY-MM-DD') : ymd,
-            nama_pembeli: r.nama_pembeli || '',
-            alamat: r.alamat || '',
-            no_wa: r.no_wa || '',
-            email: r.email || '',
-
-            email_sent_count: 0,
-            email_last_to: '',
-            email_last_at: null,
-
-            items: [],
-            item_count: 0,
-            subtotal: 0,
-            discount: 0,
-            total: 0,
-          })
-        }
-
-        const it = map.get(inv)
-        it.items.push({
-          nama_produk: r.nama_produk,
-          warna: r.warna,
-          storage: r.storage,
-          garansi: r.garansi,
-          harga_jual: r.harga_jual,
-          qty: r.qty,
-          sn_sku: r.sn_sku,
-          diskon_item: r.diskon_item,
-          diskon_invoice: r.diskon_invoice,
-        })
-        it.item_count += 1
-
-        if (!it.nama_pembeli && r.nama_pembeli) it.nama_pembeli = r.nama_pembeli
-        if (!it.alamat && r.alamat) it.alamat = r.alamat
-        if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
-        if (!it.email && r.email) it.email = r.email
-      }
-
-      let grouped = Array.from(map.values()).map((inv) => {
-        const { subtotal, discount, total } = computeTotals(inv.items)
-        return { ...inv, subtotal, discount, total }
-      })
-
-      if (historyEnabled) {
-        const ids = grouped.map((g) => g.invoice_id).filter(Boolean)
-        const statusMap = await fetchEmailStatusForInvoices(ids)
-        grouped = grouped.map((g) => {
-          const st = statusMap.get(g.invoice_id)
-          if (!st) return g
-          return {
-            ...g,
-            email_sent_count: st.count || 0,
-            email_last_to: st.last_to || '',
-            email_last_at: st.last_at || null,
-          }
-        })
-      }
-
-      grouped.sort((a, b) => {
-        const ta = a.tanggal_raw ? new Date(a.tanggal_raw).getTime() : 0
-        const tb = b.tanggal_raw ? new Date(b.tanggal_raw).getTime() : 0
-        return tb - ta
-      })
-
-      setPickerRows(grouped)
+      await buildPickerGrouped(list, ymd)
     } catch (e) {
       console.error(e)
       setPickerRows([])
@@ -1391,14 +1421,15 @@ export default function EmailPage() {
   }
 
   // ======================
-  // ✅ Preview: LOCK SIZE (mobile & web aman)
+  // ✅ Preview: LOCK SIZE (mobile & web aman) — FIX (no nested html)
   // ======================
   const previewSrcDoc = useMemo(() => {
-    const body =
-      htmlBody ||
-      `<div style="padding:16px; color:#666; font-family:system-ui;">
-        ${mode === 'invoice' ? 'Pilih transaksi untuk membuat template otomatis.' : 'Isi data surat penawaran untuk membuat template otomatis.'}
-      </div>`
+    const bodyContent =
+      htmlBody && htmlBody.trim().length > 0
+        ? extractBodyHtml(htmlBody)
+        : `<div style="padding:16px; color:#666; font-family:system-ui;">
+            ${mode === 'invoice' ? 'Pilih transaksi untuk membuat template otomatis.' : 'Isi data surat penawaran untuk membuat template otomatis.'}
+          </div>`
 
     return `<!doctype html>
 <html>
@@ -1407,20 +1438,25 @@ export default function EmailPage() {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <style>
     html,body{ margin:0; padding:0; background:#ffffff; }
-    .preview-wrap{
+    .preview-shell{ background:#ffffff; }
+    .preview-container{
       width: 640px;
       max-width: 640px;
       margin: 0 auto;
       background:#ffffff;
     }
     @media (max-width: 680px){
-      .preview-wrap{ width: 100%; max-width: 100%; }
+      .preview-container{ width: 100%; max-width: 100%; }
     }
+    img{ max-width:100%; height:auto; }
+    table{ max-width:100%; }
   </style>
 </head>
 <body>
-  <div class="preview-wrap">
-    ${body}
+  <div class="preview-shell">
+    <div class="preview-container">
+      ${bodyContent}
+    </div>
   </div>
 </body>
 </html>`
@@ -1503,7 +1539,6 @@ export default function EmailPage() {
           error_message: json?.message || `HTTP ${res.status}`,
         })
 
-        // refresh history panel
         await fetchDocHistory(docId)
         return
       }
@@ -1515,10 +1550,8 @@ export default function EmailPage() {
         status: 'sent',
       })
 
-      // refresh history panel
       await fetchDocHistory(docId)
 
-      // update summary badge for invoice picker
       if (mode === 'invoice') {
         setDataInvoice((prev) => {
           if (!prev) return prev
@@ -1610,7 +1643,9 @@ export default function EmailPage() {
           </div>
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="text-[11px] text-gray-500">Discount</div>
-            <div className="text-sm font-bold">{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</div>
+            <div className="text-sm font-bold">
+              {dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}
+            </div>
           </div>
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="text-[11px] text-gray-500">Total</div>
@@ -1635,8 +1670,8 @@ export default function EmailPage() {
             <div className="mt-1 text-xs text-gray-600">
               {dataInvoice.email_sent_count > 0 ? (
                 <>
-                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke <b>{dataInvoice.email_last_to || '-'}</b> •{' '}
-                  {formatSentAt(dataInvoice.email_last_at)}
+                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke <b>{dataInvoice.email_last_to || '-'}</b>{' '}
+                  • {formatSentAt(dataInvoice.email_last_at)}
                 </>
               ) : (
                 <>Belum ada riwayat pengiriman email untuk invoice ini.</>
@@ -1803,7 +1838,9 @@ export default function EmailPage() {
                 </div>
 
                 {emailHistory.length > 15 ? (
-                  <div className="text-xs text-gray-500 mt-2">Menampilkan 15 history terbaru (total: {emailHistory.length}).</div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Menampilkan 15 history terbaru (total: {emailHistory.length}).
+                  </div>
                 ) : null}
               </div>
             )}
@@ -1833,9 +1870,7 @@ export default function EmailPage() {
                     Generate
                   </button>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1">
-                  Nomor otomatis urut & reset tiap bulan (mengikuti tanggal surat).
-                </div>
+                <div className="text-[11px] text-gray-500 mt-1">Nomor otomatis urut & reset tiap bulan (mengikuti tanggal surat).</div>
               </div>
               <div>
                 <div className={label}>Total (Auto)</div>
@@ -1997,7 +2032,9 @@ export default function EmailPage() {
                 </div>
 
                 {emailHistory.length > 15 ? (
-                  <div className="text-xs text-gray-500 mt-2">Menampilkan 15 history terbaru (total: {emailHistory.length}).</div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Menampilkan 15 history terbaru (total: {emailHistory.length}).
+                  </div>
                 ) : null}
               </div>
             ) : null}

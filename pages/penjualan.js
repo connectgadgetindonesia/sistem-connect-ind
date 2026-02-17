@@ -1,3 +1,4 @@
+// pages/penjualan.js
 import Layout from '@/components/Layout'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -36,7 +37,7 @@ const btnGray = `${btn} bg-slate-700 text-white hover:opacity-90`
 const selectStyles = {
   control: (base, state) => ({
     ...base,
-    borderColor: state.isFocused ? '#93c5fd' : '#e5e7eb', // gray-200
+    borderColor: state.isFocused ? '#93c5fd' : '#e5e7eb',
     boxShadow: 'none',
     borderRadius: 10,
     minHeight: 40
@@ -44,11 +45,96 @@ const selectStyles = {
   menu: (base) => ({ ...base, zIndex: 50 }),
   option: (base, state) => ({
     ...base,
-    backgroundColor: state.isFocused ? '#f3f4f6' : 'white', // gray-100
-    color: '#111827' // gray-900
+    backgroundColor: state.isFocused ? '#f3f4f6' : 'white',
+    color: '#111827'
   })
 }
 
+// ======================
+// LOYALTY HELPERS
+// ======================
+const LEVELS = ['SILVER', 'GOLD', 'PLATINUM']
+const dropOneLevel = (level) => {
+  const up = (level || 'SILVER').toString().trim().toUpperCase()
+  if (up === 'PLATINUM') return 'GOLD'
+  if (up === 'GOLD') return 'SILVER'
+  return 'SILVER'
+}
+
+// Membership dihitung dari UNIT saja (stok SN)
+function calcLevelByUnitPerYear({ unitCount, nominalUnit }) {
+  const c = toNumber(unitCount)
+  const n = toNumber(nominalUnit)
+
+  // ✅ Threshold aman & realistis (per tahun) — bisa kamu ubah kapan saja:
+  // GOLD: >=2 unit ATAU >= 50jt
+  // PLATINUM: >=4 unit ATAU >= 120jt
+  if (c >= 4 || n >= 120_000_000) return 'PLATINUM'
+  if (c >= 2 || n >= 50_000_000) return 'GOLD'
+  return 'SILVER'
+}
+
+// Cari / create customer loyalty berdasarkan no_wa + nama
+async function upsertLoyaltyCustomer({ nama, no_wa, email }) {
+  const namaUp = (nama || '').toString().trim().toUpperCase()
+  const wa = (no_wa || '').toString().trim()
+  const em = (email || '').toString().trim().toLowerCase()
+
+  if (!namaUp) throw new Error('Nama pembeli kosong (loyalty_customer).')
+  if (!wa) throw new Error('No WA kosong (loyalty_customer).')
+
+  // 1) cari dulu by no_wa
+  const { data: existing, error: selErr } = await supabase
+    .from('loyalty_customer')
+    .select('id, nama_pembeli, no_wa, email')
+    .eq('no_wa', wa)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (selErr) throw new Error(`Gagal cek loyalty_customer: ${selErr.message}`)
+
+  if (existing && existing.length > 0) {
+    const id = existing[0].id
+    // update nama/email kalau berubah
+    const patch = {
+      nama_pembeli: namaUp,
+      no_wa: wa,
+      updated_at: new Date().toISOString()
+    }
+    if (em) patch.email = em
+
+    const { error: upErr } = await supabase.from('loyalty_customer').update(patch).eq('id', id)
+    if (upErr) throw new Error(`Gagal update loyalty_customer: ${upErr.message}`)
+    return id
+  }
+
+  // 2) insert baru
+  const { data: ins, error: insErr } = await supabase
+    .from('loyalty_customer')
+    .insert({
+      nama_pembeli: namaUp,
+      no_wa: wa,
+      email: em || null
+    })
+    .select('id')
+    .single()
+
+  if (insErr) throw new Error(`Gagal insert loyalty_customer: ${insErr.message}`)
+  return ins.id
+}
+
+// Ambil saldo poin aktif per tanggal
+async function getPointBalance(customerId, onDate) {
+  if (!customerId) return 0
+  const d = onDate || dayjs().format('YYYY-MM-DD')
+  const { data, error } = await supabase.rpc('get_point_balance', { p_customer: customerId, p_on_date: d })
+  if (error) throw new Error(`Gagal get_point_balance: ${error.message}`)
+  return toNumber(data || 0)
+}
+
+// ======================
+// MAIN PAGE
+// ======================
 export default function Penjualan() {
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
@@ -71,8 +157,8 @@ export default function Penjualan() {
     nama_pembeli: '',
     alamat: '',
     no_wa: '',
-    email: '', // ✅ NEW
-    metode_pembayaran: '', // ✅ NEW
+    email: '',
+    metode_pembayaran: '',
     referral: '',
     dilayani_oleh: ''
   })
@@ -111,11 +197,18 @@ export default function Penjualan() {
 
   const [options, setOptions] = useState([])
 
+  // ======================
+  // LOYALTY UI STATES
+  // ======================
+  const [loyaltyCustomerId, setLoyaltyCustomerId] = useState(null)
+  const [poinAktif, setPoinAktif] = useState(0)
+  const [usePoinDisplay, setUsePoinDisplay] = useState('')
+  const [usePoin, setUsePoin] = useState(0)
+
   // ====== OPTIONS SN/SKU ======
   useEffect(() => {
     async function fetchOptions() {
       const { data: stokReady } = await supabase.from('stok').select('sn, nama_produk, warna').eq('status', 'READY')
-
       const { data: aksesoris } = await supabase.from('stok_aksesoris').select('sku, nama_produk, warna')
 
       const combinedOptions = [
@@ -138,7 +231,7 @@ export default function Penjualan() {
     async function fetchCustomers() {
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select('nama_pembeli, alamat, no_wa, email, tanggal') // ✅ NEW: email
+        .select('nama_pembeli, alamat, no_wa, email, tanggal')
         .order('tanggal', { ascending: false })
         .limit(5000)
 
@@ -159,7 +252,7 @@ export default function Penjualan() {
             nama,
             alamat: (r.alamat || '').toString(),
             no_wa: wa,
-            email: (r.email || '').toString().trim().toLowerCase() // ✅ NEW
+            email: (r.email || '').toString().trim().toLowerCase()
           })
         }
       })
@@ -197,7 +290,7 @@ export default function Penjualan() {
         const nama = (r.nama || r.nama_pembeli || '').toString().trim().toUpperCase()
         const wa = (r.no_wa || '').toString().trim()
         const alamat = (r.alamat || '').toString().trim()
-        const email = (r.email || '').toString().trim().toLowerCase() // ✅ NEW (kalau ada di table indent)
+        const email = (r.email || '').toString().trim().toLowerCase()
 
         const namaProduk = (r.nama_produk || '').toString().trim()
         const warna = (r.warna || '').toString().trim()
@@ -221,7 +314,7 @@ export default function Penjualan() {
             nama,
             no_wa: wa,
             alamat,
-            email, // ✅ NEW
+            email,
             raw: r
           }
         }
@@ -243,7 +336,7 @@ export default function Penjualan() {
         nama_pembeli: c.nama || '',
         alamat: c.alamat || '',
         no_wa: c.no_wa || '',
-        email: c.email || '' // ✅ NEW
+        email: c.email || ''
       }))
       setSelectedIndent(null)
     } else {
@@ -254,11 +347,54 @@ export default function Penjualan() {
         nama_pembeli: i.nama || '',
         alamat: i.alamat || '',
         no_wa: i.no_wa || '',
-        email: i.email || '' // ✅ NEW
+        email: i.email || ''
       }))
       setSelectedCustomer(null)
     }
   }, [buyerTab, selectedCustomer, selectedIndent])
+
+  // ====== LOAD LOYALTY CUSTOMER + POIN BALANCE (berdasarkan form tanggal) ======
+  useEffect(() => {
+    async function hydrateLoyalty() {
+      try {
+        const nama = (formData.nama_pembeli || '').toString().trim()
+        const wa = (formData.no_wa || '').toString().trim()
+        if (!nama || !wa) {
+          setLoyaltyCustomerId(null)
+          setPoinAktif(0)
+          setUsePoin(0)
+          setUsePoinDisplay('')
+          return
+        }
+
+        const cid = await upsertLoyaltyCustomer({
+          nama,
+          no_wa: wa,
+          email: formData.email
+        })
+        setLoyaltyCustomerId(cid)
+
+        const onDate = formData.tanggal || dayjs().format('YYYY-MM-DD')
+        const bal = await getPointBalance(cid, onDate)
+        setPoinAktif(bal)
+
+        // kalau poin yang sudah diinput melebihi limit setelah customer berubah, auto clamp
+        const maxUse = Math.floor(bal * 0.5)
+        if (usePoin > maxUse) {
+          setUsePoin(maxUse)
+          setUsePoinDisplay(maxUse ? maxUse.toLocaleString('id-ID') : '')
+        }
+      } catch (e) {
+        console.error(e)
+        // jangan ganggu flow input, tapi reset display poin
+        setLoyaltyCustomerId(null)
+        setPoinAktif(0)
+      }
+    }
+
+    hydrateLoyalty()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.nama_pembeli, formData.no_wa, formData.email, formData.tanggal])
 
   // ====== CARI STOK (auto isi detail) ======
   useEffect(() => {
@@ -343,7 +479,7 @@ export default function Penjualan() {
       qty: 1,
       is_aksesoris: false
     })
-    setHargaJualDisplay('') // ✅ reset display harga
+    setHargaJualDisplay('')
   }
 
   function tambahBonusKeList() {
@@ -385,7 +521,7 @@ export default function Penjualan() {
     setBiayaList((p) => [...p, { desc, nominal }])
     setBiayaDesc('')
     setBiayaNominal('')
-    setBiayaNominalDisplay('') // ✅ reset display nominal biaya
+    setBiayaNominalDisplay('')
   }
 
   function hapusProduk(index) {
@@ -433,6 +569,31 @@ export default function Penjualan() {
     return map
   }
 
+  // ======================
+  // TOTALS
+  // ======================
+  const sumHarga = useMemo(
+    () => produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0),
+    [produkList]
+  )
+  const sumDiskonInvoiceManual = Math.min(toNumber(diskonInvoice), sumHarga)
+  const totalSetelahDiskonManual = Math.max(0, sumHarga - sumDiskonInvoiceManual)
+
+  const maxPoinDipakai = useMemo(() => {
+    const bal = toNumber(poinAktif)
+    const limit50 = Math.floor(bal * 0.5)
+    return Math.max(0, Math.min(limit50, totalSetelahDiskonManual))
+  }, [poinAktif, totalSetelahDiskonManual])
+
+  const poinDipakaiFinal = Math.max(0, Math.min(toNumber(usePoin), maxPoinDipakai))
+  const totalAkhirBayar = Math.max(0, totalSetelahDiskonManual - poinDipakaiFinal)
+
+  const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
+  const isOfficeSKUBonus = (bonusBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
+
+  const buyerSelectOptions = buyerTab === 'customer' ? customerOptions : indentOptions
+  const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (submitting) return
@@ -448,7 +609,25 @@ export default function Penjualan() {
     setSubmitting(true)
     try {
       const invoice = await generateInvoiceId(formData.tanggal)
+      const trxDate = dayjs(formData.tanggal).format('YYYY-MM-DD')
+      const trxYear = parseInt(dayjs(formData.tanggal).format('YYYY'), 10)
 
+      // ✅ Pastikan punya customer_id (loyalty)
+      const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
+      const waTrim = (formData.no_wa || '').toString().trim()
+      const emailLower = (formData.email || '').toString().trim().toLowerCase()
+
+      const customerId =
+        loyaltyCustomerId ||
+        (await upsertLoyaltyCustomer({
+          nama: namaUpper,
+          no_wa: waTrim,
+          email: emailLower
+        }))
+
+      // ======================
+      // EXPAND ITEM (qty -> rows)
+      // ======================
       const expandQty = (arr, isBonus) => {
         const out = []
         for (const it of arr) {
@@ -470,7 +649,7 @@ export default function Penjualan() {
 
       const feeItems = biayaList.map((f, i) => ({
         sn_sku: `FEE-${i + 1}`,
-        nama_produk: `BIAYA ${f.desc.toUpperCase()}`,
+        nama_produk: `BIAYA ${String(f.desc || '').toUpperCase()}`,
         warna: '',
         garansi: '',
         storage: '',
@@ -481,28 +660,168 @@ export default function Penjualan() {
         is_aksesoris: false
       }))
 
-      const diskonNominal = toNumber(diskonInvoice)
+      // ======================
+      // DISKON TOTAL = diskon manual + poin dipakai (lebih akurat)
+      // ======================
+      const diskonManual = toNumber(diskonInvoice)
+      const diskonTotal = Math.min(sumHarga, diskonManual + poinDipakaiFinal)
 
       const produkBerbayarForDiskon = produkList.map((p) => ({
         ...p,
         harga_jual: toNumber(p.harga_jual)
       }))
-      const petaDiskon = distribusiDiskon(produkBerbayarForDiskon, diskonNominal)
+      const petaDiskonTotal = distribusiDiskon(produkBerbayarForDiskon, diskonTotal)
 
       const semuaProduk = [...produkBerbayarExpanded, ...bonusExpanded, ...feeItems]
 
+      // ======================
+      // Membership yearly (UNIT saja, yg berbayar)
+      // hitung unitCount & nominalUnit (setelah diskon terdistribusi)
+      // ======================
+      const unitPaidItems = produkBerbayarExpanded.filter((x) => !x.is_aksesoris)
+      const unitCountInvoice = unitPaidItems.length
+
+      // nominal unit per invoice (sum harga_jual - diskon_item, hanya item unit)
+      // diskon_item dihitung berdasar sn_sku; aman karena unit SN unik
+      let nominalUnitInvoice = 0
+      for (const it of unitPaidItems) {
+        const dIt = toNumber(petaDiskonTotal.get(it.sn_sku) || 0)
+        nominalUnitInvoice += Math.max(0, toNumber(it.harga_jual) - dIt)
+      }
+
+      // ======================
+      // Tentukan level tahun berjalan:
+      // - baca membership_yearly tahun ini
+      // - kalau belum ada, seed dari tahun lalu (turun 1 level)
+      // - lalu update setelah transaksi ini
+      // ======================
+      let currentLevel = 'SILVER'
+      let curUnitCount = 0
+      let curNominalUnit = 0
+      let curTrxCount = 0
+      let curNominalTotal = 0
+
+      const { data: myYear, error: myYearErr } = await supabase
+        .from('membership_yearly')
+        .select('*')
+        .eq('customer_id', customerId)
+        .eq('tahun', trxYear)
+        .maybeSingle()
+
+      if (myYearErr) throw new Error(`Gagal cek membership_yearly: ${myYearErr.message}`)
+
+      if (!myYear) {
+        // cek tahun lalu untuk seed level turun 1 tingkat
+        const { data: lastYear, error: lastErr } = await supabase
+          .from('membership_yearly')
+          .select('level')
+          .eq('customer_id', customerId)
+          .eq('tahun', trxYear - 1)
+          .maybeSingle()
+
+        if (lastErr) throw new Error(`Gagal cek membership tahun lalu: ${lastErr.message}`)
+
+        currentLevel = dropOneLevel(lastYear?.level || 'SILVER')
+
+        const { error: insYearErr } = await supabase.from('membership_yearly').insert({
+          customer_id: customerId,
+          tahun: trxYear,
+          level: currentLevel,
+          unit_count: 0,
+          nominal_unit: 0,
+          trx_count: 0,
+          nominal_total: 0
+        })
+        if (insYearErr) throw new Error(`Gagal buat membership_yearly: ${insYearErr.message}`)
+
+        curUnitCount = 0
+        curNominalUnit = 0
+        curTrxCount = 0
+        curNominalTotal = 0
+      } else {
+        currentLevel = (myYear.level || 'SILVER').toString().toUpperCase()
+        curUnitCount = toNumber(myYear.unit_count)
+        curNominalUnit = toNumber(myYear.nominal_unit)
+        curTrxCount = toNumber(myYear.trx_count)
+        curNominalTotal = toNumber(myYear.nominal_total)
+      }
+
+      // update counters (tahun ini)
+      const nextUnitCount = curUnitCount + unitCountInvoice
+      const nextNominalUnit = curNominalUnit + nominalUnitInvoice
+      const nextTrxCount = curTrxCount + 1
+      const nextNominalTotal = curNominalTotal + totalAkhirBayar // nominal total setelah diskon & poin
+
+      const nextLevel = calcLevelByUnitPerYear({ unitCount: nextUnitCount, nominalUnit: nextNominalUnit })
+
+      const { error: upYearErr } = await supabase
+        .from('membership_yearly')
+        .update({
+          unit_count: nextUnitCount,
+          nominal_unit: nextNominalUnit,
+          trx_count: nextTrxCount,
+          nominal_total: nextNominalTotal,
+          level: nextLevel,
+          updated_at: new Date().toISOString()
+        })
+        .eq('customer_id', customerId)
+        .eq('tahun', trxYear)
+
+      if (upYearErr) throw new Error(`Gagal update membership_yearly: ${upYearErr.message}`)
+
+      // ======================
+      // Redeem poin FIFO (kalau ada)
+      // ======================
+      let poinDipakaiReal = 0
+      if (poinDipakaiFinal > 0) {
+        const { data: used, error: redErr } = await supabase.rpc('redeem_points', {
+          p_customer: customerId,
+          p_tanggal_transaksi: trxDate,
+          p_max_redeem: poinDipakaiFinal,
+          p_invoice: null,
+          p_keterangan: `REDEEM INVOICE ${invoice}`
+        })
+        if (redErr) throw new Error(`Gagal redeem poin: ${redErr.message}`)
+        poinDipakaiReal = toNumber(used || 0)
+      }
+
+      // ======================
+      // Earn poin (0.5% dari total bayar setelah diskon & redeem)
+      // ======================
+      const poinDidapat = Math.floor(totalAkhirBayar * 0.005)
+      if (poinDidapat > 0) {
+        const exp = dayjs(trxDate).add(1, 'year').format('YYYY-MM-DD')
+        const { error: ledErr } = await supabase.from('point_ledger').insert({
+          customer_id: customerId,
+          tanggal_dapat: trxDate,
+          tanggal_expired: exp,
+          jenis: 'EARN',
+          poin_awal: poinDidapat,
+          poin_sisa: poinDidapat,
+          ref_invoice_id: null,
+          keterangan: `EARN INVOICE ${invoice}`
+        })
+        if (ledErr) throw new Error(`Gagal insert point_ledger: ${ledErr.message}`)
+      }
+
+      // ======================
+      // INSERT penjualan rows
+      // poin_didapat/poin_dipakai/level_member/tahun_member disimpan hanya di 1 baris
+      // ======================
+      let wroteLoyaltyMeta = false
+
       for (const item of semuaProduk) {
         const harga_modal = toNumber(item.harga_modal)
-        const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskon.get(item.sn_sku) || 0)
+        const diskon_item = item.is_bonus ? 0 : toNumber(petaDiskonTotal.get(item.sn_sku) || 0)
         const laba = toNumber(item.harga_jual) - diskon_item - harga_modal
 
         const rowToInsert = {
           ...formData,
-          nama_pembeli: (formData.nama_pembeli || '').toString().trim().toUpperCase(),
+          nama_pembeli: namaUpper,
           alamat: (formData.alamat || '').toString().trim(),
-          no_wa: (formData.no_wa || '').toString().trim(),
-          email: (formData.email || '').toString().trim().toLowerCase(),
-          metode_pembayaran: (formData.metode_pembayaran || '').toString().trim().toUpperCase(), // ✅ NEW
+          no_wa: waTrim,
+          email: emailLower,
+          metode_pembayaran: (formData.metode_pembayaran || '').toString().trim().toUpperCase(),
           referral: (formData.referral || '').toString().trim().toUpperCase(),
           dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
           sn_sku: item.sn_sku,
@@ -515,8 +834,21 @@ export default function Penjualan() {
           is_bonus: item.is_bonus,
           laba,
           invoice_id: invoice,
-          diskon_invoice: diskonNominal,
+          diskon_invoice: diskonTotal, // ✅ simpan diskon total (manual + poin) agar total akurat
           diskon_item
+        }
+
+        if (!wroteLoyaltyMeta) {
+          rowToInsert.poin_didapat = poinDidapat
+          rowToInsert.poin_dipakai = poinDipakaiReal
+          rowToInsert.level_member = nextLevel
+          rowToInsert.tahun_member = trxYear
+          wroteLoyaltyMeta = true
+        } else {
+          rowToInsert.poin_didapat = 0
+          rowToInsert.poin_dipakai = 0
+          rowToInsert.level_member = null
+          rowToInsert.tahun_member = null
         }
 
         if (item.office_username) rowToInsert.office_username = item.office_username.trim()
@@ -539,9 +871,6 @@ export default function Penjualan() {
       }
 
       // ====== UPDATE INDENT (jika sedang pilih indent) ======
-      const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
-      const waTrim = (formData.no_wa || '').toString().trim()
-
       if (buyerTab === 'indent') {
         if (selectedIndent?.meta?.id) {
           await supabase.from('transaksi_indent').update({ status: 'Sudah Diambil' }).eq('id', selectedIndent.meta.id)
@@ -550,15 +879,16 @@ export default function Penjualan() {
         }
       }
 
-      alert('Berhasil simpan multi produk!')
+      alert('Berhasil simpan multi produk + Loyalty!')
 
+      // reset
       setFormData({
         tanggal: '',
         nama_pembeli: '',
         alamat: '',
         no_wa: '',
         email: '',
-        metode_pembayaran: '', // ✅ NEW
+        metode_pembayaran: '',
         referral: '',
         dilayani_oleh: ''
       })
@@ -569,10 +899,14 @@ export default function Penjualan() {
       setBiayaList([])
       setDiskonInvoice('')
 
-      // ✅ reset display
       setHargaJualDisplay('')
       setDiskonDisplay('')
       setBiayaNominalDisplay('')
+
+      setUsePoin(0)
+      setUsePoinDisplay('')
+      setPoinAktif(0)
+      setLoyaltyCustomerId(null)
     } catch (err) {
       console.error(err)
       alert(err?.message || 'Terjadi error saat simpan.')
@@ -580,20 +914,6 @@ export default function Penjualan() {
       setSubmitting(false)
     }
   }
-
-  const sumHarga = useMemo(
-    () =>
-      produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0),
-    [produkList]
-  )
-  const sumDiskon = Math.min(toNumber(diskonInvoice), sumHarga)
-  const totalSetelahDiskon = Math.max(0, sumHarga - sumDiskon)
-
-  const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
-  const isOfficeSKUBonus = (bonusBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
-
-  const buyerSelectOptions = buyerTab === 'customer' ? customerOptions : indentOptions
-  const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
 
   return (
     <Layout>
@@ -603,17 +923,17 @@ export default function Penjualan() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-bold">Input Penjualan</h1>
-              <p className="text-sm text-gray-600">Multi produk • Bonus • Biaya • Diskon invoice</p>
+              <p className="text-sm text-gray-600">Multi produk • Bonus • Biaya • Diskon invoice • Loyalty</p>
             </div>
             <div className="text-sm text-gray-700 text-right">
               <div>
                 Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b>
               </div>
               <div>
-                Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b>
+                Diskon (manual + poin): <b>Rp {(sumHarga - totalAkhirBayar).toLocaleString('id-ID')}</b>
               </div>
               <div>
-                Total: <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b>
+                Total Bayar: <b>Rp {totalAkhirBayar.toLocaleString('id-ID')}</b>
               </div>
             </div>
           </div>
@@ -652,7 +972,13 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="md:col-span-2">
                   <div className={label}>Tanggal</div>
-                  <input type="date" className={input} value={formData.tanggal} onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })} required />
+                  <input
+                    type="date"
+                    className={input}
+                    value={formData.tanggal}
+                    onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
+                    required
+                  />
                 </div>
 
                 <div className="md:col-span-2">
@@ -681,16 +1007,25 @@ export default function Penjualan() {
                   <input className={input} value={formData.no_wa} onChange={(e) => setFormData({ ...formData, no_wa: e.target.value })} required />
                 </div>
 
-                {/* ✅ EMAIL */}
                 <div className="md:col-span-2">
                   <div className={label}>Email</div>
-                  <input className={input} type="email" placeholder="customer@email.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                  <input
+                    className={input}
+                    type="email"
+                    placeholder="customer@email.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
                 </div>
 
-                {/* ✅ NEW: METODE PEMBAYARAN */}
                 <div className="md:col-span-2">
                   <div className={label}>Metode Pembayaran</div>
-                  <select className={input} value={formData.metode_pembayaran} onChange={(e) => setFormData({ ...formData, metode_pembayaran: e.target.value })} required>
+                  <select
+                    className={input}
+                    value={formData.metode_pembayaran}
+                    onChange={(e) => setFormData({ ...formData, metode_pembayaran: e.target.value })}
+                    required
+                  >
                     <option value="">Pilih Metode Pembayaran</option>
                     {METODE_PEMBAYARAN.map((m) => (
                       <option key={m} value={m}>
@@ -727,6 +1062,43 @@ export default function Penjualan() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* LOYALTY CARD */}
+                <div className="md:col-span-2 mt-2">
+                  <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        <div className="font-semibold">Loyalty</div>
+                        <div className="text-xs text-gray-600">
+                          Poin aktif: <b>{toNumber(poinAktif).toLocaleString('id-ID')}</b> • Maks pakai: <b>{toNumber(maxPoinDipakai).toLocaleString('id-ID')}</b>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-600">0.5% poin • Expired 1 tahun</div>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                      <div>
+                        <div className={label}>Gunakan Poin (Rp)</div>
+                        <input
+                          className={input}
+                          inputMode="numeric"
+                          placeholder={`maks ${toNumber(maxPoinDipakai).toLocaleString('id-ID')}`}
+                          value={usePoinDisplay}
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            const n = parseIDR(raw)
+                            const clamped = Math.max(0, Math.min(n, maxPoinDipakai))
+                            setUsePoin(clamped)
+                            setUsePoinDisplay(clamped ? clamped.toLocaleString('id-ID') : '')
+                          }}
+                        />
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        Total bayar setelah poin: <b>Rp {totalAkhirBayar.toLocaleString('id-ID')}</b>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -768,7 +1140,13 @@ export default function Penjualan() {
                 <div>
                   <div className={label}>Qty</div>
                   {produkBaru.is_aksesoris ? (
-                    <input className={input} type="number" min="1" value={produkBaru.qty} onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })} />
+                    <input
+                      className={input}
+                      type="number"
+                      min="1"
+                      value={produkBaru.qty}
+                      onChange={(e) => setProdukBaru({ ...produkBaru, qty: clampInt(e.target.value, 1, 100) })}
+                    />
                   ) : (
                     <div className={`${input} flex items-center text-sm text-gray-600`}>1 (unit SN)</div>
                   )}
@@ -851,7 +1229,8 @@ export default function Penjualan() {
                 </div>
                 <div className="text-sm text-gray-700 flex items-end">
                   <div>
-                    Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b> • Diskon: <b>Rp {sumDiskon.toLocaleString('id-ID')}</b> • Total: <b>Rp {totalSetelahDiskon.toLocaleString('id-ID')}</b>
+                    Subtotal: <b>Rp {sumHarga.toLocaleString('id-ID')}</b> • Diskon manual: <b>Rp {sumDiskonInvoiceManual.toLocaleString('id-ID')}</b> • Poin dipakai:{' '}
+                    <b>Rp {poinDipakaiFinal.toLocaleString('id-ID')}</b> • Total bayar: <b>Rp {totalAkhirBayar.toLocaleString('id-ID')}</b>
                   </div>
                 </div>
               </div>
@@ -881,7 +1260,9 @@ export default function Penjualan() {
                 </button>
               </div>
 
-              <div className="mt-3 text-xs text-gray-600">Catatan: Diskon dibagi proporsional ke produk berbayar, biaya dicatat sebagai pengurang laba (harga jual 0).</div>
+              <div className="mt-3 text-xs text-gray-600">
+                Catatan: Diskon total = diskon manual + poin. Biaya dicatat sebagai pengurang laba (harga jual 0).
+              </div>
             </div>
 
             {/* SUBMIT */}
@@ -901,9 +1282,13 @@ export default function Penjualan() {
                   <div className="font-bold">Rp {sumHarga.toLocaleString('id-ID')}</div>
                 </div>
                 <div className="border border-gray-200 rounded-xl p-3 bg-gray-50">
-                  <div className="text-xs text-gray-600">Total (setelah diskon)</div>
-                  <div className="font-bold">Rp {totalSetelahDiskon.toLocaleString('id-ID')}</div>
+                  <div className="text-xs text-gray-600">Total Bayar</div>
+                  <div className="font-bold">Rp {totalAkhirBayar.toLocaleString('id-ID')}</div>
                 </div>
+              </div>
+
+              <div className="mt-3 text-xs text-gray-600">
+                Poin akan didapat: <b>{Math.floor(totalAkhirBayar * 0.005).toLocaleString('id-ID')}</b>
               </div>
             </div>
 

@@ -86,6 +86,13 @@ async function fetchAllPenjualanForDirectory() {
   return all
 }
 
+// ===== NEW: Loyalty helpers (batch fetch) =====
+function chunkArray(arr, size) {
+  const out = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
 export default function DataCustomer() {
   // ===== MODE RANGE (Top 5) =====
   const [mode, setMode] = useState('bulanan') // bulanan | tahunan | custom
@@ -109,7 +116,6 @@ export default function DataCustomer() {
   const [productMetric, setProductMetric] = useState('qty') // qty | nominal
 
   // ✅ SORT DIRECTORY (1 dropdown, mirip pricelist)
-  // last_desc | last_asc | nominal_desc | nominal_asc | trx_desc | trx_asc | nama_asc | nama_desc
   const [dirSortBy, setDirSortBy] = useState('last_desc')
 
   // paging directory
@@ -119,6 +125,13 @@ export default function DataCustomer() {
   const [openEdit, setOpenEdit] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // ===== NEW: Loyalty state for directory =====
+  // loyaltyByWa: { [wa]: { customer_id, poin_aktif, level } }
+  const [loyaltyByWa, setLoyaltyByWa] = useState({})
+  const [loadingLoyalty, setLoadingLoyalty] = useState(false)
+
+  const currentYear = useMemo(() => parseInt(dayjs().format('YYYY'), 10), [])
 
   // set range otomatis saat ganti tab
   useEffect(() => {
@@ -216,7 +229,7 @@ export default function DataCustomer() {
         sn_sku: (r.sn_sku || '').toString().trim(),
         harga_jual: toNumber(r.harga_jual),
         laba: toNumber(r.laba),
-        is_bonus: r?.is_bonus === true || toNumber(r.harga_jual) <= 0,
+        is_bonus: r?.is_bonus === true || toNumber(r.harga_jual) <= 0
       }))
       .filter((r) => !!r.tanggal)
   }, [rawTop])
@@ -320,7 +333,7 @@ export default function DataCustomer() {
           trx: 0,
           nominal: 0,
           last_tanggal: tgl || '',
-          __match: { nama_pembeli: namaRaw, no_wa: wa, alamat: (r0.alamat || '').toString().trim() },
+          __match: { nama_pembeli: namaRaw, no_wa: wa, alamat: (r0.alamat || '').toString().trim() }
         })
       }
 
@@ -364,21 +377,18 @@ export default function DataCustomer() {
       case 'last_desc':
         copy.sort((a, b) => -byLast(a, b) || -byNominal(a, b) || byName(a, b))
         break
-
       case 'nominal_asc':
         copy.sort((a, b) => byNominal(a, b) || -byLast(a, b) || byName(a, b))
         break
       case 'nominal_desc':
         copy.sort((a, b) => -byNominal(a, b) || -byLast(a, b) || byName(a, b))
         break
-
       case 'trx_asc':
         copy.sort((a, b) => byTrx(a, b) || -byLast(a, b) || byName(a, b))
         break
       case 'trx_desc':
         copy.sort((a, b) => -byTrx(a, b) || -byLast(a, b) || byName(a, b))
         break
-
       case 'nama_desc':
         copy.sort((a, b) => -byName(a, b) || -byLast(a, b))
         break
@@ -390,6 +400,116 @@ export default function DataCustomer() {
 
     return copy
   }, [rawDir, searchDir, dirSortBy])
+
+  // ===== NEW: Fetch loyalty data for directory (batch) =====
+  useEffect(() => {
+    async function hydrateLoyaltyDirectory() {
+      try {
+        if (!directory || directory.length === 0) {
+          setLoyaltyByWa({})
+          return
+        }
+
+        // ambil WA unik (valid)
+        const waList = Array.from(
+          new Set(
+            directory
+              .map((x) => (x.no_wa || '').toString().trim())
+              .filter((wa) => wa && wa !== '-' && wa.length >= 6)
+          )
+        )
+
+        if (waList.length === 0) {
+          setLoyaltyByWa({})
+          return
+        }
+
+        setLoadingLoyalty(true)
+
+        // 1) get loyalty_customer by no_wa
+        const waChunks = chunkArray(waList, 200)
+        let customers = []
+        for (const ch of waChunks) {
+          const { data, error } = await supabase.from('loyalty_customer').select('id,no_wa').in('no_wa', ch)
+          if (error) throw error
+          customers = customers.concat(data || [])
+        }
+
+        const waToCustomerId = {}
+        for (const c of customers) {
+          const wa = (c.no_wa || '').toString().trim()
+          if (!wa) continue
+          // kalau duplikat, ambil yang pertama saja
+          if (!waToCustomerId[wa]) waToCustomerId[wa] = c.id
+        }
+
+        const customerIds = Array.from(new Set(Object.values(waToCustomerId))).filter(Boolean)
+        if (customerIds.length === 0) {
+          setLoyaltyByWa({})
+          return
+        }
+
+        // 2) membership_yearly tahun berjalan
+        const idChunks = chunkArray(customerIds, 200)
+        let memberships = []
+        for (const ch of idChunks) {
+          const { data, error } = await supabase
+            .from('membership_yearly')
+            .select('customer_id, tahun, level')
+            .eq('tahun', currentYear)
+            .in('customer_id', ch)
+          if (error) throw error
+          memberships = memberships.concat(data || [])
+        }
+
+        const memberByCustomer = {}
+        for (const m of memberships) {
+          memberByCustomer[m.customer_id] = (m.level || 'SILVER').toString().trim().toUpperCase()
+        }
+
+        // 3) poin aktif (sum poin_sisa yang belum expired) via point_ledger
+        // Catatan: ini aman dan tidak mengubah flow lama; cuma read.
+        let ledgers = []
+        for (const ch of idChunks) {
+          const { data, error } = await supabase
+            .from('point_ledger')
+            .select('customer_id,poin_sisa,tanggal_expired')
+            .in('customer_id', ch)
+          if (error) throw error
+          ledgers = ledgers.concat(data || [])
+        }
+
+        const today = todayStr()
+        const poinByCustomer = {}
+        for (const l of ledgers) {
+          const exp = (l.tanggal_expired || '').toString().slice(0, 10)
+          if (exp && exp < today) continue
+          const cid = l.customer_id
+          poinByCustomer[cid] = (poinByCustomer[cid] || 0) + toNumber(l.poin_sisa)
+        }
+
+        // 4) build final map per WA
+        const out = {}
+        for (const [wa, cid] of Object.entries(waToCustomerId)) {
+          out[wa] = {
+            customer_id: cid,
+            level: memberByCustomer[cid] || 'SILVER',
+            poin_aktif: toNumber(poinByCustomer[cid] || 0)
+          }
+        }
+
+        setLoyaltyByWa(out)
+      } catch (e) {
+        console.error('hydrateLoyaltyDirectory error:', e)
+        // jangan ganggu page — cukup kosongkan loyalty info
+        setLoyaltyByWa({})
+      } finally {
+        setLoadingLoyalty(false)
+      }
+    }
+
+    hydrateLoyaltyDirectory()
+  }, [directory, currentYear])
 
   const totalRows = directory.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
@@ -410,7 +530,7 @@ export default function DataCustomer() {
       Nama: c.nama,
       No_WA: c.no_wa,
       Transaksi: c.jumlah,
-      Nominal: c.nominal,
+      Nominal: c.nominal
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -423,7 +543,7 @@ export default function DataCustomer() {
       No: idx + 1,
       Produk: p.nama_produk,
       Qty: p.qty,
-      Nominal: p.nominal,
+      Nominal: p.nominal
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -455,11 +575,12 @@ export default function DataCustomer() {
 
     setSavingEdit(true)
     try {
+      // ===== EXISTING BEHAVIOR (JANGAN DIUBAH) =====
       let q = supabase.from('penjualan_baru').update({
         nama_pembeli: newNama,
         alamat: newAlamat,
         no_wa: newWa,
-        email: newEmail,
+        email: newEmail
       })
 
       if (oldWa) {
@@ -470,6 +591,35 @@ export default function DataCustomer() {
 
       const { error } = await q
       if (error) throw error
+
+      // ===== NEW (AMAN): sinkron ke loyalty_customer jika ada =====
+      // Tidak akan bikin error flow lama; kalau gagal, cuma log.
+      try {
+        if (oldWa && newWa) {
+          // update by old WA (paling aman)
+          await supabase
+            .from('loyalty_customer')
+            .update({
+              nama_pembeli: newNama,
+              no_wa: newWa,
+              email: newEmail || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('no_wa', oldWa)
+        } else if (newWa) {
+          await supabase
+            .from('loyalty_customer')
+            .update({
+              nama_pembeli: newNama,
+              no_wa: newWa,
+              email: newEmail || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('no_wa', newWa)
+        }
+      } catch (e2) {
+        console.warn('sync loyalty_customer skipped/error:', e2)
+      }
 
       await handleRefreshDir()
       closeEditModal()
@@ -495,6 +645,9 @@ export default function DataCustomer() {
               <div className="text-2xl font-bold text-gray-900">Data Customer</div>
               <div className="text-sm text-gray-600">
                 Top customer & top produk (bonus tidak dihitung) + Directory customer editable (sinkron ke Riwayat Penjualan).
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Loyalty: {loadingLoyalty ? 'memuat…' : 'aktif'} • Tahun: <b>{currentYear}</b>
               </div>
             </div>
 
@@ -727,13 +880,11 @@ export default function DataCustomer() {
                 </div>
               </div>
 
-              <div className="text-xs text-gray-500 mt-2">
-                Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).
-              </div>
+              <div className="text-xs text-gray-500 mt-2">Catatan: Bonus tidak dihitung (is_bonus = true atau harga_jual = 0).</div>
             </div>
           </div>
 
-          {/* DIRECTORY (FIXED LIKE PRICELIST) */}
+          {/* DIRECTORY */}
           <div className={`${card} p-4`}>
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-3">
               <div className="min-w-0">
@@ -749,7 +900,6 @@ export default function DataCustomer() {
                 </div>
               </div>
 
-              {/* ✅ Bar: search + sort (no overlap, wrap like pricelist) */}
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full md:w-auto md:justify-end">
                 <input
                   className={`${input} sm:max-w-[340px]`}
@@ -777,7 +927,7 @@ export default function DataCustomer() {
             </div>
 
             <div className="border border-gray-200 rounded-xl overflow-x-auto">
-              <div className="min-w-[1120px]">
+              <div className="min-w-[1260px]">
                 <table className="w-full text-sm table-fixed">
                   <thead className="bg-gray-50">
                     <tr>
@@ -785,6 +935,11 @@ export default function DataCustomer() {
                       <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Alamat</th>
                       <th className="border-b border-gray-200 px-3 py-2 text-left w-[140px]">No WA</th>
                       <th className="border-b border-gray-200 px-3 py-2 text-left w-[220px]">Email</th>
+
+                      {/* NEW */}
+                      <th className="border-b border-gray-200 px-3 py-2 text-center w-[110px]">Member</th>
+                      <th className="border-b border-gray-200 px-3 py-2 text-right w-[130px]">Poin</th>
+
                       <th className="border-b border-gray-200 px-3 py-2 text-center w-[80px]">Trx</th>
                       <th className="border-b border-gray-200 px-3 py-2 text-right w-[150px]">Nominal</th>
                       <th className="border-b border-gray-200 px-3 py-2 text-left w-[110px]">Terakhir</th>
@@ -795,7 +950,7 @@ export default function DataCustomer() {
                   <tbody>
                     {loadingDir && pageRows.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
+                        <td colSpan={10} className="px-3 py-10 text-center text-gray-500">
                           Memuat…
                         </td>
                       </tr>
@@ -803,34 +958,50 @@ export default function DataCustomer() {
 
                     {!loadingDir && pageRows.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-3 py-10 text-center text-gray-500">
+                        <td colSpan={10} className="px-3 py-10 text-center text-gray-500">
                           Tidak ada data.
                         </td>
                       </tr>
                     )}
 
-                    {pageRows.map((c) => (
-                      <tr key={c.key} className="hover:bg-gray-50">
-                        <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700 truncate">{c.nama}</td>
-                        <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.alamat || '-'}>
-                          {c.alamat || '-'}
-                        </td>
-                        <td className="border-b border-gray-200 px-3 py-2 truncate">{c.no_wa || '-'}</td>
-                        <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.email || '-'}>
-                          {c.email || '-'}
-                        </td>
-                        <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{c.trx}</td>
-                        <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                          {formatRp(c.nominal)}
-                        </td>
-                        <td className="border-b border-gray-200 px-3 py-2 whitespace-nowrap">{c.last_tanggal || '-'}</td>
-                        <td className="border-b border-gray-200 px-3 py-2 text-center">
-                          <button onClick={() => openEditModal(c)} className={`${btn} px-3 py-2`} type="button">
-                            Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {pageRows.map((c) => {
+                      const wa = (c.no_wa || '').toString().trim()
+                      const loy = wa && loyaltyByWa?.[wa] ? loyaltyByWa[wa] : null
+                      const level = loy?.level || '-'
+                      const poin = loy ? toNumber(loy.poin_aktif) : 0
+
+                      return (
+                        <tr key={c.key} className="hover:bg-gray-50">
+                          <td className="border-b border-gray-200 px-3 py-2 font-bold text-blue-700 truncate">{c.nama}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.alamat || '-'}>
+                            {c.alamat || '-'}
+                          </td>
+                          <td className="border-b border-gray-200 px-3 py-2 truncate">{c.no_wa || '-'}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 truncate" title={c.email || '-'}>
+                            {c.email || '-'}
+                          </td>
+
+                          {/* NEW */}
+                          <td className="border-b border-gray-200 px-3 py-2 text-center font-semibold">
+                            {level}
+                          </td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                            {loy ? toNumber(poin).toLocaleString('id-ID') : '-'}
+                          </td>
+
+                          <td className="border-b border-gray-200 px-3 py-2 text-center tabular-nums">{c.trx}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                            {formatRp(c.nominal)}
+                          </td>
+                          <td className="border-b border-gray-200 px-3 py-2 whitespace-nowrap">{c.last_tanggal || '-'}</td>
+                          <td className="border-b border-gray-200 px-3 py-2 text-center">
+                            <button onClick={() => openEditModal(c)} className={`${btn} px-3 py-2`} type="button">
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -839,8 +1010,7 @@ export default function DataCustomer() {
             {/* Pagination */}
             <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between pt-4 mt-4 border-t border-gray-200">
               <div className="text-xs text-gray-500">
-                Menampilkan <b className="text-gray-900">{shownFrom}–{shownTo}</b> dari{' '}
-                <b className="text-gray-900">{totalRows}</b>
+                Menampilkan <b className="text-gray-900">{shownFrom}–{shownTo}</b> dari <b className="text-gray-900">{totalRows}</b>
               </div>
 
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
@@ -894,30 +1064,18 @@ export default function DataCustomer() {
                 <div className="grid gap-3">
                   <div>
                     <div className={label}>Nama</div>
-                    <input
-                      className={input}
-                      value={editRow.nama}
-                      onChange={(e) => setEditRow((p) => ({ ...p, nama: e.target.value }))}
-                    />
+                    <input className={input} value={editRow.nama} onChange={(e) => setEditRow((p) => ({ ...p, nama: e.target.value }))} />
                   </div>
 
                   <div>
                     <div className={label}>Alamat</div>
-                    <input
-                      className={input}
-                      value={editRow.alamat}
-                      onChange={(e) => setEditRow((p) => ({ ...p, alamat: e.target.value }))}
-                    />
+                    <input className={input} value={editRow.alamat} onChange={(e) => setEditRow((p) => ({ ...p, alamat: e.target.value }))} />
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <div className={label}>No WA</div>
-                      <input
-                        className={input}
-                        value={editRow.no_wa}
-                        onChange={(e) => setEditRow((p) => ({ ...p, no_wa: e.target.value }))}
-                      />
+                      <input className={input} value={editRow.no_wa} onChange={(e) => setEditRow((p) => ({ ...p, no_wa: e.target.value }))} />
                     </div>
                     <div>
                       <div className={label}>Email</div>
