@@ -1,4 +1,3 @@
-// pages/membership.js
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -15,22 +14,15 @@ const btnPrimary =
 
 const PAGE_SIZE = 15
 
-// ======================
-// ✅ RULES (FINAL)
-// ======================
+// ===== Rules =====
 const POINT_RATE = 0.005 // 0.5%
 
-// 🥇 GOLD: min 3 transaksi unit ATAU rolling >= 50jt
-// 🏆 PLATINUM: min 5 transaksi unit ATAU rolling >= 100jt
 const THRESHOLD_GOLD_OMZET = 50_000_000
 const THRESHOLD_PLATINUM_OMZET = 100_000_000
 const THRESHOLD_GOLD_UNIT_TRX = 3
 const THRESHOLD_PLATINUM_UNIT_TRX = 5
 
-// expiry window points: 365 hari
-const POINT_VALID_DAYS = 365
-
-// ============ helpers ============
+// ===== Helpers =====
 const toNumber = (v) => {
   if (typeof v === 'number') return v
   const n = parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10)
@@ -39,31 +31,30 @@ const toNumber = (v) => {
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 const safe = (v) => String(v ?? '').trim()
 
-// ✅ validasi WA: hanya angka minimal 9 digit
+function normalizeDigits(s) {
+  const raw = safe(s)
+  if (!raw) return ''
+  return raw.replace(/[^\d]/g, '')
+}
 function isValidWANumeric(raw) {
-  const s = String(raw || '').trim()
-  return /^[0-9]{9,16}$/.test(s)
+  const d = normalizeDigits(raw)
+  return /^[0-9]{9,16}$/.test(d)
 }
-function normalizeWANum(raw) {
-  const s = String(raw || '').trim()
-  return s.replace(/[^\d]/g, '')
-}
-
-// ✅ blacklist nama (case-insensitive)
-function isBlacklistedNameLocal(nama) {
-  const up = String(nama || '').toUpperCase()
+function isBlacklistedNameSync(nama) {
+  const up = safe(nama).toUpperCase()
   if (!up) return false
   if (up.includes('CONNECT.IND')) return true
   if (up.includes('CONNECT IND')) return true
-  if (up.includes('ERICK')) return true
-  if (up === 'TOKPED' || up === 'TOKOPEDIA') return true
+  if (up === 'ERICK') return true
+  if (up === 'TOKPED') return true
+  if (up === 'TOKOPEDIA') return true
   if (up === 'SHOPEE') return true
   if (up === 'STORE') return true
   return false
 }
 
 function isUnitRow(r) {
-  // unit kalau storage / garansi terisi
+  // unit jika storage/garansi terisi
   const storage = safe(r.storage)
   const garansi = safe(r.garansi)
   return Boolean(storage || garansi)
@@ -72,7 +63,6 @@ function isUnitRow(r) {
 function getTier({ omzetRolling, unitTrxRolling }) {
   const omz = toNumber(omzetRolling)
   const trxUnit = toNumber(unitTrxRolling)
-
   if (trxUnit >= THRESHOLD_PLATINUM_UNIT_TRX || omz >= THRESHOLD_PLATINUM_OMZET) return 'PLATINUM'
   if (trxUnit >= THRESHOLD_GOLD_UNIT_TRX || omz >= THRESHOLD_GOLD_OMZET) return 'GOLD'
   return 'SILVER'
@@ -85,18 +75,27 @@ function tierBadgeClass(tier) {
   return 'bg-slate-700 text-white'
 }
 
+function groupByInvoice(rows = []) {
+  const map = new Map()
+  for (const r of rows) {
+    const inv = safe(r.invoice_id)
+    if (!inv) continue
+    if (!map.has(inv)) map.set(inv, r)
+  }
+  return Array.from(map.values())
+}
+
 export default function MembershipPage() {
   const today = dayjs().format('YYYY-MM-DD')
   const thisYear = dayjs().year()
 
   const [loading, setLoading] = useState(false)
 
-  // ✅ sumber data:
-  const [rawSalesRolling, setRawSalesRolling] = useState([]) // penjualan_baru 365 hari
-  const [members, setMembers] = useState([]) // loy_member_v1 eligible
-  const [ledger365, setLedger365] = useState([]) // loy_ledger_v1 365 hari terakhir
+  const [rawRows, setRawRows] = useState([])
+  const [memberRows, setMemberRows] = useState([])
+  const [ledgerRows, setLedgerRows] = useState([])
 
-  // ===== filters =====
+  // filters
   const [year, setYear] = useState(String(thisYear))
   const [range, setRange] = useState({
     start: dayjs().startOf('month').format('YYYY-MM-DD'),
@@ -104,129 +103,136 @@ export default function MembershipPage() {
   })
   const [search, setSearch] = useState('')
 
-  // ===== paging =====
+  // paging
   const [page, setPage] = useState(1)
 
-  async function fetchAll() {
+  async function fetchData() {
     setLoading(true)
     try {
-      const rollingStart = dayjs(today).subtract(POINT_VALID_DAYS, 'day').format('YYYY-MM-DD')
+      const rollingStart = dayjs(today).subtract(365, 'day').format('YYYY-MM-DD')
       const rollingEnd = dayjs(today).format('YYYY-MM-DD')
 
-      // 1) sales rolling untuk hitung tier/omzet/unit trx
-      const { data: sales, error: salesErr } = await supabase
+      // ===== penjualan rolling 365 hari (untuk list & tier rolling) =====
+      const { data: jual, error: jualErr } = await supabase
         .from('penjualan_baru')
-        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,laba,qty,is_bonus,storage,garansi')
+        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus,storage,garansi')
         .gte('tanggal', rollingStart)
         .lte('tanggal', rollingEnd)
         .eq('is_bonus', false)
         .order('tanggal', { ascending: false })
         .limit(50000)
+      if (jualErr) throw jualErr
+      setRawRows(Array.isArray(jual) ? jual : [])
 
-      if (salesErr) throw salesErr
-
-      // 2) members eligible (WA valid harusnya sudah true)
-      const { data: mem, error: memErr } = await supabase
-        .from('loy_member_v1')
-        .select('id,buyer_name,wa_raw,wa_norm,is_eligible,tier,unit_count,total_spent,created_at,updated_at')
-        .eq('is_eligible', true)
-        .not('wa_norm', 'is', null)
-        .limit(50000)
-
+      // ===== loy_member_v1 (jangan select kolom spesifik biar gak error schema) =====
+      const { data: mem, error: memErr } = await supabase.from('loy_member_v1').select('*').limit(50000)
       if (memErr) throw memErr
+      setMemberRows(Array.isArray(mem) ? mem : [])
 
-      // 3) ledger 365 hari terakhir (expired = di luar window ini)
-      const sinceIso = dayjs(today).subtract(POINT_VALID_DAYS, 'day').startOf('day').toISOString()
+      // ===== ledger valid 365 hari (buat saldo + exp terdekat) =====
       const { data: led, error: ledErr } = await supabase
         .from('loy_ledger_v1')
-        .select('member_id,points,entry_type,invoice_id,created_at')
-        .gte('created_at', sinceIso)
-        .order('created_at', { ascending: true })
+        .select('member_id,entry_type,points,created_at')
+        .gte('created_at', rollingStart)
+        .lte('created_at', dayjs(today).add(1, 'day').format('YYYY-MM-DD'))
         .limit(100000)
-
       if (ledErr) throw ledErr
+      setLedgerRows(Array.isArray(led) ? led : [])
 
-      setRawSalesRolling(Array.isArray(sales) ? sales : [])
-      setMembers(Array.isArray(mem) ? mem : [])
-      setLedger365(Array.isArray(led) ? led : [])
       setPage(1)
     } catch (e) {
       console.error(e)
       alert('Gagal load membership: ' + (e?.message || String(e)))
-      setRawSalesRolling([])
-      setMembers([])
-      setLedger365([])
+      setRawRows([])
+      setMemberRows([])
+      setLedgerRows([])
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchAll()
+    fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ======================
-  // BUILD MAP: ledger balance + nearest expiry
-  // ======================
-  const ledgerAgg = useMemo(() => {
-    const bal = new Map() // member_id -> balance within 365d
-    const nearestExp = new Map() // member_id -> YYYY-MM-DD (nearest exp from earliest EARN within window)
-    const todayD = dayjs(today).startOf('day')
+  // ===== Build lookup member by wa_norm =====
+  const memberByWa = useMemo(() => {
+    const m = new Map()
+    for (const r of memberRows) {
+      const wa = normalizeDigits(r.wa_norm || r.no_wa || r.wa_raw || '')
+      if (!wa) continue
+      // simpan yang paling awal (stabil)
+      if (!m.has(wa)) m.set(wa, r)
+    }
+    return m
+  }, [memberRows])
 
-    for (const r of ledger365) {
+  // ===== Build ledger aggregates per member_id =====
+  const ledgerAggByMember = useMemo(() => {
+    const map = new Map()
+    const now = dayjs(today)
+
+    for (const r of ledgerRows) {
       const mid = r.member_id
       if (!mid) continue
-      const pts = toNumber(r.points)
-      bal.set(mid, (bal.get(mid) || 0) + pts)
+      if (!map.has(mid)) {
+        map.set(mid, { balance: 0, nearestExp: null })
+      }
+      const b = map.get(mid)
+      b.balance += toNumber(r.points)
 
-      // nearest expiry = untuk entry EARN positif: exp = created_at + 365
-      if ((r.entry_type || '').toString().toUpperCase() === 'EARN' && pts > 0) {
-        const c = dayjs(r.created_at)
-        if (!c.isValid()) continue
-        const exp = c.add(POINT_VALID_DAYS, 'day').startOf('day')
-        // hanya ambil exp >= hari ini
-        if (exp.isBefore(todayD)) continue
-        const cur = nearestExp.get(mid)
-        if (!cur) nearestExp.set(mid, exp.format('YYYY-MM-DD'))
-        else {
-          const curD = dayjs(cur)
-          if (exp.isBefore(curD)) nearestExp.set(mid, exp.format('YYYY-MM-DD'))
+      // nearest expiry diambil dari EARN yang exp paling dekat (created_at + 365)
+      const type = String(r.entry_type || '').toUpperCase()
+      if (type === 'EARN' && toNumber(r.points) > 0 && r.created_at) {
+        const earnDate = dayjs(r.created_at)
+        if (earnDate.isValid()) {
+          const exp = earnDate.add(365, 'day')
+          if (exp.isAfter(now)) {
+            if (!b.nearestExp) b.nearestExp = exp
+            else if (exp.isBefore(b.nearestExp)) b.nearestExp = exp
+          }
         }
       }
     }
 
-    // pastikan balance tidak negatif aneh (biarin apa adanya, tapi clamp minimal 0 untuk UI)
-    const out = new Map()
-    for (const [k, v] of bal.entries()) out.set(k, v)
-    return { balanceMap: out, expMap: nearestExp }
-  }, [ledger365, today])
+    return map
+  }, [ledgerRows, today])
 
-  // ======================
-  // BUILD SALES MAP: rolling per WA (wa_norm)
-  // ======================
-  const salesAgg = useMemo(() => {
-    const roll = new Map() // wa_norm -> { omzet, unitInvSet, lastDate, email, alamat, nama }
-    for (const r of rawSalesRolling) {
-      const waRaw = safe(r.no_wa)
-      if (!isValidWANumeric(waRaw)) continue
-      const waNorm = normalizeWANum(waRaw)
-      if (!waNorm) continue
+  // ===== customerRows =====
+  const customerRows = useMemo(() => {
+    const y = toNumber(year)
+    const startY = dayjs(`${y}-01-01`).startOf('day')
+    const endY = dayjs(`${y}-12-31`).endOf('day')
 
-      const nama = safe(r.nama_pembeli).toUpperCase()
-      if (isBlacklistedNameLocal(nama)) continue
+    const startRange = range.start ? dayjs(range.start).startOf('day') : null
+    const endRange = range.end ? dayjs(range.end).endOf('day') : null
 
-      if (!roll.has(waNorm)) {
-        roll.set(waNorm, {
-          omzet: 0,
-          unitInv: new Set(),
-          lastDate: null,
-          email: safe(r.email),
-          alamat: safe(r.alamat),
-          nama,
-        })
-      }
-      const b = roll.get(waNorm)
+    // filter range list
+    const rowsRange = rawRows.filter((r) => {
+      if (!startRange || !endRange) return true
+      const d = dayjs(r.tanggal)
+      return (
+        d.isValid() &&
+        (d.isAfter(startRange) || d.isSame(startRange)) &&
+        (d.isBefore(endRange) || d.isSame(endRange))
+      )
+    })
+
+    // filter year ringkasan (untuk invoice_year)
+    const rowsYear = rawRows.filter((r) => {
+      const d = dayjs(r.tanggal)
+      return d.isValid() && (d.isAfter(startY) || d.isSame(startY)) && (d.isBefore(endY) || d.isSame(endY))
+    })
+
+    // ===== rolling totals per WA =====
+    const rollMap = new Map() // wa_norm -> { omzet, unitInv:Set }
+    for (const r of rawRows) {
+      const wa = normalizeDigits(r.no_wa)
+      if (!isValidWANumeric(wa)) continue
+      if (!rollMap.has(wa)) rollMap.set(wa, { omzet: 0, unitInv: new Set() })
+      const b = rollMap.get(wa)
+
       const qty = Math.max(1, toNumber(r.qty))
       b.omzet += toNumber(r.harga_jual) * qty
 
@@ -234,147 +240,88 @@ export default function MembershipPage() {
         const inv = safe(r.invoice_id)
         if (inv) b.unitInv.add(inv)
       }
-
-      // last date
-      if (r.tanggal) {
-        const d = dayjs(r.tanggal)
-        if (d.isValid()) {
-          if (!b.lastDate) b.lastDate = d.format('YYYY-MM-DD')
-          else if (d.isAfter(dayjs(b.lastDate))) b.lastDate = d.format('YYYY-MM-DD')
-        }
-      }
-
-      if (!b.email && r.email) b.email = safe(r.email)
-      if (!b.alamat && r.alamat) b.alamat = safe(r.alamat)
-      if (!b.nama && nama) b.nama = nama
     }
-    return roll
-  }, [rawSalesRolling])
 
-  // ======================
-  // rowsRange invoice count & omzet/laba range (berdasarkan filter list)
-  // ======================
-  const rangeAgg = useMemo(() => {
-    const startRange = range.start ? dayjs(range.start).startOf('day') : null
-    const endRange = range.end ? dayjs(range.end).endOf('day') : null
+    // invoice counts
+    const invRange = groupByInvoice(rowsRange)
+    const invYear = groupByInvoice(rowsYear)
 
-    const invSet = new Map() // wa_norm -> Set(invoice)
-    const omz = new Map()
-    const laba = new Map()
+    const invCountRange = new Map()
+    for (const r of invRange) {
+      const wa = normalizeDigits(r.no_wa)
+      if (!isValidWANumeric(wa)) continue
+      invCountRange.set(wa, (invCountRange.get(wa) || 0) + 1)
+    }
 
-    for (const r of rawSalesRolling) {
-      const waRaw = safe(r.no_wa)
-      if (!isValidWANumeric(waRaw)) continue
-      const waNorm = normalizeWANum(waRaw)
-      if (!waNorm) continue
+    const invCountYear = new Map()
+    for (const r of invYear) {
+      const wa = normalizeDigits(r.no_wa)
+      if (!isValidWANumeric(wa)) continue
+      invCountYear.set(wa, (invCountYear.get(wa) || 0) + 1)
+    }
 
+    // build customer map dari rowsRange (tapi WA harus valid angka dan nama bukan blacklist)
+    const map = new Map()
+
+    for (const r of rowsRange) {
       const nama = safe(r.nama_pembeli).toUpperCase()
-      if (isBlacklistedNameLocal(nama)) continue
+      const wa = normalizeDigits(r.no_wa)
 
-      const d = dayjs(r.tanggal)
-      if (!d.isValid()) continue
-      if (startRange && d.isBefore(startRange)) continue
-      if (endRange && d.isAfter(endRange)) continue
+      if (!isValidWANumeric(wa)) continue
+      if (!nama) continue
+      if (isBlacklistedNameSync(nama)) continue
 
-      const qty = Math.max(1, toNumber(r.qty))
-      omz.set(waNorm, (omz.get(waNorm) || 0) + toNumber(r.harga_jual) * qty)
-      laba.set(waNorm, (laba.get(waNorm) || 0) + toNumber(r.laba))
-
-      const inv = safe(r.invoice_id)
-      if (inv) {
-        if (!invSet.has(waNorm)) invSet.set(waNorm, new Set())
-        invSet.get(waNorm).add(inv)
-      }
-    }
-
-    const invCount = new Map()
-    for (const [k, set] of invSet.entries()) invCount.set(k, set.size)
-
-    return { invCount, omz, laba }
-  }, [rawSalesRolling, range.start, range.end])
-
-  // ======================
-  // BUILD FINAL CUSTOMER ROWS (source: loy_member_v1)
-  // ======================
-  const customerRows = useMemo(() => {
-    const y = toNumber(year)
-    const startY = dayjs(`${y}-01-01`).startOf('day')
-    const endY = dayjs(`${y}-12-31`).endOf('day')
-
-    // invoice year count (ringkasan)
-    const invYearSet = new Map() // wa_norm -> Set(invoice)
-    for (const r of rawSalesRolling) {
-      const waRaw = safe(r.no_wa)
-      if (!isValidWANumeric(waRaw)) continue
-      const waNorm = normalizeWANum(waRaw)
-      if (!waNorm) continue
-
-      const nama = safe(r.nama_pembeli).toUpperCase()
-      if (isBlacklistedNameLocal(nama)) continue
-
-      const d = dayjs(r.tanggal)
-      if (!d.isValid()) continue
-      if (d.isBefore(startY) || d.isAfter(endY)) continue
-
-      const inv = safe(r.invoice_id)
-      if (!inv) continue
-      if (!invYearSet.has(waNorm)) invYearSet.set(waNorm, new Set())
-      invYearSet.get(waNorm).add(inv)
-    }
-
-    const invYearCount = new Map()
-    for (const [k, set] of invYearSet.entries()) invYearCount.set(k, set.size)
-
-    // join members + sales + ledger
-    let arr = (members || [])
-      .filter((m) => {
-        const wa = safe(m.wa_norm)
-        if (!wa) return false
-        if (!isValidWANumeric(wa)) return false
-        const nm = safe(m.buyer_name).toUpperCase()
-        if (isBlacklistedNameLocal(nm)) return false
-        return true
-      })
-      .map((m) => {
-        const wa = safe(m.wa_norm)
-        const roll = salesAgg.get(wa)
-        const omzRolling = roll?.omzet || 0
-        const unitTrxRolling = roll?.unitInv ? roll.unitInv.size : 0
-
-        const tier = (m.tier || getTier({ omzetRolling: omzRolling, unitTrxRolling })).toString().toUpperCase()
-
-        const balRaw = ledgerAgg.balanceMap.get(m.id) || 0
-        const pointsValid = Math.max(0, toNumber(balRaw)) // tampilkan min 0
-
-        const expNearest = ledgerAgg.expMap.get(m.id) || null
-
-        const omzetRange = rangeAgg.omz.get(wa) || 0
-        const labaRange = rangeAgg.laba.get(wa) || 0
-        const invoiceRange = rangeAgg.invCount.get(wa) || 0
-        const invoiceYear = invYearCount.get(wa) || 0
-
-        return {
-          key: m.id,
-          member_id: m.id,
-          nama_pembeli: safe(m.buyer_name).toUpperCase(),
+      if (!map.has(wa)) {
+        map.set(wa, {
+          key: wa,
+          nama_pembeli: nama,
           no_wa: wa,
-          alamat: roll?.alamat || '',
-          email: roll?.email || '',
-          last_date: roll?.lastDate || null,
+          alamat: r.alamat || '',
+          email: r.email || '',
+          omzet_range: 0,
+          laba_range: 0,
+          invoice_range: 0,
+          invoice_year: 0,
+          omzet_rolling: 0,
+          unit_trx_rolling: 0,
+          tier: 'SILVER',
+          points: 0,
+          point_exp: null,
+          last_date: null,
+        })
+      }
 
-          tier,
-          omzet_rolling: omzRolling,
-          unit_trx_rolling: unitTrxRolling,
+      const it = map.get(wa)
+      const qty = Math.max(1, toNumber(r.qty))
+      it.omzet_range += toNumber(r.harga_jual) * qty
+      it.laba_range += toNumber(r.laba)
 
-          points: pointsValid,
-          point_exp_nearest: expNearest, // ✅ untuk "Point exp tgl"
+      const d = r.tanggal ? new Date(r.tanggal).getTime() : 0
+      const cur = it.last_date ? new Date(it.last_date).getTime() : 0
+      if (d >= cur) it.last_date = r.tanggal || it.last_date
 
-          invoice_range: invoiceRange,
-          omzet_range: omzetRange,
-          laba_range: labaRange,
-          invoice_year: invoiceYear,
-        }
-      })
+      if (!it.email && r.email) it.email = r.email
+      if (!it.alamat && r.alamat) it.alamat = r.alamat
+    }
+
+    // inject rolling + tier
+    for (const it of map.values()) {
+      it.invoice_range = invCountRange.get(it.key) || 0
+      it.invoice_year = invCountYear.get(it.key) || 0
+
+      const roll = rollMap.get(it.key)
+      it.omzet_rolling = roll?.omzet || 0
+      it.unit_trx_rolling = roll?.unitInv ? roll.unitInv.size : 0
+      it.tier = getTier({ omzetRolling: it.omzet_rolling, unitTrxRolling: it.unit_trx_rolling })
+
+      // points dari ledger valid 365 hari (bukan dari omzet rolling)
+      const mem = memberByWa.get(it.key)
+      const agg = mem ? ledgerAggByMember.get(mem.id) : null
+      it.points = agg ? Math.max(0, toNumber(agg.balance)) : 0
+      it.point_exp = agg?.nearestExp ? dayjs(agg.nearestExp).format('YYYY-MM-DD') : null
+    }
+
+    let arr = Array.from(map.values())
 
     // search
     const s = search.trim().toLowerCase()
@@ -389,20 +336,17 @@ export default function MembershipPage() {
       })
     }
 
-    // sort: tier rank desc, then points desc, then omzet rolling desc
+    // sort: tier desc then omzet rolling desc
     const tierRank = { PLATINUM: 3, GOLD: 2, SILVER: 1 }
     arr.sort((a, b) => {
       const ra = tierRank[String(a.tier || 'SILVER').toUpperCase()] || 0
       const rb = tierRank[String(b.tier || 'SILVER').toUpperCase()] || 0
       if (rb !== ra) return rb - ra
-      const pb = toNumber(b.points)
-      const pa = toNumber(a.points)
-      if (pb !== pa) return pb - pa
       return toNumber(b.omzet_rolling) - toNumber(a.omzet_rolling)
     })
 
     return arr
-  }, [members, rawSalesRolling, salesAgg, ledgerAgg, rangeAgg, year, search])
+  }, [rawRows, year, range.start, range.end, search, memberByWa, ledgerAggByMember])
 
   // pagination
   const totalRows = customerRows.length
@@ -429,12 +373,14 @@ export default function MembershipPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Membership & Loyalty</h1>
             <div className="text-sm text-gray-600">
-              Tier dihitung dari <b>penjualan_baru</b> (rolling 365 hari). Poin dibaca dari <b>loy_ledger_v1</b> (valid 365 hari).
+              Tier dihitung dari <b>penjualan_baru (rolling 365 hari)</b>. Poin dibaca dari <b>loy_ledger_v1</b> (valid 365 hari).
+              <div className="text-xs text-gray-500 mt-1">
+                * List ini hanya untuk customer dengan <b>WA angka valid</b> (TOKPED/SHOPEE/STORE/ERICK tidak masuk).
+              </div>
             </div>
-            <div className="text-xs text-gray-500 mt-1">* List ini hanya untuk customer dengan WA angka valid (TOKPED/SHOPEE/STORE/ERICK tidak masuk).</div>
           </div>
           <div className="flex gap-2">
-            <button className={btn} onClick={fetchAll} disabled={loading} type="button">
+            <button className={btn} onClick={fetchData} disabled={loading} type="button">
               {loading ? 'Memuat…' : 'Refresh'}
             </button>
           </div>
@@ -485,7 +431,7 @@ export default function MembershipPage() {
 
           <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div className="text-xs text-gray-500">
-              Rolling tier: <b>365 hari terakhir</b> • Points valid: <b>365 hari</b> • Points rate: <b>{POINT_RATE * 100}%</b>
+              Rolling tier: <b>365 hari terakhir</b> • Points valid: <b>365 hari</b> • Rate: <b>{POINT_RATE * 100}%</b>
               <span className="ml-2">
                 • GOLD: <b>≥{THRESHOLD_GOLD_UNIT_TRX}</b> trx unit / <b>≥{formatRp(THRESHOLD_GOLD_OMZET)}</b> • PLATINUM:{' '}
                 <b>≥{THRESHOLD_PLATINUM_UNIT_TRX}</b> trx unit / <b>≥{formatRp(THRESHOLD_PLATINUM_OMZET)}</b>
@@ -507,8 +453,6 @@ export default function MembershipPage() {
             </button>
           </div>
         </div>
-
-        {/* ✅ SUMMARY DIHAPUS (sesuai request) */}
 
         {/* Table */}
         <div className={`${card} overflow-hidden`}>
@@ -564,10 +508,10 @@ export default function MembershipPage() {
                       <td className="px-4 py-3 text-right font-semibold">{formatRp(r.omzet_rolling)}</td>
 
                       <td className="px-4 py-3 text-right font-semibold">
-                        <div className="flex flex-col items-end leading-tight">
-                          <div>{formatRp(r.points)}</div>
+                        <div className="flex flex-col items-end">
+                          <div>{toNumber(r.points).toLocaleString('id-ID')}</div>
                           <div className="text-[11px] text-gray-500">
-                            Point exp tgl {r.point_exp_nearest ? dayjs(r.point_exp_nearest).format('DD/MM/YYYY') : '-'}
+                            {r.point_exp ? `Point exp tgl ${dayjs(r.point_exp).format('DD/MM/YYYY')}` : 'Point exp tgl -'}
                           </div>
                         </div>
                       </td>
@@ -598,12 +542,7 @@ export default function MembershipPage() {
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1 || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
                 ‹ Prev
               </button>
 
@@ -627,7 +566,7 @@ export default function MembershipPage() {
         </div>
 
         <div className="text-xs text-gray-500">
-          Catatan: Points aktif dihitung dari <b>loy_ledger_v1</b> dalam <b>365 hari terakhir</b>. “Point exp tgl …” diambil dari tanggal EARN terdekat yang akan expired.
+          Catatan: Points aktif dihitung dari <b>loy_ledger_v1</b> dalam <b>365 hari terakhir</b>. “Point exp tgl …” diambil dari transaksi <b>EARN</b> yang masa berlakunya paling dekat habis (earn_date + 365 hari).
         </div>
       </div>
     </Layout>
