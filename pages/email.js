@@ -85,27 +85,31 @@ function getTier({ omzetRolling, unitTrxRolling }) {
   return 'SILVER'
 }
 
-function getTierBenefits(tier) {
-  const t = String(tier || 'SILVER').toUpperCase()
-  if (t === 'PLATINUM') {
-    return [
-      'Prioritas info stok & promo tertentu (jika tersedia)',
-      'Prioritas bantuan fast response',
-      'Kesempatan penawaran khusus member tertentu (jika ada)',
-    ]
-  }
-  if (t === 'GOLD') {
-    return [
-      'Info promo member tertentu (jika tersedia)',
-      'Prioritas antrian (jika ramai)',
-      'Kesempatan penawaran khusus member tertentu (jika ada)',
-    ]
-  }
-  return [
+/**
+ * ✅ BENEFIT TIERS (EDIT DISINI SESUAI SETTING KAMU)
+ * Pastikan teksnya sesuai yang sudah kita set.
+ */
+const BENEFITS_BY_TIER = {
+  SILVER: [
     'Mendapatkan point dari transaksi',
     'Bisa naik level membership otomatis sesuai total transaksi',
     'Akses info promo member (jika tersedia)',
-  ]
+  ],
+  GOLD: [
+    'Info promo member tertentu (jika tersedia)',
+    'Prioritas antrian (jika ramai)',
+    'Kesempatan penawaran khusus member tertentu (jika ada)',
+  ],
+  PLATINUM: [
+    'Prioritas info stok & promo tertentu (jika tersedia)',
+    'Prioritas bantuan fast response',
+    'Kesempatan penawaran khusus member tertentu (jika ada)',
+  ],
+}
+
+function getTierBenefits(tier) {
+  const t = String(tier || 'SILVER').toUpperCase()
+  return BENEFITS_BY_TIER[t] || BENEFITS_BY_TIER.SILVER
 }
 
 function formatDateIndo(ymdOrIso) {
@@ -262,14 +266,19 @@ function buildInvoiceEmailTemplate(payload) {
         </tr>
       `
 
-  // ✅ membership block
+  // ✅ membership block (benefit wajib sesuai tier)
   const membershipBlock = (() => {
     if (!membership) return ''
     const earned = toNumber(membership.earned_points)
     const totalPts = toNumber(membership.total_points)
-    const tier = safe(membership.tier || 'SILVER')
+    const tier = safe(membership.tier || 'SILVER').toUpperCase()
     const expireAt = safe(membership.expire_at || '')
-    const benefits = Array.isArray(membership.benefits) ? membership.benefits : []
+
+    // ✅ selalu ambil benefit dari tier (kalau payload benefit kosong, tetap tampil)
+    const benefits =
+      Array.isArray(membership.benefits) && membership.benefits.length
+        ? membership.benefits
+        : getTierBenefits(tier)
 
     const expText = expireAt
       ? `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
@@ -303,7 +312,7 @@ function buildInvoiceEmailTemplate(payload) {
         ${
           benefitRows
             ? `
-            <div style="margin-top:10px; font-weight:800; color:#111827; font-size:13px;">Benefit yang bisa Anda dapatkan:</div>
+            <div style="margin-top:10px; font-weight:800; color:#111827; font-size:13px;">Benefit sesuai membership Anda:</div>
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:6px;">
               ${benefitRows}
             </table>
@@ -727,7 +736,7 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 
           <div style="height:62px; border-radius:8px; border:1px solid #eef2f7; background:#ffffff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 8px 22px rgba(16,24,40,0.06); overflow:hidden;">
             <div style="font-size:12px; font-weight:400; color:#6a768a;">Invoice Number</div>
-            <div style="font-size:12px; font-weight:600; color:${BLUE}; white-space:nowrap; text-align:right;">
+            <div style="font-size:12px; font-weight:600; color:#2388ff; white-space:nowrap; text-align:right;">
               ${safe(invoice_id || payload?.invoice_id)}
             </div>
           </div>
@@ -788,12 +797,12 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
           </div>
           <div style="display:flex; justify-content:space-between; gap:18px;">
             <div style="font-size:12px; font-weight:600; color:#0b1220;">Grand Total:</div>
-            <div style="font-size:14px; font-weight:600; color:${BLUE};">${formatRp(_totals.total)}</div>
+            <div style="font-size:14px; font-weight:600; color:#2388ff;">${formatRp(_totals.total)}</div>
           </div>
         </div>
       </div>
     </div>
-    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:${BLUE};"></div>
+    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:#2388ff;"></div>
   </div>
 </body>
 </html>`
@@ -1125,10 +1134,13 @@ export default function EmailPage() {
       if (error) throw error
 
       const rows = Array.isArray(data) ? data : []
+
+      const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
+
       if (!rows.length) {
         return {
-          earned_points: Math.floor(toNumber(p.total) * POINT_RATE),
-          total_points: Math.floor(toNumber(p.total) * POINT_RATE),
+          earned_points: earnedPoints,
+          total_points: earnedPoints,
           tier: 'SILVER',
           expire_at: null,
           benefits: getTierBenefits('SILVER'),
@@ -1157,9 +1169,6 @@ export default function EmailPage() {
 
       const tier = getTier({ omzetRolling: omzet, unitTrxRolling: unitInv.size })
       const totalPoints = Math.floor(omzet * POINT_RATE)
-
-      const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
-
       const expireAt = oldest && oldest.isValid() ? oldest.add(EXPIRY_DAYS, 'day').format('YYYY-MM-DD') : null
 
       return {
@@ -1171,7 +1180,6 @@ export default function EmailPage() {
       }
     } catch (e) {
       console.warn('fetchMembershipSnapshot error:', e?.message || e)
-      // fallback minimal
       return {
         earned_points: Math.floor(toNumber(invPayload?.total) * POINT_RATE),
         total_points: null,
@@ -1205,7 +1213,7 @@ export default function EmailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail, membershipSnap])
 
-  // ✅ update membership snapshot ketika invoice berubah
+  // ✅ POINTS SELALU UPDATE: re-calc saat total/tanggal/no_wa/nama berubah (bukan cuma invoice_id)
   useEffect(() => {
     const run = async () => {
       if (mode !== 'invoice') return
@@ -1218,7 +1226,16 @@ export default function EmailPage() {
     }
     run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, dataInvoice?.invoice_id])
+  }, [
+    mode,
+    dataInvoice?.invoice_id,
+    dataInvoice?.total,
+    dataInvoice?.subtotal,
+    dataInvoice?.discount,
+    dataInvoice?.tanggal,
+    dataInvoice?.no_wa,
+    dataInvoice?.nama_pembeli,
+  ])
 
   // ✅ auto-generate offerId saat masuk mode offer + kosong
   useEffect(() => {
@@ -1898,7 +1915,7 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* ✅ Membership quick status */}
+        {/* ✅ Membership quick status + benefit sesuai tier */}
         <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-[11px] text-gray-500">Membership</div>
@@ -1906,12 +1923,14 @@ export default function EmailPage() {
               {membershipLoading ? 'Menghitung...' : membershipSnap?.tier || '-'}
             </div>
           </div>
+
           <div className="mt-1 text-xs text-gray-600">
             {membershipLoading ? (
               <>Sedang hitung points rolling...</>
             ) : membershipSnap ? (
               <>
-                Earned: <b>{formatRupiah(membershipSnap.earned_points || 0)}</b> • Total: <b>{formatRupiah(membershipSnap.total_points || 0)}</b>
+                Earned: <b>{formatRupiah(membershipSnap.earned_points || 0)}</b> • Total:{' '}
+                <b>{formatRupiah(membershipSnap.total_points || 0)}</b>
                 {membershipSnap.expire_at ? (
                   <>
                     {' '}
@@ -1923,6 +1942,17 @@ export default function EmailPage() {
               <>-</>
             )}
           </div>
+
+          {!membershipLoading && membershipSnap?.tier ? (
+            <div className="mt-2 text-xs text-gray-600">
+              <div className="font-semibold text-gray-700 mb-1">Benefit ({String(membershipSnap.tier).toUpperCase()}):</div>
+              <ul className="list-disc pl-5 space-y-0.5">
+                {(getTierBenefits(membershipSnap.tier) || []).map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
 
         {historyEnabled ? (
@@ -2142,7 +2172,9 @@ export default function EmailPage() {
                     Generate
                   </button>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1">Nomor otomatis urut & reset tiap bulan (mengikuti tanggal surat).</div>
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Nomor otomatis urut & reset tiap bulan (mengikuti tanggal surat).
+                </div>
               </div>
               <div>
                 <div className={label}>Total (Auto)</div>

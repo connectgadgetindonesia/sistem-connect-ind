@@ -1,3 +1,4 @@
+// pages/riwayat.js
 import Layout from '@/components/Layout'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
@@ -44,9 +45,10 @@ const safe = (v) => String(v ?? '').trim()
 const clampArray = (arr) => (Array.isArray(arr) ? arr : [])
 
 // ====== hitungan total INVOICE ======
+// penjualan_baru hasil expand qty -> biasanya qty kosong; default 1
 function computeInvoiceTotals(rows = []) {
   const subtotal = (rows || []).reduce((acc, r) => {
-    const qty = Math.max(1, toNumber(r.qty))
+    const qty = Math.max(1, toNumber(r.qty || 1))
     const price = toNumber(r.harga_jual)
     return acc + price * qty
   }, 0)
@@ -76,7 +78,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 
   const itemRows = (rows || [])
     .map((it) => {
-      const qty = Math.max(1, toNumber(it.qty))
+      const qty = Math.max(1, toNumber(it.qty || 1))
       const unit = toNumber(it.harga_jual)
       const line = unit * qty
 
@@ -252,11 +254,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
 // ====== download helpers ======
 async function canvasToJpegBlob(canvas, quality = 0.95) {
   return await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('Gagal convert canvas ke blob'))),
-      'image/jpeg',
-      quality
-    )
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Gagal convert canvas ke blob'))), 'image/jpeg', quality)
   })
 }
 
@@ -289,26 +287,25 @@ function chunkArray(arr, size) {
 
 // ====== parse point_ledger row flex ======
 function parsePointLedgerRow(r) {
-  // schema point_ledger kamu: jenis, poin_awal, poin_sisa, ref_invoice_code, ...
   const jenis = (r?.jenis || r?.type || r?.tipe || '').toString().trim().toUpperCase()
   const poinAwal = toNumber(r?.poin_awal ?? r?.poin ?? r?.points ?? r?.amount ?? 0)
 
-  // EARN / BONUS / CASHBACK = poin masuk
-  if (['EARN', 'BONUS', 'CASHBACK'].includes(jenis)) {
-    return { earned: Math.abs(poinAwal), used: 0 }
-  }
+  if (['EARN', 'BONUS', 'CASHBACK'].includes(jenis)) return { earned: Math.abs(poinAwal), used: 0 }
+  if (jenis === 'REDEEM') return { earned: 0, used: Math.abs(poinAwal) }
 
-  // REDEEM = poin keluar
-  if (jenis === 'REDEEM') {
-    return { earned: 0, used: Math.abs(poinAwal) }
-  }
-
-  // fallback
   if (poinAwal > 0) return { earned: poinAwal, used: 0 }
   if (poinAwal < 0) return { earned: 0, used: Math.abs(poinAwal) }
   return { earned: 0, used: 0 }
 }
 
+function getLedgerInvoiceCode(row) {
+  // ✅ yang baru: ref_invoice_code (string invoice_id)
+  return (
+    (row?.ref_invoice_code || row?.invoice_code || row?.invoice_id || row?.ref_invoice_id || '')
+      .toString()
+      .trim()
+  )
+}
 
 export default function RiwayatPenjualan() {
   const [rows, setRows] = useState([])
@@ -318,7 +315,7 @@ export default function RiwayatPenjualan() {
   const [filter, setFilter] = useState({
     tanggal_awal: today,
     tanggal_akhir: today,
-    search: ''
+    search: '',
   })
 
   const [loading, setLoading] = useState(false)
@@ -328,7 +325,6 @@ export default function RiwayatPenjualan() {
   const [kinerjaLabel, setKinerjaLabel] = useState('')
 
   const [page, setPage] = useState(1)
-
   const [downloading, setDownloading] = useState({}) // { [invoice_id]: true/false }
 
   // poin batch
@@ -346,7 +342,6 @@ export default function RiwayatPenjualan() {
   const [loyaltyError, setLoyaltyError] = useState('')
 
   useEffect(() => {
-    // cek sekali saat load
     checkLedger()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -362,7 +357,6 @@ export default function RiwayatPenjualan() {
 
   async function checkLedger() {
     try {
-      // head query, kalau tabel tidak ada -> error -> nonaktif
       const { error } = await supabase.from('point_ledger').select('id', { head: true, count: 'exact' }).limit(1)
       if (error) {
         setLedgerReady(false)
@@ -376,14 +370,11 @@ export default function RiwayatPenjualan() {
 
   function groupByInvoice(data) {
     const grouped = {}
-    data.forEach((item) => {
+    ;(data || []).forEach((item) => {
       const inv = (item.invoice_id || '').toString().trim()
       if (!inv) return
-      if (!grouped[inv]) {
-        grouped[inv] = { ...item, invoice_id: inv, produk: [item] }
-      } else {
-        grouped[inv].produk.push(item)
-      }
+      if (!grouped[inv]) grouped[inv] = { ...item, invoice_id: inv, produk: [item] }
+      else grouped[inv].produk.push(item)
     })
     return Object.values(grouped)
   }
@@ -419,7 +410,7 @@ export default function RiwayatPenjualan() {
   const computeKinerjaFromRows = (data = []) => {
     const invMap = new Map()
 
-    for (const r of data) {
+    for (const r of data || []) {
       const inv = (r.invoice_id || '').toString().trim()
       if (!inv) continue
 
@@ -447,7 +438,7 @@ export default function RiwayatPenjualan() {
 
     const arr = Array.from(emp.values()).map((x) => ({
       ...x,
-      total: (x.dilayani || 0) + (x.referal || 0)
+      total: (x.dilayani || 0) + (x.referal || 0),
     }))
     arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referal - a.referal)
     return arr
@@ -505,19 +496,17 @@ export default function RiwayatPenjualan() {
       let allLedger = []
 
       for (const ch of chunks) {
-        const { data, error } = await supabase
-  .from('point_ledger')
-  .select('*')
-  .in('ref_invoice_code', ch)
-
+        const { data, error } = await supabase.from('point_ledger').select('*').in('ref_invoice_code', ch)
         if (error) throw error
         allLedger = allLedger.concat(data || [])
       }
 
       const map = {}
       for (const row of allLedger) {
-        const inv = (row?.invoice_id || '').toString().trim()
+        // ✅ FIX UTAMA: mapping invoice pakai ref_invoice_code, bukan invoice_id
+        const inv = getLedgerInvoiceCode(row)
         if (!inv) continue
+
         const parsed = parsePointLedgerRow(row)
         if (!map[inv]) map[inv] = { earned: 0, used: 0 }
         map[inv].earned += toNumber(parsed.earned)
@@ -528,7 +517,7 @@ export default function RiwayatPenjualan() {
     } catch (e) {
       console.warn('hydratePoinByInvoice skipped/error:', e)
       setPoinByInvoice({})
-      setLedgerReady(false) // ✅ sekali gagal, anggap ledger belum siap biar ga spam
+      setLedgerReady(false)
     } finally {
       setLoadingPoin(false)
     }
@@ -579,12 +568,31 @@ export default function RiwayatPenjualan() {
       const { data: penjualan, error: e1 } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
       if (e1) throw e1
 
-      // restore stok hanya jika sn cocok di tabel stok
+      // restore stok:
+      // - UNIT SN: status READY
+      // - AKSESORIS SKU: coba RPC tambah_stok_aksesoris (jika ada), kalau tidak ada -> skip (biar tidak error)
       for (const item of penjualan || []) {
-        const sn = (item.sn_sku || '').toString().trim()
-        if (!sn) continue
-        const { data: stokData } = await supabase.from('stok').select('id').eq('sn', sn).maybeSingle()
-        if (stokData?.id) await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+        const code = (item.sn_sku || '').toString().trim()
+        if (!code) continue
+        if (code.toUpperCase().startsWith('FEE-')) continue // biaya internal
+
+        const { data: stokData, error: cekErr } = await supabase.from('stok').select('id').eq('sn', code).maybeSingle()
+        if (cekErr) throw cekErr
+
+        if (stokData?.id) {
+          await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+        } else {
+          // aksesoris: best-effort restore
+          try {
+            const { error: rpcErr } = await supabase.rpc('tambah_stok_aksesoris', { sku_input: code })
+            if (rpcErr) {
+              // kalau RPC belum ada, jangan bikin gagal hapus
+              console.warn('tambah_stok_aksesoris rpc error (ignored):', rpcErr)
+            }
+          } catch (err) {
+            console.warn('tambah_stok_aksesoris rpc exception (ignored):', err)
+          }
+        }
       }
 
       await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
@@ -641,7 +649,7 @@ export default function RiwayatPenjualan() {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
-        windowWidth: 794
+        windowWidth: 794,
       })
 
       const blob = await canvasToJpegBlob(canvas, 0.95)
@@ -683,7 +691,7 @@ export default function RiwayatPenjualan() {
     } catch (e) {
       console.error('openLoyaltyModal error:', e)
       setLoyaltyRows([])
-      setLedgerReady(false) // stop spam error
+      setLedgerReady(false)
       setLoyaltyError('Loyalty History belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
     } finally {
       setLoadingLoyaltyModal(false)
@@ -917,7 +925,7 @@ export default function RiwayatPenjualan() {
                           <button
                             className={btnMini}
                             type="button"
-                            disabled={loading || busy}
+                            disabled={loading || busy || !ledgerReady}
                             onClick={() => openLoyaltyModal(inv)}
                             title="Lihat detail poin (earn/redeem) untuk invoice ini"
                           >
@@ -947,28 +955,17 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
                       <td className="px-4 py-3">{getUniqueText(item.produk, 'referal')}</td>
 
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {earned === null ? '-' : earned.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {used === null ? '-' : used.toLocaleString('id-ID')}
-                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">{earned === null ? '-' : earned.toLocaleString('id-ID')}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{used === null ? '-' : used.toLocaleString('id-ID')}</td>
 
                       <td className="px-4 py-3 text-right">{formatRp(totalInvoice(item.produk))}</td>
 
                       <td className="px-4 py-3 text-right">
-                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>
-                          {formatRp(totalLaba(item.produk))}
-                        </span>
+                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>{formatRp(totalLaba(item.produk))}</span>
                       </td>
 
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleDelete(inv)}
-                          className={btnDanger}
-                          disabled={loading || busy}
-                          type="button"
-                        >
+                        <button onClick={() => handleDelete(inv)} className={btnDanger} disabled={loading || busy} type="button">
                           Hapus
                         </button>
                       </td>
@@ -998,8 +995,7 @@ export default function RiwayatPenjualan() {
           {/* PAGINATION */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
-              <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
             </div>
 
             <div className="flex gap-2">
@@ -1027,12 +1023,7 @@ export default function RiwayatPenjualan() {
               >
                 Next ›
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
                 Last »
               </button>
             </div>
@@ -1054,14 +1045,10 @@ export default function RiwayatPenjualan() {
               </div>
 
               <div className="p-4">
-                {loadingLoyaltyModal && (
-                  <div className="py-10 text-center text-gray-500 text-sm">Memuat data loyalty…</div>
-                )}
+                {loadingLoyaltyModal && <div className="py-10 text-center text-gray-500 text-sm">Memuat data loyalty…</div>}
 
                 {!loadingLoyaltyModal && !!loyaltyError && (
-                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
-                    {loyaltyError}
-                  </div>
+                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">{loyaltyError}</div>
                 )}
 
                 {!loadingLoyaltyModal && !loyaltyError && loyaltyRows.length === 0 && (
@@ -1074,40 +1061,35 @@ export default function RiwayatPenjualan() {
                       <thead className="bg-gray-50">
                         <tr className="text-gray-600">
                           <th className="px-4 py-3 text-left">Waktu</th>
-                          <th className="px-4 py-3 text-left">Tipe</th>
-                          <th className="px-4 py-3 text-right">Poin</th>
+                          <th className="px-4 py-3 text-left">Jenis</th>
+                          <th className="px-4 py-3 text-right">Poin Awal</th>
                           <th className="px-4 py-3 text-right">Masuk</th>
                           <th className="px-4 py-3 text-right">Keluar</th>
-                          <th className="px-4 py-3 text-left">Catatan</th>
+                          <th className="px-4 py-3 text-left">Keterangan</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {loyaltyRows.map((r, idx) => (
-                          <tr key={r.id || idx} className="border-t border-gray-200 hover:bg-gray-50">
-                            <td className="px-4 py-3">
-                              {r.created_at ? dayjs(r.created_at).format('YYYY-MM-DD HH:mm') : '-'}
-                            </td>
-                            <td className="px-4 py-3">{(r.type || r.tipe || r.direction || r.jenis || '-').toString()}</td>
-                            <td className="px-4 py-3 text-right tabular-nums">
-                              {toNumber(r.poin ?? r.points ?? r.amount ?? 0).toLocaleString('id-ID')}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
-                              {toNumber(r.poin_masuk ?? r.points_in ?? r.in ?? 0).toLocaleString('id-ID')}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums">
-                              {toNumber(r.poin_keluar ?? r.points_out ?? r.out ?? 0).toLocaleString('id-ID')}
-                            </td>
-                            <td className="px-4 py-3">{safe(r.catatan || r.note || r.keterangan || '') || '-'}</td>
-                          </tr>
-                        ))}
+                        {loyaltyRows.map((r, idx) => {
+                          const jenis = (r?.jenis || r?.type || r?.tipe || '-').toString()
+                          const poinAwal = toNumber(r?.poin_awal ?? r?.poin ?? r?.points ?? r?.amount ?? 0)
+                          const parsed = parsePointLedgerRow(r)
+                          return (
+                            <tr key={r.id || idx} className="border-t border-gray-200 hover:bg-gray-50">
+                              <td className="px-4 py-3">{r.created_at ? dayjs(r.created_at).format('YYYY-MM-DD HH:mm') : '-'}</td>
+                              <td className="px-4 py-3">{jenis}</td>
+                              <td className="px-4 py-3 text-right tabular-nums">{poinAwal.toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-3 text-right tabular-nums">{toNumber(parsed.earned).toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-3 text-right tabular-nums">{toNumber(parsed.used).toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-3">{safe(r.keterangan || r.catatan || r.note || '') || '-'}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
                 )}
 
-                <div className="text-xs text-gray-500 mt-3">
-                  Catatan: mapping kolom dibuat fleksibel supaya tidak error walau struktur tabel berbeda.
-                </div>
+                <div className="text-xs text-gray-500 mt-3">Catatan: data ditarik dari point_ledger berdasarkan ref_invoice_code.</div>
               </div>
             </div>
           </div>
