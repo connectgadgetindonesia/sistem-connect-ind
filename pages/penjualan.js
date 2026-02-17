@@ -51,7 +51,7 @@ const selectStyles = {
 }
 
 // ======================
-// LOYALTY V1 (RESET) HELPERS
+// LOYALTY V1 (RESET) HELPERS (ROLLING penjualan_baru)
 // ======================
 const TIERS = ['SILVER', 'GOLD', 'PLATINUM']
 const normalizeTier = (v) => {
@@ -80,7 +80,7 @@ function calcTierByUnitOrSpend({ unitCount, totalSpent }) {
   return 'SILVER'
 }
 
-// ✅ local fallback validasi WA: hanya angka, minimal 9 digit (biar aman)
+// ✅ local validasi WA: hanya angka, minimal 9 digit
 function isValidWANumericLocal(raw) {
   const s = String(raw || '').trim()
   if (!s) return false
@@ -103,183 +103,93 @@ async function isBlacklistedName(nama) {
   return false
 }
 
-// ✅ normalize WA pakai RPC jika ada
-async function normalizeWA(raw) {
-  const s = (raw || '').toString().trim()
-  if (!s) return null
-  try {
-    const { data, error } = await supabase.rpc('loy_normalize_wa', { p: s })
-    if (!error) return data || null
-  } catch (e) {}
-  // fallback: ambil digit saja
-  const digits = s.replace(/[^\d]/g, '')
-  return digits || null
+// ✅ normalize WA (digits only)
+function normalizeWADigits(raw) {
+  const s = String(raw || '').trim()
+  if (!s) return ''
+  return s.replace(/[^\d]/g, '')
 }
 
-// ✅ cek WA valid pakai RPC jika ada
+// ✅ isValid WA (digits)
 async function isValidWA(raw) {
   const s = (raw || '').toString().trim()
   if (!s) return false
+  // coba RPC jika ada
   try {
     const { data, error } = await supabase.rpc('loy_is_valid_wa', { p: s })
     if (!error) return !!data
   } catch (e) {}
-  return isValidWANumericLocal(s)
+  return isValidWANumericLocal(s.replace(/[^\d]/g, ''))
 }
 
-// ✅ get/create member v1 (per pembeli) -> return member row minimal
-async function getOrCreateMemberV1({ buyerName, waRaw }) {
-  const buyer = (buyerName || '').toString().trim().toUpperCase()
-  const wa = (waRaw || '').toString().trim()
-
-  if (!buyer) throw new Error('Nama pembeli kosong.')
-
-  // blacklist? tetap boleh jalan penjualan, tapi loyalty off
-  const blacklisted = await isBlacklistedName(buyer)
-
-  // valid wa numeric? kalau tidak, loyalty invalid
-  const waOk = await isValidWA(wa)
-  const waNorm = waOk ? await normalizeWA(wa) : null
-
-  // kalau blacklist atau wa tidak valid -> kita tetap buat/ambil member, tapi is_eligible=false
-  // supaya per pembeli tetap tercatat rapi
-  // pakai RPC jika ada
-  try {
-    const { data, error } = await supabase.rpc('loy_get_or_create_member', {
-      buyer_name: buyer,
-      no_wa: wa,
-    })
-    if (!error && data) {
-      // data biasanya UUID id
-      const memberId = data
-      const { data: row } = await supabase.from('loy_member_v1').select('*').eq('id', memberId).maybeSingle()
-      if (row) return { ...row, __blacklisted: blacklisted, __wa_ok: waOk, __wa_norm: waNorm }
-    }
-  } catch (e) {
-    // lanjut fallback manual
-  }
-
-  // fallback manual create/find:
-  // - kalau wa_norm ada -> key utama pakai wa_norm
-  // - kalau wa_norm null -> key pakai (buyer_name + wa_raw) supaya "per pembeli" tapi wa aneh tidak digabung
-  if (waNorm) {
-    const { data: ex, error: selErr } = await supabase
-      .from('loy_member_v1')
-      .select('*')
-      .eq('wa_norm', waNorm)
-      .order('created_at', { ascending: true })
-      .limit(1)
-
-    if (selErr) throw new Error(`Gagal cek loy_member_v1: ${selErr.message}`)
-    if (ex && ex.length > 0) {
-      const id = ex[0].id
-      const patch = {
-        buyer_name: buyer,
-        wa_raw: wa,
-        wa_norm: waNorm,
-        is_eligible: !blacklisted && waOk,
-        updated_at: new Date().toISOString(),
-      }
-      await supabase.from('loy_member_v1').update(patch).eq('id', id)
-      const { data: row } = await supabase.from('loy_member_v1').select('*').eq('id', id).maybeSingle()
-      return { ...row, __blacklisted: blacklisted, __wa_ok: waOk, __wa_norm: waNorm }
-    }
-
-    const { data: ins, error: insErr } = await supabase
-      .from('loy_member_v1')
-      .insert({
-        buyer_name: buyer,
-        wa_raw: wa,
-        wa_norm: waNorm,
-        is_eligible: !blacklisted && waOk,
-        tier: 'SILVER',
-        unit_count: 0,
-        total_spent: 0,
-      })
-      .select('*')
-      .single()
-
-    if (insErr) throw new Error(`Gagal insert loy_member_v1: ${insErr.message}`)
-    return { ...ins, __blacklisted: blacklisted, __wa_ok: waOk, __wa_norm: waNorm }
-  }
-
-  // waNorm null -> cari berdasarkan buyer_name + wa_raw
-  const { data: ex2, error: selErr2 } = await supabase
-    .from('loy_member_v1')
-    .select('*')
-    .eq('buyer_name', buyer)
-    .eq('wa_raw', wa)
-    .order('created_at', { ascending: true })
-    .limit(1)
-
-  if (selErr2) throw new Error(`Gagal cek loy_member_v1: ${selErr2.message}`)
-  if (ex2 && ex2.length > 0) {
-    const id = ex2[0].id
-    const patch = {
-      buyer_name: buyer,
-      wa_raw: wa,
-      wa_norm: null,
-      is_eligible: false, // invalid wa -> poin invalid
-      updated_at: new Date().toISOString(),
-    }
-    await supabase.from('loy_member_v1').update(patch).eq('id', id)
-    const { data: row } = await supabase.from('loy_member_v1').select('*').eq('id', id).maybeSingle()
-    return { ...row, __blacklisted: blacklisted, __wa_ok: waOk, __wa_norm: null }
-  }
-
-  const { data: ins2, error: insErr2 } = await supabase
-    .from('loy_member_v1')
-    .insert({
-      buyer_name: buyer,
-      wa_raw: wa,
-      wa_norm: null,
-      is_eligible: false,
-      tier: 'SILVER',
-      unit_count: 0,
-      total_spent: 0,
-    })
-    .select('*')
-    .single()
-
-  if (insErr2) throw new Error(`Gagal insert loy_member_v1: ${insErr2.message}`)
-  return { ...ins2, __blacklisted: blacklisted, __wa_ok: waOk, __wa_norm: null }
+function isUnitRow(r) {
+  const storage = String(r?.storage || '').trim()
+  const garansi = String(r?.garansi || '').trim()
+  return !!(storage || garansi)
 }
 
-// ✅ get balance points = sum ledger
-async function getBalancePoints(memberId) {
-  if (!memberId) return 0
-  // coba RPC kalau ada
-  try {
-    const { data, error } = await supabase.rpc('loy_balance', { p_member: memberId })
-    if (!error) return toNumber(data || 0)
-  } catch (e) {}
-  // fallback: sum points
+// ✅ ambil snapshot loyalty rolling 365 hari dari penjualan_baru
+async function fetchLoyaltySnapshotByWA({ waRaw, todayYmd }) {
+  const wa = String(waRaw || '').trim()
+  if (!wa) {
+    return { balance: 0, tier: 'SILVER', unitCount: 0, totalSpent: 0, earnSum: 0, redeemSum: 0 }
+  }
+
+  const rollingStart = dayjs(todayYmd).subtract(365, 'day').format('YYYY-MM-DD')
+  const rollingEnd = dayjs(todayYmd).format('YYYY-MM-DD')
+
+  // ambil transaksi rolling customer ini
   const { data, error } = await supabase
-    .from('loy_ledger_v1')
-    .select('points')
-    .eq('member_id', memberId)
-    .limit(100000)
-  if (error) return 0
-  return (data || []).reduce((s, r) => s + toNumber(r.points), 0)
-}
+    .from('penjualan_baru')
+    .select('tanggal,invoice_id,harga_jual,qty,is_bonus,storage,garansi,poin_didapat,poin_dipakai,no_wa')
+    .eq('is_bonus', false)
+    .gte('tanggal', rollingStart)
+    .lte('tanggal', rollingEnd)
+    .eq('no_wa', wa)
+    .order('tanggal', { ascending: false })
+    .limit(50000)
 
-// ✅ insert ledger row (earn/redeem)
-async function insertLedger({ memberId, invoiceId, entryType, points, note }) {
-  const payload = {
-    member_id: memberId,
-    invoice_id: invoiceId,
-    entry_type: entryType,
-    points: toNumber(points),
-    note: note || null,
+  if (error) throw new Error(error.message)
+
+  const rows = Array.isArray(data) ? data : []
+
+  let totalSpent = 0
+  let earnSum = 0
+  let redeemSum = 0
+
+  const unitInv = new Set()
+
+  for (const r of rows) {
+    const qty = Math.max(1, toNumber(r.qty))
+    const hj = toNumber(r.harga_jual)
+    totalSpent += hj * qty
+
+    earnSum += toNumber(r.poin_didapat)
+    redeemSum += toNumber(r.poin_dipakai)
+
+    if (isUnitRow(r)) {
+      const inv = String(r.invoice_id || '').trim()
+      if (inv) unitInv.add(inv)
+    }
   }
-  const { error } = await supabase.from('loy_ledger_v1').insert(payload)
-  if (error) throw new Error(`Gagal insert loy_ledger_v1: ${error.message}`)
+
+  // fallback kalau data lama belum konsisten isi poin_didapat
+  if (earnSum <= 0 && totalSpent > 0) {
+    earnSum = Math.floor(totalSpent * 0.005)
+  }
+
+  const balance = Math.max(0, earnSum - redeemSum)
+  const tier = calcTierByUnitOrSpend({ unitCount: unitInv.size, totalSpent })
+
+  return { balance, tier, unitCount: unitInv.size, totalSpent, earnSum, redeemSum }
 }
 
 // ======================
 // MAIN PAGE
 // ======================
 export default function Penjualan() {
+  const today = dayjs().format('YYYY-MM-DD')
+
   const [produkList, setProdukList] = useState([])
   const [bonusList, setBonusList] = useState([])
   const [diskonInvoice, setDiskonInvoice] = useState('')
@@ -342,13 +252,16 @@ export default function Penjualan() {
   const [options, setOptions] = useState([])
 
   // ======================
-  // LOYALTY V1 UI STATES
+  // LOYALTY UI STATES (rolling penjualan_baru)
   // ======================
-  const [memberId, setMemberId] = useState(null)
   const [poinAktif, setPoinAktif] = useState(0)
   const [memberTier, setMemberTier] = useState('SILVER')
   const [loyaltyEligible, setLoyaltyEligible] = useState(false)
-  const [loyaltyReason, setLoyaltyReason] = useState('') // info kecil
+  const [loyaltyReason, setLoyaltyReason] = useState('')
+
+  // rolling cache (untuk hitung tier setelah transaksi)
+  const [rollingUnitCount, setRollingUnitCount] = useState(0)
+  const [rollingTotalSpent, setRollingTotalSpent] = useState(0)
 
   // ✅ AUTO MODE: default ON, dan akan isi otomatis = 50% poin aktif
   const [autoPoin, setAutoPoin] = useState(true)
@@ -526,7 +439,7 @@ export default function Penjualan() {
     return Math.max(0, Math.min(limit50, totalSetelahDiskonManual))
   }, [poinAktif, totalSetelahDiskonManual, loyaltyEligible])
 
-  // ✅ yang dipakai real = clamp ke max (berubah otomatis kalau produk/diskon berubah)
+  // ✅ yang dipakai real = clamp ke max
   const poinDipakaiFinal = useMemo(() => {
     if (!loyaltyEligible) return 0
     return Math.max(0, Math.min(toNumber(usePoinWanted), maxPoinDipakai))
@@ -555,81 +468,82 @@ export default function Penjualan() {
   const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
 
   // ======================
-  // HYDRATE LOYALTY V1
+  // HYDRATE LOYALTY (ROLLING penjualan_baru)
   // ======================
   useEffect(() => {
-    async function hydrateLoyaltyV1() {
+    async function hydrateLoyalty() {
+      const nama = (formData.nama_pembeli || '').toString().trim()
+      const wa = (formData.no_wa || '').toString().trim()
+
+      // reset default
+      if (!nama) {
+        setPoinAktif(0)
+        setMemberTier('SILVER')
+        setLoyaltyEligible(false)
+        setLoyaltyReason('')
+        setRollingUnitCount(0)
+        setRollingTotalSpent(0)
+        setAutoPoin(true)
+        setUsePoinWanted(0)
+        setUsePoinDisplay('')
+        return
+      }
+
       try {
-        const nama = (formData.nama_pembeli || '').toString().trim()
-        const wa = (formData.no_wa || '').toString().trim()
+        const namaUpper = nama.toUpperCase()
 
-        if (!nama) {
-          setMemberId(null)
-          setPoinAktif(0)
-          setMemberTier('SILVER')
-          setLoyaltyEligible(false)
-          setLoyaltyReason('')
-          setAutoPoin(true)
-          setUsePoinWanted(0)
-          setUsePoinDisplay('')
-          return
-        }
-
-        // bikin/ambil member per pembeli
-        const m = await getOrCreateMemberV1({ buyerName: nama, waRaw: wa })
-        setMemberId(m?.id || null)
-
-        // eligibility rules
-        const blacklisted = !!m?.__blacklisted
-        const waOk = !!m?.__wa_ok
-        const eligible = !blacklisted && waOk && !!m?.is_eligible
-
+        const blacklisted = await isBlacklistedName(namaUpper)
         if (blacklisted) {
           setLoyaltyEligible(false)
           setLoyaltyReason('Nama tidak dihitung (CONNECT.IND / ERICK)')
           setPoinAktif(0)
           setMemberTier('SILVER')
+          setRollingUnitCount(0)
+          setRollingTotalSpent(0)
+          setAutoPoin(true)
           setUsePoinWanted(0)
           setUsePoinDisplay('')
-          setAutoPoin(true)
           return
         }
 
+        const waOk = await isValidWA(wa)
         if (!waOk) {
           setLoyaltyEligible(false)
           setLoyaltyReason('No. WA tidak valid (poin tidak berlaku)')
           setPoinAktif(0)
           setMemberTier('SILVER')
+          setRollingUnitCount(0)
+          setRollingTotalSpent(0)
+          setAutoPoin(true)
           setUsePoinWanted(0)
           setUsePoinDisplay('')
-          setAutoPoin(true)
           return
         }
 
-        setLoyaltyEligible(eligible)
-        setLoyaltyReason(eligible ? '' : 'Tidak eligible')
-
-        // ambil saldo
-        const bal = eligible ? await getBalancePoints(m.id) : 0
-        setPoinAktif(bal)
-
-        // tier ambil dari row, fallback hitung
-        const tier = normalizeTier(m?.tier || 'SILVER')
-        setMemberTier(tier)
+        // ✅ ambil poin/tier dari penjualan_baru rolling
+        const snap = await fetchLoyaltySnapshotByWA({ waRaw: wa, todayYmd: today })
+        setLoyaltyEligible(true)
+        setLoyaltyReason('')
+        setPoinAktif(toNumber(snap.balance))
+        setMemberTier(normalizeTier(snap.tier))
+        setRollingUnitCount(toNumber(snap.unitCount))
+        setRollingTotalSpent(toNumber(snap.totalSpent))
       } catch (e) {
         console.error(e)
-        setMemberId(null)
+        // jangan bikin "Loyalty error" merah permanen kalau cuma query gagal
+        setLoyaltyEligible(false)
+        setLoyaltyReason('Loyalty error (cek koneksi/DB)')
         setPoinAktif(0)
         setMemberTier('SILVER')
-        setLoyaltyEligible(false)
-        setLoyaltyReason('Loyalty error')
+        setRollingUnitCount(0)
+        setRollingTotalSpent(0)
+        setAutoPoin(true)
         setUsePoinWanted(0)
         setUsePoinDisplay('')
-        setAutoPoin(true)
       }
     }
 
-    hydrateLoyaltyV1()
+    hydrateLoyalty()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.nama_pembeli, formData.no_wa])
 
@@ -827,21 +741,16 @@ export default function Penjualan() {
     setSubmitting(true)
     try {
       const invoice = await generateInvoiceId(formData.tanggal)
-      const trxDate = dayjs(formData.tanggal).format('YYYY-MM-DD')
       const trxYear = parseInt(dayjs(formData.tanggal).format('YYYY'), 10)
 
       const namaUpper = (formData.nama_pembeli || '').toString().trim().toUpperCase()
       const waTrim = (formData.no_wa || '').toString().trim()
       const emailLower = (formData.email || '').toString().trim().toLowerCase()
 
-      // ======= member v1 (per pembeli) =======
+      // ======= loyalty eligibility =======
       const blacklisted = await isBlacklistedName(namaUpper)
       const waOk = await isValidWA(waTrim)
       const loyaltyOn = !blacklisted && waOk
-
-      // buat/ambil member, tapi kalau tidak eligible tetap boleh save penjualan
-      const memberRow = await getOrCreateMemberV1({ buyerName: namaUpper, waRaw: waTrim })
-      const mId = memberRow?.id || null
 
       // ======= expand qty =======
       const expandQty = (arr, isBonus) => {
@@ -876,8 +785,27 @@ export default function Penjualan() {
         is_aksesoris: false,
       }))
 
+      // diskon manual + poin (kalau eligible)
       const diskonManual = toNumber(diskonInvoice)
-      const diskonTotal = Math.min(sumHarga, diskonManual + (loyaltyOn ? poinDipakaiFinal : 0))
+
+      // ambil saldo terbaru rolling (biar aman, tidak pakai state lama)
+      let saldoTerbaru = 0
+      let tierRollingSaatIni = 'SILVER'
+      let unitRollingSaatIni = 0
+      let spentRollingSaatIni = 0
+
+      if (loyaltyOn) {
+        const snap = await fetchLoyaltySnapshotByWA({ waRaw: waTrim, todayYmd: today })
+        saldoTerbaru = toNumber(snap.balance)
+        tierRollingSaatIni = normalizeTier(snap.tier)
+        unitRollingSaatIni = toNumber(snap.unitCount)
+        spentRollingSaatIni = toNumber(snap.totalSpent)
+      }
+
+      const maxRedeemNow = loyaltyOn ? Math.max(0, Math.min(Math.floor(saldoTerbaru * 0.5), totalSetelahDiskonManual)) : 0
+      const poinDipakaiReal = loyaltyOn ? Math.max(0, Math.min(toNumber(poinDipakaiFinal), maxRedeemNow)) : 0
+
+      const diskonTotal = Math.min(sumHarga, diskonManual + poinDipakaiReal)
 
       const produkBerbayarForDiskon = produkList.map((p) => ({
         ...p,
@@ -894,72 +822,17 @@ export default function Penjualan() {
       const unitCountInvoice = unitPaidItems.length
 
       // ======================
-      // LOYALTY V1: REDEEM + EARN + UPDATE MEMBER
+      // LOYALTY: EARN (0.5% dari total bayar)
       // ======================
-      let poinDipakaiReal = 0
-      let poinDidapat = 0
-      let nextTier = 'SILVER'
+      const poinDidapat = loyaltyOn ? Math.floor(totalAkhirBayar * 0.005) : 0
 
-      if (loyaltyOn && mId && memberRow?.is_eligible) {
-        // saldo terbaru (biar aman)
-        const saldo = await getBalancePoints(mId)
-
-        // max redeem: 50% saldo & tidak lebih dari total setelah diskon manual
-        const maxRedeem = Math.max(0, Math.min(Math.floor(saldo * 0.5), totalSetelahDiskonManual))
-        poinDipakaiReal = Math.max(0, Math.min(toNumber(poinDipakaiFinal), maxRedeem))
-
-        if (poinDipakaiReal > 0) {
-          // redeem = poin negative
-          await insertLedger({
-            memberId: mId,
-            invoiceId: invoice, // invoice_id kamu adalah string invoice, sesuai kebutuhan revert
-            entryType: 'REDEEM',
-            points: -poinDipakaiReal,
-            note: `REDEEM INVOICE ${invoice}`,
+      // tier rolling setelah transaksi ini (rolling + invoice ini)
+      const nextTier = loyaltyOn
+        ? calcTierByUnitOrSpend({
+            unitCount: unitRollingSaatIni + unitCountInvoice,
+            totalSpent: spentRollingSaatIni + toNumber(totalSetelahDiskonManual),
           })
-        }
-
-        // Earn berdasarkan total bayar setelah diskon & redeem (sesuai rule kamu)
-        poinDidapat = Math.floor(totalAkhirBayar * 0.005)
-        if (poinDidapat > 0) {
-          await insertLedger({
-            memberId: mId,
-            invoiceId: invoice,
-            entryType: 'EARN',
-            points: poinDidapat,
-            note: `EARN INVOICE ${invoice}`,
-          })
-        }
-
-        // update aggregate member untuk tier
-        const prevUnit = toNumber(memberRow.unit_count)
-        const prevSpent = toNumber(memberRow.total_spent)
-
-        // total belanja yang dihitung tier: setelah diskon manual (redeem tetap dianggap nilai belanja)
-        const addSpent = toNumber(totalSetelahDiskonManual)
-
-        const newUnit = prevUnit + unitCountInvoice
-        const newSpent = prevSpent + addSpent
-
-        nextTier = calcTierByUnitOrSpend({ unitCount: newUnit, totalSpent: newSpent })
-
-        const { error: upMemErr } = await supabase
-          .from('loy_member_v1')
-          .update({
-            unit_count: newUnit,
-            total_spent: newSpent,
-            tier: nextTier,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', mId)
-
-        if (upMemErr) throw new Error(`Gagal update loy_member_v1: ${upMemErr.message}`)
-      } else {
-        // loyalty off
-        poinDipakaiReal = 0
-        poinDidapat = 0
-        nextTier = 'SILVER'
-      }
+        : 'SILVER'
 
       // ======================
       // INSERT penjualan rows
@@ -994,7 +867,7 @@ export default function Penjualan() {
           diskon_item,
         }
 
-        // meta loyalty ditulis sekali saja per invoice (baris pertama)
+        // meta loyalty ditulis sekali saja per invoice
         if (!wroteLoyaltyMeta) {
           rowToInsert.poin_didapat = poinDidapat
           rowToInsert.poin_dipakai = poinDipakaiReal
@@ -1074,9 +947,10 @@ export default function Penjualan() {
       setUsePoinDisplay('')
       setPoinAktif(0)
       setMemberTier('SILVER')
-      setMemberId(null)
       setLoyaltyEligible(false)
       setLoyaltyReason('')
+      setRollingUnitCount(0)
+      setRollingTotalSpent(0)
     } catch (err) {
       console.error(err)
       alert(err?.message || 'Terjadi error saat simpan.')
@@ -1551,7 +1425,8 @@ export default function Penjualan() {
               </div>
 
               <div className="mt-3 text-xs text-gray-600">
-                Poin akan didapat: <b>{(loyaltyEligible ? Math.floor(totalAkhirBayar * 0.005) : 0).toLocaleString('id-ID')}</b>
+                Poin akan didapat:{' '}
+                <b>{(loyaltyEligible ? Math.floor(totalAkhirBayar * 0.005) : 0).toLocaleString('id-ID')}</b>
               </div>
             </div>
 
@@ -1563,7 +1438,9 @@ export default function Penjualan() {
               </div>
 
               {produkList.length === 0 ? (
-                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-gray-50">Belum ada produk.</div>
+                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-gray-50">
+                  Belum ada produk.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {produkList.map((p, i) => (
@@ -1594,7 +1471,9 @@ export default function Penjualan() {
               </div>
 
               {bonusList.length === 0 ? (
-                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-yellow-50">Belum ada bonus.</div>
+                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-yellow-50">
+                  Belum ada bonus.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {bonusList.map((b, i) => (
@@ -1625,7 +1504,9 @@ export default function Penjualan() {
               </div>
 
               {biayaList.length === 0 ? (
-                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-gray-50">Belum ada biaya.</div>
+                <div className="border border-gray-200 rounded-xl p-3 text-sm text-gray-600 bg-gray-50">
+                  Belum ada biaya.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {biayaList.map((b, i) => (
