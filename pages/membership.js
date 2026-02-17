@@ -135,7 +135,7 @@ export default function MembershipPage() {
       // ✅ FIX: kolom benar = points_delta (bukan points)
       const { data: led, error: ledErr } = await supabase
         .from('loy_ledger_v1')
-        .select('member_id,entry_type,points_delta,created_at')
+        .select('member_id,entry_type,points,points_delta,created_at')
         .gte('created_at', rollingStartISO)
         .lte('created_at', rollingEndISO)
         .limit(100000)
@@ -185,12 +185,11 @@ export default function MembershipPage() {
       const b = map.get(mid)
 
       // ✅ FIX: pakai points_delta
-      const delta = toNumber(r.points_delta)
-      b.balance += delta
+      const delta = toNumber(r.points_delta ?? r.points ?? 0)
+b.balance += delta
 
-      // nearest expiry diambil dari EARN yang exp paling dekat (created_at + 365)
-      const type = String(r.entry_type || '').toUpperCase()
-      if (type === 'EARN' && delta > 0 && r.created_at) {
+const type = String(r.entry_type || '').toUpperCase()
+if (type === 'EARN' && delta > 0 && r.created_at) {
         const earnDate = dayjs(r.created_at)
         if (earnDate.isValid()) {
           const exp = earnDate.add(365, 'day')
