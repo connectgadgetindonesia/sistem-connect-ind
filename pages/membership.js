@@ -18,12 +18,11 @@ const PAGE_SIZE = 15
 // ✅ RULES (UBAH DI SINI)
 // ======================
 const POINT_RATE = 0.005 // 0.5% dari omset
-// contoh tier by omzet 12 bulan (rolling 365 hari) — silakan ubah sesuai aturan final
+// ✅ 3 tier only (BRONZE DIHAPUS)
 const TIERS = [
   { name: 'PLATINUM', minOmzet: 250_000_000 },
   { name: 'GOLD', minOmzet: 120_000_000 },
-  { name: 'SILVER', minOmzet: 50_000_000 },
-  { name: 'BRONZE', minOmzet: 0 },
+  { name: 'SILVER', minOmzet: 0 },
 ]
 
 // ============ helpers ============
@@ -40,18 +39,16 @@ function getTier(omzetRolling) {
   for (const t of TIERS) {
     if (x >= t.minOmzet) return t.name
   }
-  return 'BRONZE'
+  return 'SILVER'
 }
 
 function normalizeWa(no_wa) {
   const raw = safe(no_wa)
   if (!raw) return ''
-  // biar rapi: buang spasi, strip, dll
   return raw.replace(/[^\d+]/g, '')
 }
 
 function groupByInvoice(rows = []) {
-  // supaya hitung invoice = unik invoice_id, bukan per item
   const map = new Map()
   for (const r of rows) {
     const inv = safe(r.invoice_id)
@@ -79,23 +76,15 @@ export default function MembershipPage() {
   // ===== paging =====
   const [page, setPage] = useState(1)
 
-  // ===== load data =====
   async function fetchData() {
     setLoading(true)
     try {
-      // ambil 2 set data:
-      // A) data year terpilih (untuk summary "tahun ini")
-      // B) data rolling 365 hari (untuk tier)
-      // biar cepat dan tidak ribet, kita ambil rolling 365 dulu, lalu filter client
-
       const rollingStart = dayjs(today).subtract(365, 'day').format('YYYY-MM-DD')
       const rollingEnd = dayjs(today).format('YYYY-MM-DD')
 
       const { data, error } = await supabase
         .from('penjualan_baru')
-        .select(
-          'invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus'
-        )
+        .select('invoice_id,tanggal,nama_pembeli,alamat,no_wa,email,harga_jual,harga_modal,laba,qty,is_bonus')
         .gte('tanggal', rollingStart)
         .lte('tanggal', rollingEnd)
         .eq('is_bonus', false)
@@ -119,9 +108,6 @@ export default function MembershipPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ======================
-  // ✅ BUILD DATA CUSTOMER
-  // ======================
   const customerRows = useMemo(() => {
     const y = toNumber(year)
     const startY = dayjs(`${y}-01-01`).startOf('day')
@@ -130,18 +116,11 @@ export default function MembershipPage() {
     const startRange = range.start ? dayjs(range.start).startOf('day') : null
     const endRange = range.end ? dayjs(range.end).endOf('day') : null
 
-    // rolling 365 data (rawRows) sudah
-    // - dipotong 365 hari
-    // - is_bonus false
-
-    // split:
-    // A) rowsRolling: utk tier
-    // B) rowsYear + rowsRange: utk ringkasan customer list
     const rowsRolling = rawRows
 
     const rowsYear = rawRows.filter((r) => {
       const d = dayjs(r.tanggal)
-      return d.isValid() && d.isAfter(startY) && d.isBefore(endY)
+      return d.isValid() && (d.isAfter(startY) || d.isSame(startY)) && (d.isBefore(endY) || d.isSame(endY))
     })
 
     const rowsRange = rawRows.filter((r) => {
@@ -150,7 +129,7 @@ export default function MembershipPage() {
       return d.isValid() && (d.isAfter(startRange) || d.isSame(startRange)) && (d.isBefore(endRange) || d.isSame(endRange))
     })
 
-    // map rolling totals per customer
+    // rolling omzet per customer
     const rollMap = new Map()
     for (const r of rowsRolling) {
       const wa = normalizeWa(r.no_wa)
@@ -161,16 +140,11 @@ export default function MembershipPage() {
       b.omzet += toNumber(r.harga_jual) * qty
     }
 
-    // map year/range totals per customer
-    // (kita pakai rowsRange untuk list, tapi juga simpan "tahun ini" buat badge)
     const map = new Map()
 
-    // invoice unik (range)
     const invRange = groupByInvoice(rowsRange)
-    // invoice unik (year)
     const invYear = groupByInvoice(rowsYear)
 
-    // hitung invoice count per customer (range)
     const invCountRange = new Map()
     for (const r of invRange) {
       const wa = normalizeWa(r.no_wa)
@@ -178,7 +152,6 @@ export default function MembershipPage() {
       invCountRange.set(key, (invCountRange.get(key) || 0) + 1)
     }
 
-    // hitung invoice count per customer (year)
     const invCountYear = new Map()
     for (const r of invYear) {
       const wa = normalizeWa(r.no_wa)
@@ -203,7 +176,7 @@ export default function MembershipPage() {
           omzet_year: 0,
           invoice_year: 0,
           omzet_rolling: 0,
-          tier: 'BRONZE',
+          tier: 'SILVER',
           points: 0,
           last_date: null,
         })
@@ -213,6 +186,7 @@ export default function MembershipPage() {
       const qty = Math.max(1, toNumber(r.qty))
       it.omzet_range += toNumber(r.harga_jual) * qty
       it.laba_range += toNumber(r.laba)
+
       const d = r.tanggal ? new Date(r.tanggal).getTime() : 0
       const cur = it.last_date ? new Date(it.last_date).getTime() : 0
       if (d >= cur) it.last_date = r.tanggal || it.last_date
@@ -222,7 +196,6 @@ export default function MembershipPage() {
       if (!it.email && r.email) it.email = r.email
     }
 
-    // inject counts
     for (const it of map.values()) {
       it.invoice_range = invCountRange.get(it.key) || 0
       it.invoice_year = invCountYear.get(it.key) || 0
@@ -233,7 +206,6 @@ export default function MembershipPage() {
 
     let arr = Array.from(map.values())
 
-    // search
     const s = search.trim().toLowerCase()
     if (s) {
       arr = arr.filter((x) => {
@@ -246,8 +218,7 @@ export default function MembershipPage() {
       })
     }
 
-    // sort: tier then omzet rolling desc
-    const tierRank = { PLATINUM: 4, GOLD: 3, SILVER: 2, BRONZE: 1 }
+    const tierRank = { PLATINUM: 3, GOLD: 2, SILVER: 1 }
     arr.sort((a, b) => {
       const ra = tierRank[a.tier] || 0
       const rb = tierRank[b.tier] || 0
@@ -258,7 +229,6 @@ export default function MembershipPage() {
     return arr
   }, [rawRows, year, range.start, range.end, search])
 
-  // summary top
   const summary = useMemo(() => {
     const totalCustomer = customerRows.length
     const totalOmzetRange = customerRows.reduce((a, x) => a + toNumber(x.omzet_range), 0)
@@ -266,7 +236,6 @@ export default function MembershipPage() {
     return { totalCustomer, totalOmzetRange, totalLabaRange }
   }, [customerRows])
 
-  // pagination
   const totalRows = customerRows.length
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
   const safePage = Math.min(Math.max(1, page), totalPages)
@@ -286,7 +255,6 @@ export default function MembershipPage() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Membership & Loyalty</h1>
@@ -301,7 +269,6 @@ export default function MembershipPage() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className={`${card} p-4 md:p-5`}>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             <div>
@@ -320,38 +287,23 @@ export default function MembershipPage() {
 
             <div>
               <div className={label}>Tanggal Awal (Filter list)</div>
-              <input
-                type="date"
-                className={input}
-                value={range.start}
-                onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))}
-              />
+              <input type="date" className={input} value={range.start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
             </div>
 
             <div>
               <div className={label}>Tanggal Akhir (Filter list)</div>
-              <input
-                type="date"
-                className={input}
-                value={range.end}
-                onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))}
-              />
+              <input type="date" className={input} value={range.end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
             </div>
 
             <div>
               <div className={label}>Search (Nama / WA / Email / Tier)</div>
-              <input
-                className={input}
-                placeholder="Ketik..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <input className={input} placeholder="Ketik..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
           </div>
 
           <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div className="text-xs text-gray-500">
-              Rolling tier/points: <b>365 hari terakhir</b> • Points rate: <b>{POINT_RATE * 100}%</b>
+              Rolling tier/points: <b>365 hari terakhir</b> • Points rate: <b>{POINT_RATE * 100}%</b> • Tier: <b>SILVER / GOLD / PLATINUM</b>
             </div>
             <button
               className={btnPrimary}
@@ -370,7 +322,6 @@ export default function MembershipPage() {
           </div>
         </div>
 
-        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className={`${card} p-4`}>
             <div className="text-xs text-gray-500">Total Customer (hasil filter)</div>
@@ -386,13 +337,10 @@ export default function MembershipPage() {
           </div>
         </div>
 
-        {/* Table */}
         <div className={`${card} overflow-hidden`}>
           <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
             <div className="font-semibold text-gray-900">Daftar Membership</div>
-            <div className="text-xs text-gray-600">
-              {loading ? 'Memuat…' : `Total: ${totalRows} • Halaman: ${safePage}/${totalPages}`}
-            </div>
+            <div className="text-xs text-gray-600">{loading ? 'Memuat…' : `Total: ${totalRows} • Halaman: ${safePage}/${totalPages}`}</div>
           </div>
 
           <div className="overflow-x-auto">
@@ -426,14 +374,13 @@ export default function MembershipPage() {
                       <td className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{r.nama_pembeli || '(Tanpa nama)'}</div>
                         <div className="text-xs text-gray-500 truncate">
-                          {r.email ? `Email: ${r.email}` : ''}{r.last_date ? ` • Last: ${dayjs(r.last_date).format('DD/MM/YYYY')}` : ''}
+                          {r.email ? `Email: ${r.email}` : ''}
+                          {r.last_date ? ` • Last: ${dayjs(r.last_date).format('DD/MM/YYYY')}` : ''}
                         </div>
                       </td>
                       <td className="px-4 py-3">{r.no_wa || '-'}</td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-900 text-white">
-                          {r.tier}
-                        </span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-900 text-white">{r.tier}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold">{formatRp(r.omzet_rolling)}</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatRp(r.points)}</td>
@@ -455,23 +402,16 @@ export default function MembershipPage() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
-              <b className="text-gray-900">{totalRows}</b>
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b>
             </div>
 
             <div className="flex gap-2">
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1 || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
                 ‹ Prev
               </button>
 
@@ -479,30 +419,18 @@ export default function MembershipPage() {
                 {safePage}/{totalPages}
               </div>
 
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages || loading} type="button">
                 Next ›
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
                 Last »
               </button>
             </div>
           </div>
         </div>
 
-        {/* Note */}
         <div className="text-xs text-gray-500">
-          Catatan: Tier & points saat ini dihitung dari transaksi <b>365 hari terakhir</b>.  
-          Kalau mau pakai sistem expiring points / downgrade / ledger, nanti kita bikin tabel loyalty khusus.
+          Catatan: Tier & points dihitung dari transaksi <b>365 hari terakhir</b> dan hanya ada <b>SILVER / GOLD / PLATINUM</b>.
         </div>
       </div>
     </Layout>
