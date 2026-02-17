@@ -170,6 +170,30 @@ async function getMemberLevelForYear(customerId, trxYear) {
 }
 
 // ======================
+// ✅ SAFE INSERT point_ledger (FIX UUID ERROR)
+// ======================
+// Di DB kamu, kolom ref_invoice_id ternyata UUID, jadi invoice string bikin error.
+// Solusi: jangan kirim ref_invoice_id sama sekali. Invoice tetap disimpan lewat keterangan.
+// Kalau suatu saat kamu punya kolom text (misal ref_invoice_text), tinggal tambah di sini.
+async function insertPointLedgerEarnSafe({ customerId, trxDate, invoice, poinDidapat }) {
+  const exp = dayjs(trxDate).add(1, 'year').format('YYYY-MM-DD')
+
+  const payload = {
+    customer_id: customerId,
+    tanggal_dapat: trxDate,
+    tanggal_expired: exp,
+    jenis: 'EARN',
+    poin_awal: poinDidapat,
+    poin_sisa: poinDidapat,
+    // ✅ invoice simpan di keterangan supaya bisa tracking tanpa ganggu tipe data UUID
+    keterangan: `EARN INVOICE ${invoice}`,
+  }
+
+  const { error: ledErr } = await supabase.from('point_ledger').insert(payload)
+  if (ledErr) throw new Error(`Gagal insert point_ledger: ${ledErr.message}`)
+}
+
+// ======================
 // MAIN PAGE
 // ======================
 export default function Penjualan() {
@@ -431,10 +455,6 @@ export default function Penjualan() {
     setUsePoinDisplay(target ? target.toLocaleString('id-ID') : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPoin, poinAktif])
-
-  // ✅ kalau auto ON dan maxPoinDipakai naik/turun (karena produk/diskon), kita BIARKAN target tetap,
-  // yang dipakai real tetap otomatis clamp via poinDipakaiFinal.
-  // (jadi kelihatan “auto” dari awal, tapi tetap aman saat total masih 0)
 
   const isOfficeSKUProduk = (produkBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
   const isOfficeSKUBonus = (bonusBaru.sn_sku || '').trim().toUpperCase() === SKU_OFFICE
@@ -842,21 +862,16 @@ export default function Penjualan() {
 
       // ======================
       // Earn poin (0.5% dari total bayar setelah diskon & redeem)
+      // ✅ FIX: jangan isi ref_invoice_id (di DB kamu itu UUID)
       // ======================
       const poinDidapat = Math.floor(totalAkhirBayar * 0.005)
       if (poinDidapat > 0) {
-        const exp = dayjs(trxDate).add(1, 'year').format('YYYY-MM-DD')
-        const { error: ledErr } = await supabase.from('point_ledger').insert({
-          customer_id: customerId,
-          tanggal_dapat: trxDate,
-          tanggal_expired: exp,
-          jenis: 'EARN',
-          poin_awal: poinDidapat,
-          poin_sisa: poinDidapat,
-          ref_invoice_id: invoice,
-          keterangan: `EARN INVOICE ${invoice}`,
+        await insertPointLedgerEarnSafe({
+          customerId,
+          trxDate,
+          invoice,
+          poinDidapat,
         })
-        if (ledErr) throw new Error(`Gagal insert point_ledger: ${ledErr.message}`)
       }
 
       // ======================
@@ -1184,14 +1199,11 @@ export default function Penjualan() {
                         </div>
                       </div>
 
-                      {/* ✅ HILANGKAN total bayar di dalam card (sesuai request) */}
                       <div className="text-sm text-gray-700">
                         <div>
                           Total bayar (setelah diskon + poin): <b>Rp {totalAkhirBayar.toLocaleString('id-ID')}</b>
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          (Total utama tetap di kanan atas header.)
-                        </div>
+                        <div className="text-xs text-gray-500 mt-1">(Total utama tetap di kanan atas header.)</div>
                       </div>
                     </div>
                   </div>
