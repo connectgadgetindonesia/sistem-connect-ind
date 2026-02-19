@@ -32,7 +32,6 @@ const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 const formatPts = (n) => `${toNumber(n).toLocaleString('id-ID')} pts`
 const formatDateTime = (v) => (v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '-')
 const formatDate = (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '-')
-
 const normalizeWA = (wa) => String(wa ?? '').replace(/[^\d]/g, '')
 
 const levelBadge = (level) => {
@@ -94,6 +93,28 @@ const expiryLine = (c) => {
   )
 }
 
+// ===== Sorting =====
+const SORT_OPTIONS = [
+  { value: 'RECENT', label: 'Terbaru' },
+  { value: 'NAME_ASC', label: 'Nama (A–Z)' },
+  { value: 'NAME_DESC', label: 'Nama (Z–A)' },
+  { value: 'TOTAL_DESC', label: 'Transaksi terbanyak (Nominal)' },
+  { value: 'COUNT_DESC', label: 'Transaksi terbanyak (Jumlah)' },
+  { value: 'POINTS_DESC', label: 'Poin terbanyak' },
+  { value: 'EXP_SOON', label: 'Expired terdekat' },
+]
+
+const safeTs = (v) => {
+  const t = v ? new Date(v).getTime() : 0
+  return Number.isFinite(t) ? t : 0
+}
+
+const safeExpiryTs = (v) => {
+  if (!v) return Number.POSITIVE_INFINITY // null taruh paling bawah saat asc
+  const t = new Date(v).getTime()
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY
+}
+
 export default function Membership() {
   const [tab, setTab] = useState('customers') // 'customers' | 'ledger'
 
@@ -102,6 +123,7 @@ export default function Membership() {
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
   const [levelFilter, setLevelFilter] = useState('ALL')
+  const [sortBy, setSortBy] = useState('RECENT')
   const [page, setPage] = useState(1)
 
   // detail modal
@@ -120,49 +142,16 @@ export default function Membership() {
   const [adjNote, setAdjNote] = useState('Penyesuaian manual')
   const [adjSaving, setAdjSaving] = useState(false)
 
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase()
-    return customers.filter((c) => {
-      const lv = String(c.level || '').toUpperCase()
-      if (levelFilter !== 'ALL' && lv !== levelFilter) return false
-
-      if (!qq) return true
-
-      const nama = String(c.nama || '').toLowerCase()
-      const wa = normalizeWA(c.no_wa || c.customer_key || '')
-      const key = String(c.customer_key || '').toLowerCase()
-      return (
-        nama.includes(qq) ||
-        wa.includes(qq.replace(/[^\d]/g, '')) ||
-        key.includes(qq) ||
-        String(c.no_wa || '').toLowerCase().includes(qq)
-      )
-    })
-  }, [customers, q, levelFilter])
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paged = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE
-    return filtered.slice(start, start + PAGE_SIZE)
-  }, [filtered, page])
-
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageCount])
-
   const fetchCustomers = async () => {
     setLoading(true)
-
-    // ✅ ambil dari VIEW yang sudah include next_expiry_at & next_expiring_points
     const { data, error } = await supabase
       .from('loyalty_customer_with_expiry')
       .select(
         'customer_key,nama,no_wa,email,level,points_balance,total_belanja,transaksi_unit,created_at,updated_at,next_expiry_at,next_expiring_points'
       )
-      .order('updated_at', { ascending: false })
-
+      .order('updated_at', { ascending: false }) // default terbaru
     setLoading(false)
+
     if (error) {
       console.error(error)
       alert('Gagal memuat data membership.')
@@ -197,8 +186,68 @@ export default function Membership() {
   const onReset = () => {
     setQ('')
     setLevelFilter('ALL')
+    setSortBy('RECENT')
     setPage(1)
   }
+
+  // ===== Filter + Sort (client) =====
+  const filteredSorted = useMemo(() => {
+    const qq = q.trim().toLowerCase()
+
+    const base = customers.filter((c) => {
+      const lv = String(c.level || '').toUpperCase()
+      if (levelFilter !== 'ALL' && lv !== levelFilter) return false
+
+      if (!qq) return true
+
+      const nama = String(c.nama || '').toLowerCase()
+      const wa = normalizeWA(c.no_wa || c.customer_key || '')
+      const key = String(c.customer_key || '').toLowerCase()
+      const qqDigits = qq.replace(/[^\d]/g, '')
+
+      return (
+        nama.includes(qq) ||
+        (qqDigits && wa.includes(qqDigits)) ||
+        key.includes(qq) ||
+        String(c.no_wa || '').toLowerCase().includes(qq)
+      )
+    })
+
+    const arr = [...base]
+
+    arr.sort((a, b) => {
+      if (sortBy === 'NAME_ASC') return String(a.nama || '').localeCompare(String(b.nama || ''), 'id')
+      if (sortBy === 'NAME_DESC') return String(b.nama || '').localeCompare(String(a.nama || ''), 'id')
+
+      if (sortBy === 'TOTAL_DESC') return toNumber(b.total_belanja) - toNumber(a.total_belanja)
+      if (sortBy === 'COUNT_DESC') return toNumber(b.transaksi_unit) - toNumber(a.transaksi_unit)
+      if (sortBy === 'POINTS_DESC') return toNumber(b.points_balance) - toNumber(a.points_balance)
+
+      if (sortBy === 'EXP_SOON') return safeExpiryTs(a.next_expiry_at) - safeExpiryTs(b.next_expiry_at)
+
+      // default RECENT
+      return safeTs(b.updated_at) - safeTs(a.updated_at)
+    })
+
+    return arr
+  }, [customers, q, levelFilter, sortBy])
+
+  const pageCount = Math.max(1, Math.ceil(filteredSorted.length / PAGE_SIZE))
+  const paged = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE
+    return filteredSorted.slice(start, start + PAGE_SIZE)
+  }, [filteredSorted, page])
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageCount])
+
+  // reset page kalau search/filter/sort berubah (biar ga “kosong”)
+  useEffect(() => {
+    setPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, levelFilter, sortBy])
 
   const onOpenCustomer = async (c) => {
     setSelected(c)
@@ -238,6 +287,7 @@ export default function Membership() {
       return
     }
 
+    // refresh local
     setCustomers((prev) =>
       prev.map((x) =>
         x.customer_key === selected.customer_key ? { ...x, email, updated_at: new Date().toISOString() } : x
@@ -278,13 +328,7 @@ export default function Membership() {
       return
     }
 
-    // refresh list + selected (plus refresh expiry fields via refetch)
     await fetchCustomers()
-    setSelected((s) => {
-      const latest = (customers || []).find((x) => x.customer_key === s?.customer_key)
-      return latest ? { ...latest, points_balance: balance } : s ? { ...s, points_balance: balance } : s
-    })
-
     alert('Saldo poin berhasil dihitung ulang.')
   }
 
@@ -316,7 +360,6 @@ export default function Membership() {
         points,
         note,
         created_at: new Date().toISOString(),
-        // expires_at & points_remaining utk EARN akan diisi otomatis oleh trigger
       },
     ])
     setAdjSaving(false)
@@ -382,29 +425,19 @@ export default function Membership() {
             {/* Filters */}
             <div className={card + ' p-4 mb-4'}>
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                <div className="md:col-span-6">
+                <div className="md:col-span-5">
                   <div className={label}>Search (Nama / WA / Key)</div>
                   <input
                     className={input}
                     value={q}
-                    onChange={(e) => {
-                      setQ(e.target.value)
-                      setPage(1)
-                    }}
+                    onChange={(e) => setQ(e.target.value)}
                     placeholder="contoh: 0896... atau ERICK"
                   />
                 </div>
 
                 <div className="md:col-span-3">
                   <div className={label}>Filter Level</div>
-                  <select
-                    className={input}
-                    value={levelFilter}
-                    onChange={(e) => {
-                      setLevelFilter(e.target.value)
-                      setPage(1)
-                    }}
-                  >
+                  <select className={input} value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)}>
                     <option value="ALL">Semua</option>
                     <option value="SILVER">SILVER</option>
                     <option value="GOLD">GOLD</option>
@@ -412,7 +445,18 @@ export default function Membership() {
                   </select>
                 </div>
 
-                <div className="md:col-span-3 flex gap-2">
+                <div className="md:col-span-2">
+                  <div className={label}>Sort By</div>
+                  <select className={input} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                    {SORT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2 flex gap-2">
                   <button className={btn} onClick={onReset} disabled={loading}>
                     Reset
                   </button>
@@ -427,7 +471,7 @@ export default function Membership() {
             <div className={card + ' overflow-hidden'}>
               <div className="p-4 flex items-center justify-between">
                 <div className="text-sm text-gray-700">
-                  Total: <span className="font-semibold">{filtered.length}</span>
+                  Total: <span className="font-semibold">{filteredSorted.length}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-sm">
@@ -481,13 +525,10 @@ export default function Membership() {
                         <td className="px-4 py-3 border-b">
                           <span className={levelBadge(c.level)}>{String(c.level || 'SILVER').toUpperCase()}</span>
                         </td>
-
-                        {/* ✅ POIN + INFO EXPIRED TERDEKAT */}
                         <td className="px-4 py-3 border-b text-right">
                           <div className="font-semibold">{formatPts(c.points_balance)}</div>
                           {expiryLine(c)}
                         </td>
-
                         <td className="px-4 py-3 border-b text-right">{formatRp(c.total_belanja)}</td>
                         <td className="px-4 py-3 border-b text-right">{toNumber(c.transaksi_unit)}</td>
                         <td className="px-4 py-3 border-b text-gray-700">{formatDateTime(c.updated_at)}</td>
@@ -571,13 +612,12 @@ export default function Membership() {
                   <div className="text-sm text-gray-600">{normalizeWA(selected.no_wa || selected.customer_key)}</div>
                 </div>
 
-                <button className={btnDanger} onClick={closeModal}>
+                <button className={btnDanger} onClick={() => setOpen(false)}>
                   Close
                 </button>
               </div>
 
               <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-                {/* Left */}
                 <div className="lg:col-span-4">
                   <div className={card + ' p-4'}>
                     <div className="grid grid-cols-2 gap-3">
@@ -589,7 +629,6 @@ export default function Membership() {
                           Maks. dipakai (50%): <span className="font-semibold">{formatPts(maxRedeem)}</span>
                         </div>
 
-                        {/* ✅ INFO EXPIRED TERDEKAT */}
                         {toNumber(selected?.next_expiring_points) > 0 && selected?.next_expiry_at ? (
                           <div className="text-xs text-gray-500 mt-1">
                             Akan expired: <span className="font-semibold">{formatPts(selected.next_expiring_points)}</span> •{' '}
@@ -616,11 +655,7 @@ export default function Membership() {
                         <button className={btnPrimary} onClick={saveEmail}>
                           Simpan Email
                         </button>
-                        <button
-                          className={btn}
-                          onClick={() => setEmailDraft(selected.email || '')}
-                          disabled={!selected.email && !emailDraft}
-                        >
+                        <button className={btn} onClick={() => setEmailDraft(selected.email || '')}>
                           Reset
                         </button>
                       </div>
@@ -647,7 +682,6 @@ export default function Membership() {
                     </div>
                   </div>
 
-                  {/* Adjust */}
                   {adjOpen && (
                     <div className={card + ' p-4 mt-4'}>
                       <div className="font-semibold mb-3">Sesuaikan Poin</div>
@@ -701,7 +735,6 @@ export default function Membership() {
                   )}
                 </div>
 
-                {/* Right ledger */}
                 <div className="lg:col-span-8">
                   <div className={card + ' p-4'}>
                     <div className="flex items-center justify-between mb-3">
@@ -726,7 +759,8 @@ export default function Membership() {
                           {!ledger.length && (
                             <tr>
                               <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
-                                {ledgerLoading ? 'Memuat...' : 'Belum ada riwayat.'}
+                                {ledgerLoading ? 'Memuat...' : 'Belum ada riwayat.'
+                                }
                               </td>
                             </tr>
                           )}
@@ -754,6 +788,9 @@ export default function Membership() {
                   </div>
                 </div>
               </div>
+
+              {/* ensure close resets */}
+              <div className="hidden">{/* noop */}</div>
             </div>
           </div>
         )}
