@@ -9,7 +9,8 @@ const PAGE_SIZE = 10
 const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
 const label = 'text-xs text-gray-600 mb-1'
 const input = 'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
-const btn = 'border border-gray-200 px-4 py-2 rounded-lg bg-white hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btn =
+  'border border-gray-200 px-4 py-2 rounded-lg bg-white hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
 const btnTab = (active) =>
   `px-3 py-2 rounded-lg text-sm border ${
     active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200 hover:bg-gray-50'
@@ -21,7 +22,6 @@ const btnDanger =
 
 const btnMiniDark =
   'bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed'
-
 const btnMini =
   'bg-gray-100 hover:bg-gray-200 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 disabled:opacity-60 disabled:cursor-not-allowed'
 
@@ -315,7 +315,7 @@ export default function RiwayatPenjualan() {
   const [filter, setFilter] = useState({
     tanggal_awal: today,
     tanggal_akhir: today,
-    search: '',
+    search: ''
   })
 
   const [loading, setLoading] = useState(false)
@@ -579,6 +579,70 @@ export default function RiwayatPenjualan() {
     }
   }
 
+  // ====== FIX UTAMA: rollback loyalty pakai RPC kalau ada, kalau gagal -> fallback manual ======
+  async function rollbackLoyaltySafe({ invoice_id, penjualanRows }) {
+    if (!ledgerReady) return { ok: true }
+
+    // cari customer_key untuk recompute (ambil WA kalau ada, fallback email/nama)
+    const first = (penjualanRows || [])[0] || {}
+    const customerKey =
+      safe(first.no_wa).replace(/[^\d]/g, '') ||
+      safe(first.email).toLowerCase() ||
+      safe(first.nama_pembeli).toUpperCase() ||
+      ''
+
+    const totals = computeInvoiceTotals(penjualanRows || [])
+    const totalTransaksi = toNumber(totals.total)
+    const unitCount = (penjualanRows || []).filter((r) => !r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-')).length
+
+    // 1) Coba RPC dulu (kalau function ada & parameter cocok)
+    try {
+      const { error: voidErr } = await supabase.rpc('loyalty_void_invoice', {
+        p_invoice_id: invoice_id,
+        p_total_transaksi: totalTransaksi,
+        p_unit_count: unitCount
+      })
+      if (!voidErr) return { ok: true }
+
+      // kalau RPC error, lanjut fallback manual
+      console.warn('loyalty_void_invoice error -> fallback manual:', voidErr)
+    } catch (e) {
+      console.warn('loyalty_void_invoice exception -> fallback manual:', e)
+    }
+
+    // 2) FALLBACK MANUAL:
+    //    - delete ledger by invoice_id
+    //    - recompute points_balance for that customer_key
+    try {
+      // delete ledger entries for invoice
+      const { error: delLedErr } = await supabase.from('loyalty_point_ledger').delete().eq('invoice_id', invoice_id)
+      if (delLedErr) throw delLedErr
+
+      // recompute saldo customer (sum ledger)
+      if (customerKey) {
+        const { data: sumData, error: sumErr } = await supabase
+          .from('loyalty_point_ledger')
+          .select('points')
+          .eq('customer_key', customerKey)
+
+        if (sumErr) throw sumErr
+
+        const newBal = (sumData || []).reduce((a, r) => a + toNumber(r.points), 0)
+        const { error: updErr } = await supabase
+          .from('loyalty_customer')
+          .update({ points_balance: newBal, updated_at: new Date().toISOString() })
+          .eq('customer_key', customerKey)
+
+        if (updErr) throw updErr
+      }
+
+      return { ok: true }
+    } catch (e) {
+      console.error('fallback rollback loyalty failed:', e)
+      return { ok: false, message: 'Gagal rollback loyalty (fallback manual). Cek RLS / izin delete ledger.' }
+    }
+  }
+
   async function handleDelete(invoice_id) {
     const konfirmasi = confirm(`Yakin ingin hapus semua data transaksi dengan invoice ${invoice_id}?`)
     if (!konfirmasi) return
@@ -587,6 +651,14 @@ export default function RiwayatPenjualan() {
     try {
       const { data: penjualan, error: e1 } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
       if (e1) throw e1
+
+      // ===== rollback loyalty (FIX) =====
+      const rb = await rollbackLoyaltySafe({ invoice_id, penjualanRows: penjualan || [] })
+      if (!rb.ok) {
+        alert(rb.message || 'Gagal rollback loyalty. Hapus transaksi dibatalkan.')
+        setLoading(false)
+        return
+      }
 
       // restore stok
       for (const item of penjualan || []) {
@@ -598,9 +670,10 @@ export default function RiwayatPenjualan() {
         if (cekErr) throw cekErr
 
         if (stokData?.id) {
-          await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+          const { error: upErr } = await supabase.from('stok').update({ status: 'READY' }).eq('id', stokData.id)
+          if (upErr) throw upErr
         } else {
-          // aksesoris: best-effort restore
+          // aksesoris: best-effort restore (jika RPC ada)
           try {
             const { error: rpcErr } = await supabase.rpc('tambah_stok_aksesoris', { sku_input: code })
             if (rpcErr) console.warn('tambah_stok_aksesoris rpc error (ignored):', rpcErr)
@@ -610,32 +683,9 @@ export default function RiwayatPenjualan() {
         }
       }
 
-      // ===== rollback loyalty dulu =====
-      try {
-        const totals = computeInvoiceTotals(penjualan || [])
-        const totalTransaksi = toNumber(totals.total)
-        const unitCount = (penjualan || []).filter((r) => !r.is_bonus && !r.is_aksesoris).length
-
-        // kalau function ini memang ada di DB kamu
-        if (ledgerReady) {
-          const { error: voidErr } = await supabase.rpc('loyalty_void_invoice', {
-            p_invoice_id: invoice_id,
-            p_total_transaksi: totalTransaksi,
-            p_unit_count: unitCount,
-          })
-          if (voidErr) {
-            console.warn('loyalty_void_invoice error:', voidErr)
-            throw new Error('Gagal rollback loyalty. Hapus transaksi dibatalkan.')
-          }
-        }
-      } catch (err) {
-        alert(err?.message || 'Gagal rollback loyalty.')
-        setLoading(false)
-        return
-      }
-
       // ===== baru hapus transaksi =====
-      await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
+      const { error: delErr } = await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
+      if (delErr) throw delErr
 
       alert('Data berhasil dihapus!')
       fetchData()
@@ -689,7 +739,7 @@ export default function RiwayatPenjualan() {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
-        windowWidth: 794,
+        windowWidth: 794
       })
 
       const blob = await canvasToJpegBlob(canvas, 0.95)
@@ -769,7 +819,7 @@ export default function RiwayatPenjualan() {
       modalProduk,
       modalBonus,
       biayaLain,
-      laba,
+      laba
     })
     setOpenProfit(true)
   }
@@ -991,7 +1041,12 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3 align-top">
                         <div className="text-[11px] text-gray-500 font-mono">{inv}</div>
                         <div className="mt-2 flex flex-col gap-2">
-                          <button className={btnMiniDark} type="button" disabled={loading || busy} onClick={() => downloadInvoiceJpg(inv)}>
+                          <button
+                            className={btnMiniDark}
+                            type="button"
+                            disabled={loading || busy}
+                            onClick={() => downloadInvoiceJpg(inv)}
+                          >
                             {busy ? 'Membuat…' : 'Download JPG'}
                           </button>
 
@@ -1031,15 +1086,23 @@ export default function RiwayatPenjualan() {
                       <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
                       <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'referral')}</td>
 
-                      <td className="px-4 py-3 align-top text-right tabular-nums">{earned ? `${earned.toLocaleString('id-ID')} pts` : '-'}</td>
-                      <td className="px-4 py-3 align-top text-right tabular-nums">{used ? `${used.toLocaleString('id-ID')} pts` : '-'}</td>
+                      <td className="px-4 py-3 align-top text-right tabular-nums">
+                        {earned ? `${earned.toLocaleString('id-ID')} pts` : '-'}
+                      </td>
+                      <td className="px-4 py-3 align-top text-right tabular-nums">
+                        {used ? `${used.toLocaleString('id-ID')} pts` : '-'}
+                      </td>
 
                       <td className="px-4 py-3 align-top text-right">{formatRp(totalBayar)}</td>
 
                       <td className="px-4 py-3 align-top text-right">
                         <div className="flex flex-col items-end gap-2">
                           <span className={badge(labaVal >= 0 ? 'ok' : 'warn')}>{formatRp(labaVal)}</span>
-                          <button type="button" className="text-xs font-semibold text-blue-700 hover:underline" onClick={() => openProfitModal(inv, item.produk)}>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-blue-700 hover:underline"
+                            onClick={() => openProfitModal(inv, item.produk)}
+                          >
                             Detail
                           </button>
                         </div>
@@ -1076,14 +1139,20 @@ export default function RiwayatPenjualan() {
           {/* PAGINATION */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
+              <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
             </div>
 
             <div className="flex gap-2">
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1 || loading}
+                type="button"
+              >
                 ‹ Prev
               </button>
 
@@ -1091,7 +1160,12 @@ export default function RiwayatPenjualan() {
                 {safePage}/{totalPages}
               </div>
 
-              <button className={btn} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Next ›
               </button>
               <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
