@@ -635,8 +635,41 @@ export default function RiwayatPenjualan() {
           }
         }
       }
+// ===== rollback loyalty dulu (refund poin pakai + reverse poin dapat) =====
+try {
+  // ambil metadata invoice (no_wa & total_transaksi & unit_count)
+  const first = (penjualan || [])[0] || {}
+  const wa = String(first.no_wa || '').trim()
 
-      await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
+  // total transaksi = total bayar invoice (sesudah diskon manual + poin)
+  // pakai helper computeInvoiceTotals dari file kamu
+  const totals = computeInvoiceTotals(penjualan || [])
+  const totalTransaksi = toNumber(totals.total)
+
+  // unit count = item non-aksesoris, non-bonus (sesuai earn_invoice kamu)
+  const unitCount = (penjualan || []).filter((r) => !r.is_bonus && !r.is_aksesoris).length
+
+  if (wa && ledgerReady) {
+    const { error: voidErr } = await supabase.rpc('loyalty_void_invoice', {
+      p_invoice_id: invoice_id,
+      p_total_transaksi: totalTransaksi,
+      p_unit_count: unitCount,
+    })
+    if (voidErr) {
+      console.warn('loyalty_void_invoice error:', voidErr)
+      // kalau mau strict: throw new Error(voidErr.message)
+      // tapi saran aku: jangan lanjut hapus kalau rollback gagal
+      throw new Error('Gagal rollback loyalty. Hapus transaksi dibatalkan.')
+    }
+  }
+} catch (err) {
+  alert(err?.message || 'Gagal rollback loyalty.')
+  setLoading(false)
+  return
+}
+
+// ===== baru hapus transaksi =====
+await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
 
       alert('Data berhasil dihapus!')
       fetchData()
