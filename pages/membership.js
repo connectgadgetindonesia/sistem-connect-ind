@@ -14,595 +14,723 @@ const btnPrimary =
   'bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed'
 const btnDanger =
   'bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const btnTab = (active) =>
+  `px-3 py-2 rounded-lg text-sm border ${
+    active ? 'bg-black text-white border-black' : 'bg-white border-gray-200 hover:bg-gray-50'
+  }`
 
 const PAGE_SIZE = 15
 
-const toInt = (v) => {
+// ===== Helpers =====
+const toNumber = (v) => {
+  if (typeof v === 'number') return v
   const n = parseInt(String(v ?? '0').replace(/[^\d-]/g, ''), 10)
   return Number.isFinite(n) ? n : 0
 }
-const formatRp = (n) => 'Rp ' + toInt(n).toLocaleString('id-ID')
 
-function levelBadge(level) {
-  const base = 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border'
-  const lv = String(level || 'SILVER').toUpperCase()
-  if (lv === 'PLATINUM') return base + ' bg-indigo-50 text-indigo-700 border-indigo-200'
-  if (lv === 'GOLD') return base + ' bg-yellow-50 text-yellow-800 border-yellow-200'
-  return base + ' bg-gray-100 text-gray-700 border-gray-200'
+const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
+const formatPts = (n) => `${toNumber(n).toLocaleString('id-ID')} pts`
+const formatDateTime = (v) => (v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '-')
+
+const normalizeWA = (wa) => String(wa ?? '').replace(/[^\d]/g, '')
+
+const levelBadge = (level) => {
+  const lv = String(level || '').toUpperCase()
+  if (lv === 'PLATINUM')
+    return 'bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full text-xs font-semibold'
+  if (lv === 'GOLD')
+    return 'bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold'
+  return 'bg-gray-50 text-gray-700 border border-gray-200 px-2 py-0.5 rounded-full text-xs font-semibold'
 }
 
-function ledgerBadge(type) {
-  const base = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border'
-  const t = String(type || '').toUpperCase()
-  if (t === 'EARN') return base + ' bg-green-50 text-green-700 border-green-200'
-  if (t === 'REDEEM') return base + ' bg-red-50 text-red-700 border-red-200'
-  return base + ' bg-gray-50 text-gray-700 border-gray-200'
+const entryLabel = (entryType, points, note) => {
+  const t = String(entryType || '').toUpperCase()
+  const p = toNumber(points)
+
+  // prioritaskan note yang jelas (BACKFILL/IMPORT)
+  if (typeof note === 'string' && note.trim()) {
+    let n = note.trim()
+    n = n.replace(/BACKFILL\s*2026\s*/gi, 'Penyesuaian otomatis 2026 ')
+    n = n.replace(/\bEARN\b/gi, '(Tambah)')
+    n = n.replace(/\bREDEEM\b/gi, '(Pakai)')
+    n = n.replace(/\bIMPORT\b/gi, 'Import ')
+    return n
+  }
+
+  if (t === 'EARN') return 'Poin masuk (transaksi)'
+  if (t === 'REDEEM') return p < 0 ? 'Poin dipakai' : 'Poin dipakai'
+  return 'Riwayat poin'
+}
+
+const entryTypeLabel = (entryType, points) => {
+  const t = String(entryType || '').toUpperCase()
+  const p = toNumber(points)
+  if (t === 'EARN') return 'Poin Masuk'
+  if (t === 'REDEEM') return p < 0 ? 'Poin Dipakai' : 'Poin Dipakai'
+  return 'Riwayat'
+}
+
+const typePill = (entryType, points) => {
+  const t = String(entryType || '').toUpperCase()
+  const p = toNumber(points)
+  if (t === 'EARN')
+    return 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200'
+  if (t === 'REDEEM')
+    return 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-rose-50 text-rose-700 border-rose-200'
+  // fallback
+  return p >= 0
+    ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200'
+    : 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-rose-50 text-rose-700 border-rose-200'
 }
 
 export default function Membership() {
-  // ====== UI STATE ======
-  const [tab, setTab] = useState('CUSTOMERS') // CUSTOMERS | LEDGER
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [tab, setTab] = useState('customers') // 'customers' | 'ledger'
 
-  // ====== FILTER ======
-  const [search, setSearch] = useState('')
-  const [levelFilter, setLevelFilter] = useState('') // '', SILVER, GOLD, PLATINUM
-
-  // ====== PAGING ======
-  const [page, setPage] = useState(1)
-  const [totalRows, setTotalRows] = useState(0)
-
-  // ====== DATA ======
+  // list customers
   const [customers, setCustomers] = useState([])
-  const [selected, setSelected] = useState(null) // loyalty_customer row
+  const [loading, setLoading] = useState(false)
+  const [q, setQ] = useState('')
+  const [levelFilter, setLevelFilter] = useState('ALL')
+  const [page, setPage] = useState(1)
+
+  // detail modal
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState(null)
   const [ledger, setLedger] = useState([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
 
-  // ====== ADJUST MODAL ======
-  const [showAdjust, setShowAdjust] = useState(false)
-  const [adjInvoice, setAdjInvoice] = useState('')
-  const [adjPoints, setAdjPoints] = useState('0') // can be negative/positive
-  const [adjNote, setAdjNote] = useState('ADJUST MANUAL')
+  // edit email
+  const [emailDraft, setEmailDraft] = useState('')
 
-  // ====== DERIVED ======
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(totalRows / PAGE_SIZE)), [totalRows])
+  // adjust points
+  const [adjOpen, setAdjOpen] = useState(false)
+  const [adjMode, setAdjMode] = useState('ADD') // ADD | SUB
+  const [adjPoints, setAdjPoints] = useState('')
+  const [adjNote, setAdjNote] = useState('Penyesuaian manual')
+  const [adjSaving, setAdjSaving] = useState(false)
 
-  const filteredHint = useMemo(() => {
-    const parts = []
-    if (search.trim()) parts.push(`Search: "${search.trim()}"`)
-    if (levelFilter) parts.push(`Level: ${levelFilter}`)
-    return parts.length ? parts.join(' • ') : 'Semua customer'
-  }, [search, levelFilter])
+  const totalCustomers = customers.length
 
-  // ====== LOAD CUSTOMERS ======
-  async function loadCustomers(p = page) {
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase()
+    return customers.filter((c) => {
+      const lv = String(c.level || '').toUpperCase()
+      if (levelFilter !== 'ALL' && lv !== levelFilter) return false
+
+      if (!qq) return true
+
+      const nama = String(c.nama || '').toLowerCase()
+      const wa = normalizeWA(c.no_wa || c.customer_key || '')
+      const key = String(c.customer_key || '').toLowerCase()
+      return (
+        nama.includes(qq) ||
+        wa.includes(qq.replace(/[^\d]/g, '')) ||
+        key.includes(qq) ||
+        String(c.no_wa || '').toLowerCase().includes(qq)
+      )
+    })
+  }, [customers, q, levelFilter])
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paged = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [filtered, page])
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageCount])
+
+  const fetchCustomers = async () => {
     setLoading(true)
-    setError('')
-    try {
-      const from = (p - 1) * PAGE_SIZE
-      const to = from + PAGE_SIZE - 1
-
-      let q = supabase
-        .from('loyalty_customer')
-        .select(
-          'customer_key,nama,no_wa,email,level,total_belanja,transaksi_unit,points_balance,created_at,updated_at',
-          { count: 'exact' }
-        )
-        .order('updated_at', { ascending: false })
-        .range(from, to)
-
-      if (levelFilter) q = q.eq('level', levelFilter)
-
-      const s = search.trim()
-      if (s) {
-        // cari di customer_key / no_wa / nama (ilike)
-        // gunakan OR agar fleksibel
-        q = q.or(`customer_key.ilike.%${s}%,no_wa.ilike.%${s}%,nama.ilike.%${s}%`)
-      }
-
-      const { data, error, count } = await q
-      if (error) throw error
-
-      setCustomers(data || [])
-      setTotalRows(count || 0)
-
-      // reset selected jika sudah tidak ada
-      if (selected?.customer_key) {
-        const still = (data || []).find((x) => x.customer_key === selected.customer_key)
-        if (!still) setSelected(null)
-      }
-    } catch (e) {
-      setError(e?.message || 'Gagal load membership.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ====== LOAD LEDGER FOR CUSTOMER ======
-  async function loadLedger(customer_key) {
-    if (!customer_key) return
-    setLedgerLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('loyalty_point_ledger')
-        .select('id,customer_key,invoice_id,entry_type,points,note,created_at')
-        .eq('customer_key', customer_key)
-        .order('created_at', { ascending: false })
-        .limit(200)
-
-      if (error) throw error
-      setLedger(data || [])
-    } catch (e) {
-      setLedger([])
-    } finally {
-      setLedgerLoading(false)
-    }
-  }
-
-  // ====== OPEN CUSTOMER ======
-  const openCustomer = async (row) => {
-    setSelected(row)
-    setTab('LEDGER')
-    await loadLedger(row.customer_key)
-  }
-
-  // ====== ADJUST POINTS ======
-  async function submitAdjust() {
-    if (!selected?.customer_key) return
-    const pts = toInt(adjPoints)
-    if (!pts) {
-      alert('Points harus selain 0.')
-      return
-    }
-    setLoading(true)
-    try {
-      const payload = {
-        customer_key: selected.customer_key,
-        invoice_id: adjInvoice?.trim() || null,
-        entry_type: 'ADJUST',
-        points: pts,
-        note: adjNote?.trim() || 'ADJUST MANUAL',
-      }
-
-      const { error: e1 } = await supabase.from('loyalty_point_ledger').insert([payload])
-      if (e1) throw e1
-
-      // update balance cepat (biar UI langsung sesuai)
-      const { data: cur, error: e2 } = await supabase
-        .from('loyalty_customer')
-        .select('points_balance')
-        .eq('customer_key', selected.customer_key)
-        .single()
-      if (e2) throw e2
-
-      const newBal = toInt(cur?.points_balance) + pts
-      const { error: e3 } = await supabase
-        .from('loyalty_customer')
-        .update({ points_balance: newBal, updated_at: new Date().toISOString() })
-        .eq('customer_key', selected.customer_key)
-      if (e3) throw e3
-
-      setShowAdjust(false)
-      setAdjInvoice('')
-      setAdjPoints('0')
-      setAdjNote('ADJUST MANUAL')
-
-      await refreshSelected()
-    } catch (e) {
-      alert(e?.message || 'Gagal adjust poin.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ====== RECALC BALANCE (SUM LEDGER) ======
-  async function recalcBalance() {
-    if (!selected?.customer_key) return
-    if (!confirm('Recalc balance dari ledger? (ini akan menyamakan points_balance)')) return
-    setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('loyalty_point_ledger')
-        .select('points')
-        .eq('customer_key', selected.customer_key)
-
-      if (error) throw error
-
-      const sum = (data || []).reduce((a, r) => a + toInt(r.points), 0)
-
-      const { error: e2 } = await supabase
-        .from('loyalty_customer')
-        .update({ points_balance: sum, updated_at: new Date().toISOString() })
-        .eq('customer_key', selected.customer_key)
-
-      if (e2) throw e2
-
-      await refreshSelected()
-    } catch (e) {
-      alert(e?.message || 'Gagal recalc.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function refreshSelected() {
-    if (!selected?.customer_key) return
-    // refresh selected row
     const { data, error } = await supabase
       .from('loyalty_customer')
-      .select(
-        'customer_key,nama,no_wa,email,level,total_belanja,transaksi_unit,points_balance,created_at,updated_at'
-      )
-      .eq('customer_key', selected.customer_key)
-      .single()
-    if (!error && data) setSelected(data)
+      .select('customer_key,nama,no_wa,email,level,points_balance,total_belanja,transaksi_unit,created_at,updated_at')
+      .order('updated_at', { ascending: false })
 
-    await loadLedger(selected.customer_key)
-    // refresh list juga
-    await loadCustomers(page)
+    setLoading(false)
+    if (error) {
+      console.error(error)
+      alert('Gagal memuat data membership.')
+      return
+    }
+    setCustomers(data || [])
   }
 
-  // ====== EFFECTS ======
+  const fetchLedger = async (customerKey) => {
+    if (!customerKey) return
+    setLedgerLoading(true)
+    const { data, error } = await supabase
+      .from('loyalty_point_ledger')
+      .select('id,customer_key,invoice_id,entry_type,points,note,created_at')
+      .eq('customer_key', customerKey)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    setLedgerLoading(false)
+    if (error) {
+      console.error(error)
+      alert('Gagal memuat riwayat poin.')
+      return
+    }
+    setLedger(data || [])
+  }
+
   useEffect(() => {
-    loadCustomers(1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchCustomers()
   }, [])
 
-  useEffect(() => {
-    // reset page kalau filter berubah
+  const onReset = () => {
+    setQ('')
+    setLevelFilter('ALL')
     setPage(1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, levelFilter])
+  }
 
-  useEffect(() => {
-    loadCustomers(page)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, levelFilter])
+  const onOpenCustomer = async (c) => {
+    setSelected(c)
+    setEmailDraft(c?.email || '')
+    setOpen(true)
+    await fetchLedger(c.customer_key)
+  }
 
-  // ====== UI HELPERS ======
+  const closeModal = () => {
+    setOpen(false)
+    setSelected(null)
+    setLedger([])
+    setAdjOpen(false)
+    setAdjMode('ADD')
+    setAdjPoints('')
+    setAdjNote('Penyesuaian manual')
+    setAdjSaving(false)
+  }
+
   const maxRedeem = useMemo(() => {
-    const bal = toInt(selected?.points_balance)
-    return Math.floor(bal * 0.5)
+    const pts = toNumber(selected?.points_balance)
+    return Math.floor(pts * 0.5)
   }, [selected])
 
+  const saveEmail = async () => {
+    if (!selected?.customer_key) return
+    const email = String(emailDraft || '').trim() || null
+
+    const { error } = await supabase
+      .from('loyalty_customer')
+      .update({ email, updated_at: new Date().toISOString() })
+      .eq('customer_key', selected.customer_key)
+
+    if (error) {
+      console.error(error)
+      alert('Gagal menyimpan email.')
+      return
+    }
+
+    // refresh local
+    setCustomers((prev) =>
+      prev.map((x) =>
+        x.customer_key === selected.customer_key ? { ...x, email, updated_at: new Date().toISOString() } : x
+      )
+    )
+    setSelected((s) => (s ? { ...s, email } : s))
+    alert('Email tersimpan.')
+  }
+
+  const recalcBalance = async () => {
+    if (!selected?.customer_key) return
+    setLedgerLoading(true)
+
+    // 1) hitung ulang dari ledger
+    const { data: sumData, error: sumErr } = await supabase
+      .from('loyalty_point_ledger')
+      .select('points')
+      .eq('customer_key', selected.customer_key)
+
+    if (sumErr) {
+      console.error(sumErr)
+      setLedgerLoading(false)
+      alert('Gagal hitung ulang poin.')
+      return
+    }
+
+    const balance = (sumData || []).reduce((acc, r) => acc + toNumber(r.points), 0)
+
+    // 2) update loyalty_customer.points_balance + updated_at
+    const { error: upErr } = await supabase
+      .from('loyalty_customer')
+      .update({ points_balance: balance, updated_at: new Date().toISOString() })
+      .eq('customer_key', selected.customer_key)
+
+    setLedgerLoading(false)
+
+    if (upErr) {
+      console.error(upErr)
+      alert('Gagal update saldo poin.')
+      return
+    }
+
+    // refresh local customer state
+    setCustomers((prev) =>
+      prev.map((x) => (x.customer_key === selected.customer_key ? { ...x, points_balance: balance } : x))
+    )
+    setSelected((s) => (s ? { ...s, points_balance: balance } : s))
+
+    alert('Saldo poin berhasil dihitung ulang.')
+  }
+
+  const openAdjust = () => {
+    setAdjMode('ADD')
+    setAdjPoints('')
+    setAdjNote('Penyesuaian manual')
+    setAdjOpen(true)
+  }
+
+  const saveAdjust = async () => {
+    if (!selected?.customer_key) return
+    const ptsRaw = toNumber(adjPoints)
+    if (!ptsRaw || ptsRaw <= 0) {
+      alert('Masukkan jumlah poin yang benar.')
+      return
+    }
+
+    const points = adjMode === 'SUB' ? -Math.abs(ptsRaw) : Math.abs(ptsRaw)
+    // supaya aman dengan enum yang sudah ada: pakai EARN untuk tambah, REDEEM untuk kurang (poin negatif)
+    const entry_type = adjMode === 'SUB' ? 'REDEEM' : 'EARN'
+    const note = String(adjNote || '').trim() || 'Penyesuaian manual'
+
+    setAdjSaving(true)
+    const { error } = await supabase.from('loyalty_point_ledger').insert([
+      {
+        customer_key: selected.customer_key,
+        invoice_id: null,
+        entry_type,
+        points,
+        note,
+        created_at: new Date().toISOString(),
+      },
+    ])
+    setAdjSaving(false)
+
+    if (error) {
+      console.error(error)
+      alert('Gagal menyimpan penyesuaian poin.')
+      return
+    }
+
+    // reload ledger + recalc points balance
+    await fetchLedger(selected.customer_key)
+    await recalcBalance()
+    setAdjOpen(false)
+  }
+
+  // Tab ledger global (opsional): menampilkan ledger terbaru semua customer
+  const [globalLedger, setGlobalLedger] = useState([])
+  const [globalLoading, setGlobalLoading] = useState(false)
+
+  const fetchGlobalLedger = async () => {
+    setGlobalLoading(true)
+    const { data, error } = await supabase
+      .from('loyalty_point_ledger')
+      .select('id,customer_key,invoice_id,entry_type,points,note,created_at')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    setGlobalLoading(false)
+    if (error) {
+      console.error(error)
+      alert('Gagal memuat riwayat poin.')
+      return
+    }
+    setGlobalLedger(data || [])
+  }
+
+  useEffect(() => {
+    if (tab === 'ledger') fetchGlobalLedger()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
+
   return (
-    <Layout>
-      <div className="p-4 md:p-6 space-y-4">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+    <Layout title="Membership & Loyalty">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
           <div>
             <div className="text-xl font-bold">Membership & Loyalty</div>
-            <div className="text-sm text-gray-600 mt-1">{filteredHint}</div>
+            <div className="text-sm text-gray-600">Semua customer</div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              className={`${btn} ${tab === 'CUSTOMERS' ? 'bg-gray-100' : ''}`}
-              onClick={() => setTab('CUSTOMERS')}
-            >
+          <div className="flex gap-2">
+            <button className={btnTab(tab === 'customers')} onClick={() => setTab('customers')}>
               Customers
             </button>
-            <button
-              className={`${btn} ${tab === 'LEDGER' ? 'bg-gray-100' : ''}`}
-              onClick={() => setTab('LEDGER')}
-              disabled={!selected}
-              title={!selected ? 'Pilih customer dulu' : ''}
-            >
-              Ledger
+            <button className={btnTab(tab === 'ledger')} onClick={() => setTab('ledger')}>
+              Riwayat Poin
             </button>
           </div>
         </div>
 
-        {/* FILTER BAR */}
-        <div className={`${card} p-4`}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <div className={label}>Search (Nama / WA / Key)</div>
-              <input
-                className={input}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="contoh: 0896... atau ERICK"
-              />
-            </div>
-            <div>
-              <div className={label}>Filter Level</div>
-              <select
-                className={input}
-                value={levelFilter}
-                onChange={(e) => setLevelFilter(e.target.value)}
-              >
-                <option value="">Semua</option>
-                <option value="SILVER">SILVER</option>
-                <option value="GOLD">GOLD</option>
-                <option value="PLATINUM">PLATINUM</option>
-              </select>
-            </div>
-            <div className="flex items-end gap-2">
-              <button
-                className={btn}
-                onClick={() => {
-                  setSearch('')
-                  setLevelFilter('')
-                  setPage(1)
-                }}
-                disabled={loading}
-              >
-                Reset
-              </button>
-              <button className={btnPrimary} onClick={() => loadCustomers(1)} disabled={loading}>
-                Refresh
-              </button>
-            </div>
-          </div>
-          {error ? <div className="text-sm text-red-600 mt-3">{error}</div> : null}
-        </div>
-
-        {/* CUSTOMERS TAB */}
-        {tab === 'CUSTOMERS' && (
-          <div className={`${card} p-4`}>
-            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-              <div className="text-sm text-gray-600">
-                Total: <span className="font-semibold text-gray-900">{totalRows}</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  className={btn}
-                  disabled={loading || page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <div className="text-sm text-gray-600">
-                  Page <span className="font-semibold text-gray-900">{page}</span> / {totalPages}
+        {tab === 'customers' && (
+          <>
+            {/* Filters */}
+            <div className={card + ' p-4 mb-4'}>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                <div className="md:col-span-6">
+                  <div className={label}>Search (Nama / WA / Key)</div>
+                  <input
+                    className={input}
+                    value={q}
+                    onChange={(e) => {
+                      setQ(e.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="contoh: 0896... atau ERICK"
+                  />
                 </div>
-                <button
-                  className={btn}
-                  disabled={loading || page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                </button>
+
+                <div className="md:col-span-3">
+                  <div className={label}>Filter Level</div>
+                  <select
+                    className={input}
+                    value={levelFilter}
+                    onChange={(e) => {
+                      setLevelFilter(e.target.value)
+                      setPage(1)
+                    }}
+                  >
+                    <option value="ALL">Semua</option>
+                    <option value="SILVER">SILVER</option>
+                    <option value="GOLD">GOLD</option>
+                    <option value="PLATINUM">PLATINUM</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-3 flex gap-2">
+                  <button className={btn} onClick={onReset} disabled={loading}>
+                    Reset
+                  </button>
+                  <button className={btnPrimary} onClick={fetchCustomers} disabled={loading}>
+                    {loading ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
+            {/* Table */}
+            <div className={card + ' overflow-hidden'}>
+              <div className="p-4 flex items-center justify-between">
+                <div className="text-sm text-gray-700">
+                  Total: <span className="font-semibold">{filtered.length}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm">
+                  <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                    Prev
+                  </button>
+                  <div className="text-gray-600">
+                    Page <span className="font-semibold">{page}</span> / {pageCount}
+                  </div>
+                  <button
+                    className={btn}
+                    onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    disabled={page >= pageCount}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+
+              <div className="w-full overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-700">
+                      <th className="text-left font-semibold px-4 py-3 border-t border-b">Customer</th>
+                      <th className="text-left font-semibold px-4 py-3 border-t border-b">WA</th>
+                      <th className="text-left font-semibold px-4 py-3 border-t border-b">Level</th>
+                      <th className="text-right font-semibold px-4 py-3 border-t border-b">Poin</th>
+                      <th className="text-right font-semibold px-4 py-3 border-t border-b">Total Belanja</th>
+                      <th className="text-right font-semibold px-4 py-3 border-t border-b">Transaksi Unit</th>
+                      <th className="text-left font-semibold px-4 py-3 border-t border-b">Update</th>
+                      <th className="text-right font-semibold px-4 py-3 border-t border-b">Action</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {!paged.length && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-10 text-center text-gray-500">
+                          {loading ? 'Memuat data...' : 'Tidak ada data.'}
+                        </td>
+                      </tr>
+                    )}
+
+                    {paged.map((c) => (
+                      <tr key={c.customer_key} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 border-b">
+                          <div className="font-semibold">{c.nama || '-'}</div>
+                          <div className="text-xs text-gray-500">key: {c.customer_key}</div>
+                        </td>
+                        <td className="px-4 py-3 border-b">{normalizeWA(c.no_wa || c.customer_key) || '-'}</td>
+                        <td className="px-4 py-3 border-b">
+                          <span className={levelBadge(c.level)}>{String(c.level || 'SILVER').toUpperCase()}</span>
+                        </td>
+                        <td className="px-4 py-3 border-b text-right font-semibold">{formatPts(c.points_balance)}</td>
+                        <td className="px-4 py-3 border-b text-right">{formatRp(c.total_belanja)}</td>
+                        <td className="px-4 py-3 border-b text-right">{toNumber(c.transaksi_unit)}</td>
+                        <td className="px-4 py-3 border-b text-gray-700">{formatDateTime(c.updated_at)}</td>
+                        <td className="px-4 py-3 border-b text-right">
+                          <button className={btn} onClick={() => onOpenCustomer(c)}>
+                            Open
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {tab === 'ledger' && (
+          <div className={card + ' p-4'}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="font-semibold">Riwayat Poin Terbaru</div>
+                <div className="text-xs text-gray-600">Menampilkan 200 record terbaru</div>
+              </div>
+              <button className={btnPrimary} onClick={fetchGlobalLedger} disabled={globalLoading}>
+                {globalLoading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+
+            <div className="w-full overflow-x-auto">
+              <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-3">Customer</th>
-                    <th className="py-2 pr-3">WA</th>
-                    <th className="py-2 pr-3">Level</th>
-                    <th className="py-2 pr-3">Points</th>
-                    <th className="py-2 pr-3">Total Belanja</th>
-                    <th className="py-2 pr-3">Transaksi Unit</th>
-                    <th className="py-2 pr-3">Updated</th>
-                    <th className="py-2 pr-0 text-right">Action</th>
+                  <tr className="bg-gray-50 text-gray-700">
+                    <th className="text-left font-semibold px-4 py-3 border-t border-b">Tanggal</th>
+                    <th className="text-left font-semibold px-4 py-3 border-t border-b">Customer Key</th>
+                    <th className="text-left font-semibold px-4 py-3 border-t border-b">Invoice</th>
+                    <th className="text-left font-semibold px-4 py-3 border-t border-b">Jenis</th>
+                    <th className="text-right font-semibold px-4 py-3 border-t border-b">Poin</th>
+                    <th className="text-left font-semibold px-4 py-3 border-t border-b">Keterangan</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(customers || []).map((r) => (
-                    <tr key={r.customer_key} className="border-b hover:bg-gray-50">
-                      <td className="py-2 pr-3">
-                        <div className="font-semibold text-gray-900">{r.nama || '-'}</div>
-                        <div className="text-xs text-gray-500">key: {r.customer_key}</div>
+                  {!globalLedger.length && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-gray-500">
+                        {globalLoading ? 'Memuat...' : 'Belum ada riwayat.'}
                       </td>
-                      <td className="py-2 pr-3">{r.no_wa || '-'}</td>
-                      <td className="py-2 pr-3">
-                        <span className={levelBadge(r.level)}>{String(r.level || 'SILVER')}</span>
+                    </tr>
+                  )}
+
+                  {globalLedger.map((r) => (
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 border-b">{formatDateTime(r.created_at)}</td>
+                      <td className="px-4 py-3 border-b font-mono text-xs">{r.customer_key}</td>
+                      <td className="px-4 py-3 border-b">{r.invoice_id || '-'}</td>
+                      <td className="px-4 py-3 border-b">
+                        <span className={typePill(r.entry_type, r.points)}>
+                          {entryTypeLabel(r.entry_type, r.points)}
+                        </span>
                       </td>
-                      <td className="py-2 pr-3 font-semibold">{toInt(r.points_balance)}</td>
-                      <td className="py-2 pr-3">{formatRp(r.total_belanja)}</td>
-                      <td className="py-2 pr-3">{toInt(r.transaksi_unit)}</td>
-                      <td className="py-2 pr-3 text-gray-600">
-                        {r.updated_at ? dayjs(r.updated_at).format('DD/MM/YYYY HH:mm') : '-'}
-                      </td>
-                      <td className="py-2 pr-0 text-right">
-                        <button className={btn} onClick={() => openCustomer(r)}>
-                          Open
-                        </button>
-                      </td>
+                      <td className="px-4 py-3 border-b text-right font-semibold">{formatPts(r.points)}</td>
+                      <td className="px-4 py-3 border-b">{entryLabel(r.entry_type, r.points, r.note)}</td>
                     </tr>
                   ))}
-
-                  {!loading && (!customers || customers.length === 0) ? (
-                    <tr>
-                      <td className="py-6 text-center text-gray-500" colSpan={8}>
-                        Tidak ada data.
-                      </td>
-                    </tr>
-                  ) : null}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* LEDGER TAB */}
-        {tab === 'LEDGER' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* LEFT: CUSTOMER DETAIL */}
-            <div className={`${card} p-4 lg:col-span-1`}>
-              {!selected ? (
-                <div className="text-sm text-gray-600">Pilih customer dari tab Customers.</div>
-              ) : (
-                <>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-lg font-bold">{selected.nama || '-'}</div>
-                      <div className="text-sm text-gray-600 mt-1">{selected.no_wa || selected.customer_key}</div>
-                    </div>
-                    <span className={levelBadge(selected.level)}>{selected.level}</span>
-                  </div>
-
-                  <div className="mt-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-lg border border-gray-200">
-                        <div className={label}>Points Balance</div>
-                        <div className="text-2xl font-bold">{toInt(selected.points_balance)}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Max redeem (50%): <span className="font-semibold">{maxRedeem}</span>
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-lg border border-gray-200">
-                        <div className={label}>Total Belanja</div>
-                        <div className="text-xl font-bold">{formatRp(selected.total_belanja)}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Transaksi unit: <span className="font-semibold">{toInt(selected.transaksi_unit)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-3 rounded-lg border border-gray-200">
-                      <div className={label}>Email</div>
-                      <div className="text-sm text-gray-900">{selected.email || '-'}</div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button className={btnPrimary} onClick={() => setShowAdjust(true)} disabled={loading}>
-                        Adjust Points
-                      </button>
-                      <button className={btn} onClick={recalcBalance} disabled={loading}>
-                        Recalc Balance
-                      </button>
-                      <button className={btn} onClick={() => loadLedger(selected.customer_key)} disabled={ledgerLoading}>
-                        Reload Ledger
-                      </button>
-                      <button className={btnDanger} onClick={() => setSelected(null)} disabled={loading}>
-                        Close
-                      </button>
-                    </div>
-
-                    <div className="text-xs text-gray-500">
-                      Created: {selected.created_at ? dayjs(selected.created_at).format('DD/MM/YYYY HH:mm') : '-'}
-                      <br />
-                      Updated: {selected.updated_at ? dayjs(selected.updated_at).format('DD/MM/YYYY HH:mm') : '-'}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* RIGHT: LEDGER TABLE */}
-            <div className={`${card} p-4 lg:col-span-2`}>
-              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+        {/* Detail Modal */}
+        {open && selected && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-5xl rounded-2xl shadow-xl overflow-hidden">
+              <div className="p-4 border-b flex items-center justify-between">
                 <div>
-                  <div className="text-lg font-bold">Point Ledger</div>
-                  <div className="text-sm text-gray-600">
-                    {(selected?.customer_key && ledger?.length) ? `Menampilkan ${ledger.length} record terbaru` : '—'}
+                  <div className="text-lg font-bold flex items-center gap-2">
+                    <span>{selected.nama || '-'}</span>
+                    <span className={levelBadge(selected.level)}>{String(selected.level || 'SILVER').toUpperCase()}</span>
+                  </div>
+                  <div className="text-sm text-gray-600">{normalizeWA(selected.no_wa || selected.customer_key)}</div>
+                </div>
+
+                <button className={btnDanger} onClick={closeModal}>
+                  Close
+                </button>
+              </div>
+
+              <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+                {/* Left card */}
+                <div className="lg:col-span-4">
+                  <div className={card + ' p-4'}>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="border border-gray-200 rounded-xl p-3">
+                        <div className="text-xs text-gray-600">Saldo Poin</div>
+                        <div className="text-2xl font-bold mt-1">{formatPts(selected.points_balance)}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Maks. dipakai (50%): <span className="font-semibold">{formatPts(maxRedeem)}</span>
+                        </div>
+                      </div>
+
+                      <div className="border border-gray-200 rounded-xl p-3">
+                        <div className="text-xs text-gray-600">Total Belanja</div>
+                        <div className="text-xl font-bold mt-1">{formatRp(selected.total_belanja)}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Transaksi unit: <span className="font-semibold">{toNumber(selected.transaksi_unit)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="text-xs text-gray-600 mb-1">Email</div>
+                      <input className={input} value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} />
+                      <div className="flex gap-2 mt-2">
+                        <button className={btnPrimary} onClick={saveEmail}>
+                          Simpan Email
+                        </button>
+                        <button
+                          className={btn}
+                          onClick={() => setEmailDraft(selected.email || '')}
+                          disabled={!selected.email && !emailDraft}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-2">
+                      <button className={btnPrimary} onClick={openAdjust}>
+                        Sesuaikan Poin
+                      </button>
+
+                      <button className={btn} onClick={recalcBalance} disabled={ledgerLoading}>
+                        {ledgerLoading ? 'Menghitung...' : 'Hitung Ulang Saldo Poin'}
+                      </button>
+
+                      <button className={btn} onClick={() => fetchLedger(selected.customer_key)} disabled={ledgerLoading}>
+                        {ledgerLoading ? 'Loading...' : 'Muat Ulang Riwayat'}
+                      </button>
+                    </div>
+
+                    <div className="mt-4 text-xs text-gray-500">
+                      Created: {formatDateTime(selected.created_at)}
+                      <br />
+                      Updated: {formatDateTime(selected.updated_at)}
+                    </div>
+                  </div>
+
+                  {/* Adjust modal (inline) */}
+                  {adjOpen && (
+                    <div className={card + ' p-4 mt-4'}>
+                      <div className="font-semibold mb-3">Sesuaikan Poin</div>
+
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <button
+                          className={adjMode === 'ADD' ? btnPrimary : btn}
+                          onClick={() => setAdjMode('ADD')}
+                          type="button"
+                        >
+                          Tambah
+                        </button>
+                        <button
+                          className={adjMode === 'SUB' ? btnPrimary : btn}
+                          onClick={() => setAdjMode('SUB')}
+                          type="button"
+                        >
+                          Kurangi
+                        </button>
+                      </div>
+
+                      <div className="mb-3">
+                        <div className={label}>Jumlah Poin</div>
+                        <input
+                          className={input}
+                          value={adjPoints}
+                          onChange={(e) => setAdjPoints(e.target.value)}
+                          placeholder="contoh: 10000"
+                          inputMode="numeric"
+                        />
+                      </div>
+
+                      <div className="mb-3">
+                        <div className={label}>Catatan</div>
+                        <input className={input} value={adjNote} onChange={(e) => setAdjNote(e.target.value)} />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button className={btnPrimary} onClick={saveAdjust} disabled={adjSaving}>
+                          {adjSaving ? 'Menyimpan...' : 'Simpan'}
+                        </button>
+                        <button className={btn} onClick={() => setAdjOpen(false)} disabled={adjSaving}>
+                          Batal
+                        </button>
+                      </div>
+
+                      <div className="text-xs text-gray-500 mt-2">
+                        * Tambah = Poin masuk, Kurangi = Poin dipakai (akan tersimpan minus di ledger).
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right ledger */}
+                <div className="lg:col-span-8">
+                  <div className={card + ' p-4'}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <div className="font-semibold">Riwayat Poin</div>
+                        <div className="text-xs text-gray-600">Menampilkan {ledger.length} record terbaru</div>
+                      </div>
+                    </div>
+
+                    <div className="w-full overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 text-gray-700">
+                            <th className="text-left font-semibold px-4 py-3 border-t border-b">Tanggal</th>
+                            <th className="text-left font-semibold px-4 py-3 border-t border-b">Invoice</th>
+                            <th className="text-left font-semibold px-4 py-3 border-t border-b">Jenis</th>
+                            <th className="text-right font-semibold px-4 py-3 border-t border-b">Poin</th>
+                            <th className="text-left font-semibold px-4 py-3 border-t border-b">Keterangan</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!ledger.length && (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
+                                {ledgerLoading ? 'Memuat...' : 'Belum ada riwayat.'}
+                              </td>
+                            </tr>
+                          )}
+
+                          {ledger.map((r) => (
+                            <tr key={r.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 border-b">{formatDateTime(r.created_at)}</td>
+                              <td className="px-4 py-3 border-b">{r.invoice_id || '-'}</td>
+                              <td className="px-4 py-3 border-b">
+                                <span className={typePill(r.entry_type, r.points)}>
+                                  {entryTypeLabel(r.entry_type, r.points)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 border-b text-right font-semibold">{formatPts(r.points)}</td>
+                              <td className="px-4 py-3 border-b">{entryLabel(r.entry_type, r.points, r.note)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="text-xs text-gray-500 mt-3">
+                      Catatan: Poin dipakai akan tersimpan sebagai angka minus, supaya saldo = total semua points di
+                      ledger.
+                    </div>
                   </div>
                 </div>
               </div>
-
-              {!selected ? (
-                <div className="text-sm text-gray-600">Pilih customer dulu.</div>
-              ) : ledgerLoading ? (
-                <div className="text-sm text-gray-600">Loading ledger…</div>
-              ) : (
-                <div className="overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-gray-600 border-b">
-                        <th className="py-2 pr-3">Tanggal</th>
-                        <th className="py-2 pr-3">Invoice</th>
-                        <th className="py-2 pr-3">Type</th>
-                        <th className="py-2 pr-3">Points</th>
-                        <th className="py-2 pr-0">Note</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(ledger || []).map((r) => (
-                        <tr key={r.id} className="border-b hover:bg-gray-50">
-                          <td className="py-2 pr-3 text-gray-600">
-                            {r.created_at ? dayjs(r.created_at).format('DD/MM/YYYY HH:mm') : '-'}
-                          </td>
-                          <td className="py-2 pr-3 font-medium">{r.invoice_id || '-'}</td>
-                          <td className="py-2 pr-3">
-                            <span className={ledgerBadge(r.entry_type)}>{r.entry_type}</span>
-                          </td>
-                          <td className={`py-2 pr-3 font-semibold ${toInt(r.points) < 0 ? 'text-red-600' : 'text-green-700'}`}>
-                            {toInt(r.points)}
-                          </td>
-                          <td className="py-2 pr-0 text-gray-700">{r.note || '-'}</td>
-                        </tr>
-                      ))}
-
-                      {!ledger || ledger.length === 0 ? (
-                        <tr>
-                          <td className="py-6 text-center text-gray-500" colSpan={5}>
-                            Ledger kosong untuk customer ini.
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           </div>
         )}
-
-        {/* ADJUST MODAL */}
-        {showAdjust && selected ? (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl border border-gray-200">
-              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <div className="text-lg font-bold">Adjust Points</div>
-                  <div className="text-sm text-gray-600">{selected.nama || selected.customer_key}</div>
-                </div>
-                <button className={btn} onClick={() => setShowAdjust(false)} disabled={loading}>
-                  Tutup
-                </button>
-              </div>
-
-              <div className="p-4 space-y-3">
-                <div>
-                  <div className={label}>Invoice ID (opsional)</div>
-                  <input
-                    className={input}
-                    value={adjInvoice}
-                    onChange={(e) => setAdjInvoice(e.target.value)}
-                    placeholder="contoh: INV-CTI-02-2026-12"
-                  />
-                </div>
-
-                <div>
-                  <div className={label}>Points (bisa minus)</div>
-                  <input
-                    className={input}
-                    value={adjPoints}
-                    onChange={(e) => setAdjPoints(e.target.value)}
-                    placeholder="contoh: 50 atau -20"
-                  />
-                  <div className="text-xs text-gray-500 mt-1">
-                    + = tambah poin, - = kurangi poin
-                  </div>
-                </div>
-
-                <div>
-                  <div className={label}>Note</div>
-                  <input
-                    className={input}
-                    value={adjNote}
-                    onChange={(e) => setAdjNote(e.target.value)}
-                    placeholder="ADJUST MANUAL"
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
-                <button className={btn} onClick={() => setShowAdjust(false)} disabled={loading}>
-                  Cancel
-                </button>
-                <button className={btnPrimary} onClick={submitAdjust} disabled={loading}>
-                  Simpan
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
       </div>
     </Layout>
   )
