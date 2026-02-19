@@ -29,6 +29,7 @@ const EMAIL_LOG_TABLE = 'email_log'
 // DOC PREFIX (untuk nomor urut bulanan)
 // ==========================
 const OFFER_PREFIX = 'SP-CTI' // Surat Penawaran (PREFIX-CTI-MM-YYYY-URUT)
+
 const toInt = (v) => parseInt(String(v ?? '0'), 10) || 0
 const safe = (v) => String(v ?? '').trim()
 
@@ -38,6 +39,9 @@ const toNumber = (v) => {
   return Number.isFinite(n) ? n : 0
 }
 const formatRupiah = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
+
+// ✅ points formatter (BUKAN Rupiah)
+const formatPoints = (n) => `${toNumber(n).toLocaleString('id-ID')} poin`
 
 // ======================
 // ✅ Rupiah input helpers
@@ -55,7 +59,6 @@ const formatRupiahInput = (n) => {
 
 // ======================
 // ✅ MEMBERSHIP / POINTS RULES
-// (disamakan dengan membership.js)
 // ======================
 const POINT_RATE = 0.005 // 0.5%
 const THRESHOLD_GOLD_OMZET = 50_000_000
@@ -64,10 +67,14 @@ const THRESHOLD_GOLD_UNIT_TRX = 3
 const THRESHOLD_PLATINUM_UNIT_TRX = 5
 const EXPIRY_DAYS = 365
 
+// ✅ Standar WA untuk matching DB (0xxx -> 62xxx, +62xxx -> 62xxx)
 const normalizeWa = (no_wa) => {
   const raw = safe(no_wa)
   if (!raw) return ''
-  return raw.replace(/[^\d+]/g, '')
+  let s = raw.replace(/[^\d+]/g, '')
+  s = s.replace(/^\+/, '') // +62 -> 62
+  if (s.startsWith('0')) s = '62' + s.slice(1)
+  return s
 }
 
 function isUnitRow(r) {
@@ -85,10 +92,6 @@ function getTier({ omzetRolling, unitTrxRolling }) {
   return 'SILVER'
 }
 
-/**
- * ✅ BENEFIT TIERS (EDIT DISINI SESUAI SETTING KAMU)
- * Pastikan teksnya sesuai yang sudah kita set.
- */
 const BENEFITS_BY_TIER = {
   SILVER: [
     'Akses program poin',
@@ -105,7 +108,7 @@ const BENEFITS_BY_TIER = {
     'Customer Service Prioritas',
     'Free cleaning device',
     'Free maintenance device',
-    'Free delivery dengan minimal pembelian Rp. 2.000.000'
+    'Free delivery dengan minimal pembelian Rp. 2.000.000',
   ],
   PLATINUM: [
     'Free tempered glass seumur hidup (klaim 5x setiap tahun)',
@@ -116,7 +119,7 @@ const BENEFITS_BY_TIER = {
     'Customer Service Prioritas',
     'Free cleaning device',
     'Free maintenance device',
-    'Free delivery dengan minimal pembelian Rp. 2.000.000'
+    'Free delivery dengan minimal pembelian Rp. 2.000.000',
   ],
 }
 
@@ -155,7 +158,7 @@ function computeTotals(rows = []) {
 
 /**
  * ✅ TEMPLATE EMAIL INVOICE (HTML) — MOBILE SAFE
- * ✅ + Membership & Points block
+ * ✅ + Membership & Points block (POINTS tampil sebagai "poin", bukan Rupiah)
  */
 function buildInvoiceEmailTemplate(payload) {
   const {
@@ -168,8 +171,6 @@ function buildInvoiceEmailTemplate(payload) {
     subtotal = 0,
     discount = 0,
     total = 0,
-
-    // ✅ injected
     membership = null,
   } = payload || {}
 
@@ -279,7 +280,6 @@ function buildInvoiceEmailTemplate(payload) {
         </tr>
       `
 
-  // ✅ membership block (benefit wajib sesuai tier)
   const membershipBlock = (() => {
     if (!membership) return ''
     const earned = toNumber(membership.earned_points)
@@ -287,7 +287,6 @@ function buildInvoiceEmailTemplate(payload) {
     const tier = safe(membership.tier || 'SILVER').toUpperCase()
     const expireAt = safe(membership.expire_at || '')
 
-    // ✅ selalu ambil benefit dari tier (kalau payload benefit kosong, tetap tampil)
     const benefits =
       Array.isArray(membership.benefits) && membership.benefits.length
         ? membership.benefits
@@ -316,8 +315,8 @@ function buildInvoiceEmailTemplate(payload) {
         <div style="font-weight:900; color:#111827; font-size:14px;">Membership & Points</div>
 
         <div style="margin-top:8px; color:#374151; font-size:13px; line-height:1.7;">
-          Selamat! Anda mendapatkan tambahan point <b style="color:#111827;">${formatRupiah(earned)}</b> dari transaksi ini.<br/>
-          Total point Anda sekarang <b style="color:#111827;">${formatRupiah(totalPts)}</b>.<br/>
+          Selamat! Anda mendapatkan tambahan point <b style="color:#111827;">${formatPoints(earned)}</b> dari transaksi ini.<br/>
+          Total point Anda sekarang <b style="color:#111827;">${formatPoints(totalPts)}</b>.<br/>
           ${expText}<br/>
           Level membership Anda: <b style="color:#111827;">${tier}</b>.
         </div>
@@ -360,7 +359,7 @@ function buildInvoiceEmailTemplate(payload) {
         <td class="wrapPad" style="padding:24px 12px;">
           <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
             style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
-            
+
             <tr>
               <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
                 <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
@@ -450,7 +449,6 @@ function buildInvoiceEmailTemplate(payload) {
 
 /**
  * ✅ TEMPLATE EMAIL SURAT PENAWARAN (HTML) — MOBILE SAFE
- * ✅ Qty dibuat rapet ke kolom harga (width kecil + padding kanan/kiri rapih)
  */
 function buildOfferEmailTemplate(payload) {
   const { offer_id, tanggal, kepada_nama, kepada_perusahaan, to_email, items = [], catatan = '' } = payload || {}
@@ -654,9 +652,8 @@ function extractBodyHtml(fullHtml) {
   return s
 }
 
-// ====== INVOICE A4 HTML (JPG) — tidak diubah ======
+// ====== INVOICE A4 HTML (JPG) — hanya path logo disesuaikan ======
 function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
-  const BLUE = '#2388ff'
   const _rows = Array.isArray(rows) ? rows : Array.isArray(payload?.items) ? payload.items : []
   const _totals =
     totals ||
@@ -736,7 +733,7 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 
       <div style="display:flex; gap:22px; align-items:flex-start;">
         <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
-          <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
+          <img src="/logo-connect-transparan.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
@@ -821,12 +818,12 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 </html>`
 }
 
-// ====== OFFER A4 HTML — tidak diubah style utamanya ======
+// ====== OFFER A4 HTML — hanya path header disesuaikan ======
 function buildOfferA4Html(payload) {
   const p = payload || {}
   const items = Array.isArray(p.items) ? p.items : []
 
-  const HEAD_IMG = '/head-surat-menyurat.png'
+  const HEAD_IMG = '/head.png'
 
   const formatRpDot = (n) => {
     const x = toNumber(n)
@@ -973,11 +970,8 @@ function buildOfferA4Html(payload) {
 
       <div style="height:80px;"></div>
 
-      <div style="width:260px;border-bottom:2px solid #111827;margin-top:10px;">
-      </div>
-      <div style="margin-top:6px;font-weight:600;">
-        Erick Karno Hutomo
-      </div>
+      <div style="width:260px;border-bottom:2px solid #111827;margin-top:10px;"></div>
+      <div style="margin-top:6px;font-weight:600;">Erick Karno Hutomo</div>
       <div>Head Store</div>
     </div>
 
@@ -1027,14 +1021,10 @@ export default function EmailPage() {
   const [kepadaNama, setKepadaNama] = useState('')
   const [kepadaPerusahaan, setKepadaPerusahaan] = useState('')
   const [offerNotes, setOfferNotes] = useState('')
-
-  // ✅ offerItems pakai hargaText supaya input rupiah tidak “loncat”
   const [offerItems, setOfferItems] = useState([{ nama_barang: '', qty: 1, harga: 0, hargaText: '' }])
 
   // ======================
   // ✅ OFFER NUMBERING (urut bulanan, reset tiap bulan)
-  // Format: SP-CTI-(MM)-(YYYY)-(N)
-  // Sumber urutan: EMAIL_LOG_TABLE (riwayat kirim)
   // ======================
   const buildOfferPrefix = (ymd) => {
     const d = dayjs(ymd || dayjs().format('YYYY-MM-DD'))
@@ -1053,7 +1043,6 @@ export default function EmailPage() {
 
   const generateOfferIdMonthly = async (ymd) => {
     const prefix = buildOfferPrefix(ymd)
-
     if (!historyEnabled) return `${prefix}1`
 
     try {
@@ -1064,10 +1053,7 @@ export default function EmailPage() {
         .order('sent_at', { ascending: false })
         .limit(300)
 
-      if (error) {
-        console.warn('Offer numbering fallback:', error.message)
-        return `${prefix}1`
-      }
+      if (error) return `${prefix}1`
 
       const arr = Array.isArray(data) ? data : []
       let maxSeq = 0
@@ -1076,17 +1062,12 @@ export default function EmailPage() {
         const seq = parseSequenceFromOfferId(id, prefix)
         if (seq > maxSeq) maxSeq = seq
       }
-
       return `${prefix}${maxSeq + 1}`
-    } catch (e) {
-      console.warn('Offer numbering error:', e?.message || e)
+    } catch {
       return `${prefix}1`
     }
   }
 
-  // ======================
-  // OFFER helpers
-  // ======================
   const normalizeOfferItems = (arr) => {
     const items = Array.isArray(arr) ? arr : []
     return items
@@ -1113,7 +1094,6 @@ export default function EmailPage() {
 
   // ======================
   // ✅ MEMBERSHIP SNAPSHOT FETCH
-  // hitung rolling 365 hari sampai tanggal invoice (payload.tanggal)
   // ======================
   const fetchMembershipSnapshot = async (invPayload) => {
     const p = invPayload || {}
@@ -1137,17 +1117,13 @@ export default function EmailPage() {
         .order('tanggal', { ascending: false })
         .limit(5000)
 
-      if (wa) {
-        q = q.eq('no_wa', wa)
-      } else {
-        q = q.eq('nama_pembeli', nama)
-      }
+      if (wa) q = q.eq('no_wa', wa)
+      else q = q.eq('nama_pembeli', nama)
 
       const { data, error } = await q
       if (error) throw error
 
       const rows = Array.isArray(data) ? data : []
-
       const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
 
       if (!rows.length) {
@@ -1226,7 +1202,7 @@ export default function EmailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail, membershipSnap])
 
-  // ✅ POINTS SELALU UPDATE: re-calc saat total/tanggal/no_wa/nama berubah (bukan cuma invoice_id)
+  // ✅ POINTS update
   useEffect(() => {
     const run = async () => {
       if (mode !== 'invoice') return
@@ -1287,7 +1263,7 @@ export default function EmailPage() {
   }, [offerDate, mode])
 
   // ======================
-  // History helpers (Invoice + Offer)
+  // History helpers
   // ======================
   const formatSentAt = (ts) => {
     if (!ts) return ''
@@ -1333,15 +1309,13 @@ export default function EmailPage() {
         .limit(50)
 
       if (error) {
-        console.warn('Email history disabled:', error.message)
         setHistoryEnabled(false)
         setEmailHistory([])
         return
       }
 
       setEmailHistory(normalizeHistoryRows(data))
-    } catch (e) {
-      console.warn('Email history error:', e?.message || e)
+    } catch {
       setHistoryEnabled(false)
       setEmailHistory([])
     } finally {
@@ -1349,7 +1323,6 @@ export default function EmailPage() {
     }
   }
 
-  // load history when invoice selected (invoice mode)
   useEffect(() => {
     const run = async () => {
       if (mode !== 'invoice') return
@@ -1359,7 +1332,6 @@ export default function EmailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dataInvoice?.invoice_id])
 
-  // load history when offerId changes (offer mode)
   useEffect(() => {
     const run = async () => {
       if (mode !== 'offer') return
@@ -1383,7 +1355,6 @@ export default function EmailPage() {
         .limit(800)
 
       if (error) {
-        console.warn('Email status disabled:', error.message)
         setHistoryEnabled(false)
         return new Map()
       }
@@ -1414,14 +1385,12 @@ export default function EmailPage() {
       }
 
       return map
-    } catch (e) {
-      console.warn('Email status error:', e?.message || e)
+    } catch {
       setHistoryEnabled(false)
       return new Map()
     }
   }
 
-  // ✅ helper grouping list => pickerRows (dipakai oleh fetchInvoicesByDate)
   const buildPickerGrouped = async (list, ymd) => {
     const rawList = Array.isArray(list) ? list : []
     if (rawList.length === 0) {
@@ -1506,7 +1475,6 @@ export default function EmailPage() {
     setPickerRows(grouped)
   }
 
-  // ✅ FIX: ambil by DATE dulu (kalau kolom tanggal tipe date), fallback range ISO (kalau timestamptz)
   const fetchInvoicesByDate = async (ymd) => {
     setPickerLoading(true)
     try {
@@ -1541,7 +1509,6 @@ export default function EmailPage() {
       const list = raw.filter((r) => r?.tanggal && dayjs(r.tanggal).format('YYYY-MM-DD') === ymd)
       await buildPickerGrouped(list, ymd)
     } catch (e) {
-      console.error(e)
       setPickerRows([])
       alert('Gagal ambil transaksi: ' + (e?.message || String(e)))
     } finally {
@@ -1579,11 +1546,8 @@ export default function EmailPage() {
     setPickerOpen(false)
 
     setToEmailTouched(false)
-    if (payload.email && String(payload.email).includes('@')) {
-      setToEmail(String(payload.email).trim())
-    } else {
-      setToEmail('')
-    }
+    if (payload.email && String(payload.email).includes('@')) setToEmail(String(payload.email).trim())
+    else setToEmail('')
 
     setSubject('Invoice Pembelian – CONNECT.IND')
   }
@@ -1661,13 +1625,11 @@ export default function EmailPage() {
         .single()
 
       if (error) {
-        console.warn('Insert email log failed:', error.message)
         setHistoryEnabled(false)
         return { ok: false }
       }
       return { ok: true, row: data }
-    } catch (e) {
-      console.warn('Insert email log error:', e?.message || e)
+    } catch {
       setHistoryEnabled(false)
       return { ok: false }
     }
@@ -1696,7 +1658,7 @@ export default function EmailPage() {
   }
 
   // ======================
-  // ✅ Preview: LOCK SIZE (mobile & web aman) — FIX (no nested html)
+  // ✅ Preview: LOCK SIZE (mobile & web aman)
   // ======================
   const previewSrcDoc = useMemo(() => {
     const bodyContent =
@@ -1796,16 +1758,13 @@ export default function EmailPage() {
           fromEmail: FROM_EMAIL,
           fromName: FROM_NAME,
           attach_invoice_jpg: false,
-          invoice_id: docId, // invoice_id dipakai juga utk offer_id (biar satu tabel)
+          invoice_id: docId,
           attachments,
         }),
       })
 
       const json = await res.json().catch(() => ({}))
       if (!res.ok || !json.ok) {
-        const dbg = json?.debug ? `\n\nDEBUG:\n${JSON.stringify(json.debug, null, 2)}` : ''
-        alert((json?.message || 'Gagal mengirim email.') + `\n\nHTTP: ${res.status}` + dbg)
-
         await insertEmailLog({
           invoice_id: docId,
           to_email: toEmail.trim(),
@@ -1813,9 +1772,8 @@ export default function EmailPage() {
           status: 'failed',
           error_message: json?.message || `HTTP ${res.status}`,
         })
-
         await fetchDocHistory(docId)
-        return
+        return alert((json?.message || 'Gagal mengirim email.') + `\n\nHTTP: ${res.status}`)
       }
 
       await insertEmailLog({
@@ -1831,31 +1789,18 @@ export default function EmailPage() {
         setDataInvoice((prev) => {
           if (!prev) return prev
           const nextCount = (prev.email_sent_count || 0) + 1
-          return {
-            ...prev,
-            email_sent_count: nextCount,
-            email_last_to: toEmail.trim(),
-            email_last_at: new Date().toISOString(),
-          }
+          return { ...prev, email_sent_count: nextCount, email_last_to: toEmail.trim(), email_last_at: new Date().toISOString() }
         })
         setPickerRows((prev) =>
           (Array.isArray(prev) ? prev : []).map((r) => {
             if (r.invoice_id !== dataInvoice.invoice_id) return r
-            return {
-              ...r,
-              email_sent_count: (r.email_sent_count || 0) + 1,
-              email_last_to: toEmail.trim(),
-              email_last_at: new Date().toISOString(),
-            }
+            return { ...r, email_sent_count: (r.email_sent_count || 0) + 1, email_last_to: toEmail.trim(), email_last_at: new Date().toISOString() }
           })
         )
       }
 
       alert(`✅ Email berhasil dikirim ke ${toEmail}\nLampiran: ${docId}.jpg`)
     } catch (e) {
-      console.error(e)
-      alert('Gagal mengirim email: ' + (e?.message || String(e)))
-
       const docId = mode === 'invoice' ? dataInvoice?.invoice_id || '' : safe(offerId) || ''
       await insertEmailLog({
         invoice_id: docId,
@@ -1864,8 +1809,8 @@ export default function EmailPage() {
         status: 'failed',
         error_message: e?.message || String(e),
       })
-
       await fetchDocHistory(docId)
+      alert('Gagal mengirim email: ' + (e?.message || String(e)))
     } finally {
       setSending(false)
     }
@@ -1877,8 +1822,7 @@ export default function EmailPage() {
         if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
         const html = buildInvoiceA4Html({ invoice_id: dataInvoice.invoice_id, payload: dataInvoice })
         const base64 = await generateJpgBase64FromHtml(html)
-        downloadBase64AsJpg(base64, `${dataInvoice.invoice_id}.jpg`)
-        return
+        return downloadBase64AsJpg(base64, `${dataInvoice.invoice_id}.jpg`)
       }
 
       const p = getOfferPayload()
@@ -1889,7 +1833,6 @@ export default function EmailPage() {
       const base64 = await generateJpgBase64FromHtml(html)
       downloadBase64AsJpg(base64, `${p.offer_id}.jpg`)
     } catch (e) {
-      console.error(e)
       alert('Gagal download JPG: ' + (e?.message || String(e)))
     }
   }
@@ -1918,9 +1861,7 @@ export default function EmailPage() {
           </div>
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="text-[11px] text-gray-500">Discount</div>
-            <div className="text-sm font-bold">
-              {dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}
-            </div>
+            <div className="text-sm font-bold">{dataInvoice.discount ? '-' + formatRupiah(dataInvoice.discount) : '-'}</div>
           </div>
           <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
             <div className="text-[11px] text-gray-500">Total</div>
@@ -1928,7 +1869,6 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* ✅ Membership quick status + benefit sesuai tier */}
         <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-[11px] text-gray-500">Membership</div>
@@ -1942,8 +1882,7 @@ export default function EmailPage() {
               <>Sedang hitung points rolling...</>
             ) : membershipSnap ? (
               <>
-                Earned: <b>{formatRupiah(membershipSnap.earned_points || 0)}</b> • Total:{' '}
-                <b>{formatRupiah(membershipSnap.total_points || 0)}</b>
+                Earned: <b>{formatPoints(membershipSnap.earned_points || 0)}</b> • Total: <b>{formatPoints(membershipSnap.total_points || 0)}</b>
                 {membershipSnap.expire_at ? (
                   <>
                     {' '}
@@ -1985,8 +1924,8 @@ export default function EmailPage() {
             <div className="mt-1 text-xs text-gray-600">
               {dataInvoice.email_sent_count > 0 ? (
                 <>
-                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke <b>{dataInvoice.email_last_to || '-'}</b>{' '}
-                  • {formatSentAt(dataInvoice.email_last_at)}
+                  Terkirim <b>{dataInvoice.email_sent_count}x</b> • terakhir ke <b>{dataInvoice.email_last_to || '-'}</b> •{' '}
+                  {formatSentAt(dataInvoice.email_last_at)}
                 </>
               ) : (
                 <>Belum ada riwayat pengiriman email untuk invoice ini.</>
@@ -2004,7 +1943,6 @@ export default function EmailPage() {
     )
   }, [mode, dataInvoice, historyEnabled, membershipSnap, membershipLoading])
 
-  // default subject per mode
   useEffect(() => {
     if (mode === 'invoice') {
       if (!subject || subject.includes('Surat Penawaran')) setSubject('Invoice Pembelian – CONNECT.IND')
@@ -2014,7 +1952,6 @@ export default function EmailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  // reset touched when switching
   useEffect(() => {
     setToEmailTouched(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2027,9 +1964,7 @@ export default function EmailPage() {
           <div>
             <div className="text-xl font-bold">Email Perusahaan</div>
             <div className="text-sm text-gray-500">
-              {mode === 'invoice'
-                ? 'Kirim invoice via email (auto lampirkan JPG)'
-                : 'Kirim Surat Penawaran via email (auto lampirkan JPG)'}
+              {mode === 'invoice' ? 'Kirim invoice via email (auto lampirkan JPG)' : 'Kirim Surat Penawaran via email (auto lampirkan JPG)'}
             </div>
           </div>
           <div className="text-sm text-gray-600">
@@ -2143,9 +2078,7 @@ export default function EmailPage() {
                               </div>
                             </div>
                           </div>
-                          {h.error_message ? (
-                            <div className="mt-2 text-xs text-red-600 whitespace-pre-wrap">{h.error_message}</div>
-                          ) : null}
+                          {h.error_message ? <div className="mt-2 text-xs text-red-600 whitespace-pre-wrap">{h.error_message}</div> : null}
                         </div>
                       ))}
                     </div>
@@ -2153,9 +2086,7 @@ export default function EmailPage() {
                 </div>
 
                 {emailHistory.length > 15 ? (
-                  <div className="text-xs text-gray-500 mt-2">
-                    Menampilkan 15 history terbaru (total: {emailHistory.length}).
-                  </div>
+                  <div className="text-xs text-gray-500 mt-2">Menampilkan 15 history terbaru (total: {emailHistory.length}).</div>
                 ) : null}
               </div>
             )}
@@ -2185,9 +2116,7 @@ export default function EmailPage() {
                     Generate
                   </button>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1">
-                  Nomor otomatis urut & reset tiap bulan (mengikuti tanggal surat).
-                </div>
+                <div className="text-[11px] text-gray-500 mt-1">Nomor otomatis urut & reset tiap bulan (mengikuti tanggal surat).</div>
               </div>
               <div>
                 <div className={label}>Total (Auto)</div>
@@ -2198,12 +2127,7 @@ export default function EmailPage() {
             <div className="grid md:grid-cols-2 gap-3">
               <div>
                 <div className={label}>Kepada (Nama)</div>
-                <input
-                  className={input}
-                  value={kepadaNama}
-                  onChange={(e) => setKepadaNama(e.target.value)}
-                  placeholder="Nama customer / PIC"
-                />
+                <input className={input} value={kepadaNama} onChange={(e) => setKepadaNama(e.target.value)} placeholder="Nama customer / PIC" />
               </div>
               <div>
                 <div className={label}>Perusahaan (Opsional)</div>
@@ -2294,7 +2218,6 @@ export default function EmailPage() {
               />
             </div>
 
-            {/* PANEL HISTORY (OFFER) */}
             {historyEnabled && offerId ? (
               <div className="border border-gray-200 rounded-xl bg-white p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -2339,9 +2262,7 @@ export default function EmailPage() {
                               </div>
                             </div>
                           </div>
-                          {h.error_message ? (
-                            <div className="mt-2 text-xs text-red-600 whitespace-pre-wrap">{h.error_message}</div>
-                          ) : null}
+                          {h.error_message ? <div className="mt-2 text-xs text-red-600 whitespace-pre-wrap">{h.error_message}</div> : null}
                         </div>
                       ))}
                     </div>
@@ -2349,9 +2270,7 @@ export default function EmailPage() {
                 </div>
 
                 {emailHistory.length > 15 ? (
-                  <div className="text-xs text-gray-500 mt-2">
-                    Menampilkan 15 history terbaru (total: {emailHistory.length}).
-                  </div>
+                  <div className="text-xs text-gray-500 mt-2">Menampilkan 15 history terbaru (total: {emailHistory.length}).</div>
                 ) : null}
               </div>
             ) : null}
@@ -2385,17 +2304,10 @@ export default function EmailPage() {
               <input className={input} value={subject} onChange={(e) => setSubject(e.target.value)} />
             </div>
 
-            {/* Attach file */}
             <div>
               <div className={label}>Lampiran tambahan (opsional)</div>
 
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => setExtraFiles(Array.from(e.target.files || []))}
-              />
+              <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setExtraFiles(Array.from(e.target.files || []))} />
 
               <div className="flex items-center gap-2">
                 <button className={btnSoft} onClick={() => fileRef.current?.click()} type="button">
@@ -2466,15 +2378,7 @@ export default function EmailPage() {
 
                 <div className="mt-1 text-xs text-gray-500">
                   Lampiran otomatis:{' '}
-                  <b>
-                    {mode === 'invoice'
-                      ? dataInvoice?.invoice_id
-                        ? `${dataInvoice.invoice_id}.jpg`
-                        : '-'
-                      : offerId
-                      ? `${offerId}.jpg`
-                      : '-'}
-                  </b>
+                  <b>{mode === 'invoice' ? (dataInvoice?.invoice_id ? `${dataInvoice.invoice_id}.jpg` : '-') : offerId ? `${offerId}.jpg` : '-'}</b>
                   {extraFiles.length ? ` • +${extraFiles.length} file` : ''}
                 </div>
               </div>
@@ -2484,18 +2388,14 @@ export default function EmailPage() {
                   title="Email Preview"
                   srcDoc={previewSrcDoc}
                   className="w-full border-0"
-                  style={{
-                    height: 720,
-                    display: 'block',
-                    background: '#ffffff',
-                  }}
+                  style={{ height: 720, display: 'block', background: '#ffffff' }}
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* MODAL PILIH TRANSAKSI (invoice mode) */}
+        {/* MODAL PILIH TRANSAKSI */}
         {pickerOpen && mode === 'invoice' && (
           <div className="fixed inset-0 z-[60]">
             <div className="absolute inset-0 bg-black/40" onClick={() => setPickerOpen(false)} />
@@ -2557,12 +2457,7 @@ export default function EmailPage() {
                           {filteredPickerRows.map((r) => {
                             const sent = (r.email_sent_count || 0) > 0
                             return (
-                              <button
-                                key={r.invoice_id}
-                                onClick={() => pickInvoice(r)}
-                                className="w-full text-left p-3 hover:bg-gray-50"
-                                type="button"
-                              >
+                              <button key={r.invoice_id} onClick={() => pickInvoice(r)} className="w-full text-left p-3 hover:bg-gray-50" type="button">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
