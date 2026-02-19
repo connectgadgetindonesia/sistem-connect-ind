@@ -292,9 +292,31 @@ function buildInvoiceEmailTemplate(payload) {
         ? membership.benefits
         : getTierBenefits(tier)
 
-    const expText = expireAt
-      ? `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
-      : `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
+        const trxCount = toNumber(membership.trx_count)
+    const nextExpPts = toNumber(membership.next_expiring_points)
+    const nextExpAt = safe(membership.next_expiry_at || '')
+
+    const expText = (() => {
+      // kalau belum ada tanggal expiry sama sekali
+      if (!nextExpAt && !expireAt) return `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
+
+      // 1x transaksi (atau belum ada history kuat) => cukup tanggal saja
+      if (!trxCount || trxCount <= 1) {
+        const dt = nextExpAt || expireAt
+        return `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(dt)}</b>.`
+      }
+
+      // >1 transaksi => tampilkan jumlah poin + tanggal
+      const dt = nextExpAt || expireAt
+      if (nextExpPts > 0) {
+        return `Sebanyak <b style="color:#111827;">${formatPoints(nextExpPts)}</b> akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(
+          dt
+        )}</b>.`
+      }
+
+      // fallback kalau poin-nya tidak kebaca tapi trx sudah >1
+      return `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(dt)}</b>.`
+    })()
 
     const benefitRows =
       benefits.length > 0
@@ -1092,7 +1114,7 @@ export default function EmailPage() {
     }
   }
 
-  // ======================
+    // ======================
   // ✅ MEMBERSHIP SNAPSHOT FETCH
   // ======================
   const fetchMembershipSnapshot = async (invPayload) => {
@@ -1126,45 +1148,99 @@ export default function EmailPage() {
       const rows = Array.isArray(data) ? data : []
       const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
 
+      // kalau belum ada history (baru transaksi ini)
       if (!rows.length) {
+        const expireAtOnly = invDate.isValid() ? invDate.add(EXPIRY_DAYS, 'day').format('YYYY-MM-DD') : null
         return {
           earned_points: earnedPoints,
           total_points: earnedPoints,
           tier: 'SILVER',
-          expire_at: null,
+          expire_at: expireAtOnly, // fallback info
+          trx_count: 1,
+          next_expiring_points: null,
+          next_expiry_at: expireAtOnly,
           benefits: getTierBenefits('SILVER'),
         }
       }
 
-      let omzet = 0
-      let oldest = null
-      const unitInv = new Set()
-
+      // ===== GROUP PER INVOICE (biar points expiring akurat) =====
+      const invMap = new Map()
       for (const r of rows) {
-        const qty = Math.max(1, toNumber(r.qty))
-        omzet += toNumber(r.harga_jual) * qty
-
-        const d = dayjs(r.tanggal)
-        if (d.isValid()) {
-          if (!oldest) oldest = d
-          else if (d.isBefore(oldest)) oldest = d
+        const invId = safe(r.invoice_id)
+        if (!invId) continue
+        if (!invMap.has(invId)) {
+          invMap.set(invId, {
+            invoice_id: invId,
+            tanggal: r.tanggal,
+            total: 0,
+            isUnit: false,
+          })
         }
+        const it = invMap.get(invId)
+        const qty = Math.max(1, toNumber(r.qty))
+        it.total += toNumber(r.harga_jual) * qty
 
-        if (isUnitRow(r)) {
-          const inv = safe(r.invoice_id)
-          if (inv) unitInv.add(inv)
+        if (!it.isUnit && isUnitRow(r)) it.isUnit = true
+
+        // ambil tanggal terbaru valid untuk invoice itu (kalau ada variasi)
+        const dOld = dayjs(it.tanggal)
+        const dNew = dayjs(r.tanggal)
+        if (dNew.isValid() && (!dOld.isValid() || dNew.isBefore(dOld))) {
+          it.tanggal = r.tanggal
         }
       }
 
+      const invoices = Array.from(invMap.values()).filter((x) => x.invoice_id)
+
+      // rolling omzet & unit trx
+      let omzet = 0
+      const unitInv = new Set()
+      let oldest = null
+
+      // expiry buckets: {expire_at, points}
+      const expiryBuckets = new Map()
+
+      for (const inv of invoices) {
+        omzet += toNumber(inv.total)
+
+        const d = dayjs(inv.tanggal)
+        if (d.isValid()) {
+          if (!oldest) oldest = d
+          else if (d.isBefore(oldest)) oldest = d
+
+          const expAt = d.add(EXPIRY_DAYS, 'day').format('YYYY-MM-DD')
+          const pts = Math.floor(toNumber(inv.total) * POINT_RATE)
+
+          // gabungkan kalau tanggal expiry sama
+          expiryBuckets.set(expAt, (expiryBuckets.get(expAt) || 0) + pts)
+        }
+
+        if (inv.isUnit) unitInv.add(inv.invoice_id)
+      }
+
+      const trxCount = invoices.length
       const tier = getTier({ omzetRolling: omzet, unitTrxRolling: unitInv.size })
       const totalPoints = Math.floor(omzet * POINT_RATE)
+
       const expireAt = oldest && oldest.isValid() ? oldest.add(EXPIRY_DAYS, 'day').format('YYYY-MM-DD') : null
+
+      // cari expiry terdekat (next)
+      const expiryList = Array.from(expiryBuckets.entries())
+        .map(([dt, pts]) => ({ dt, pts: toNumber(pts) }))
+        .filter((x) => x.dt && x.pts > 0)
+        .sort((a, b) => new Date(a.dt).getTime() - new Date(b.dt).getTime())
+
+      const nextExpiryAt = expiryList[0]?.dt || expireAt || null
+      const nextExpiringPoints = expiryList[0]?.pts || null
 
       return {
         earned_points: earnedPoints,
         total_points: totalPoints,
         tier,
-        expire_at: expireAt,
+        expire_at: expireAt, // info umum (expiry pertama dari rolling)
+        trx_count: trxCount,
+        next_expiring_points: nextExpiringPoints,
+        next_expiry_at: nextExpiryAt,
         benefits: getTierBenefits(tier),
       }
     } catch (e) {
@@ -1174,12 +1250,16 @@ export default function EmailPage() {
         total_points: null,
         tier: null,
         expire_at: null,
+        trx_count: null,
+        next_expiring_points: null,
+        next_expiry_at: null,
         benefits: null,
       }
     } finally {
       setMembershipLoading(false)
     }
   }
+
 
   // ===== build HTML based on mode =====
   useEffect(() => {
@@ -1882,13 +1962,27 @@ export default function EmailPage() {
               <>Sedang hitung points rolling...</>
             ) : membershipSnap ? (
               <>
-                Earned: <b>{formatPoints(membershipSnap.earned_points || 0)}</b> • Total: <b>{formatPoints(membershipSnap.total_points || 0)}</b>
-                {membershipSnap.expire_at ? (
+                        Earned: <b>{formatPoints(membershipSnap.earned_points || 0)}</b> • Total:{' '}
+                <b>{formatPoints(membershipSnap.total_points || 0)}</b>
+                {membershipSnap.next_expiry_at ? (
+                  membershipSnap.trx_count && membershipSnap.trx_count > 1 && membershipSnap.next_expiring_points ? (
+                    <>
+                      {' '}
+                      • Exp Soon: <b>{formatPoints(membershipSnap.next_expiring_points)}</b> (<b>{formatDateIndo(membershipSnap.next_expiry_at)}</b>)
+                    </>
+                  ) : (
+                    <>
+                      {' '}
+                      • Exp: <b>{formatDateIndo(membershipSnap.next_expiry_at)}</b>
+                    </>
+                  )
+                ) : membershipSnap.expire_at ? (
                   <>
                     {' '}
                     • Exp: <b>{formatDateIndo(membershipSnap.expire_at)}</b>
                   </>
                 ) : null}
+
               </>
             ) : (
               <>-</>
