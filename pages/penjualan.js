@@ -35,7 +35,6 @@ const btnBlue = `${btn} bg-blue-600 text-white hover:opacity-90`
 const btnYellow = `${btn} bg-amber-500 text-white hover:opacity-90`
 const btnGreen = `${btn} bg-emerald-600 text-white hover:opacity-90`
 const btnGray = `${btn} bg-slate-800 text-white hover:opacity-90`
-const btnSoft = `${btn} bg-gray-100 text-gray-900 hover:bg-gray-200`
 const btnOutline = `${btn} bg-white border border-gray-200 hover:bg-gray-50`
 
 const selectStyles = {
@@ -85,6 +84,59 @@ async function fetchLoyaltyCustomer(noWaRaw) {
     .maybeSingle()
   if (error) return null
   return data || null
+}
+
+// ======================
+// ✅ LEDGER HELPERS (ANTI DUPLICATE UNIQUE)
+// Penyebab error kamu: invoice bisa "ketahan" di loyalty_ledger (redeem/earn sukses),
+// tapi penjualan_baru gagal insert -> saat retry invoiceId bisa ter-generate sama.
+// Fix: invoice generator juga cek ledger, dan redeem/earn dibuat idempotent.
+// ======================
+const LEDGER_TABLE = 'loyalty_ledger' // kalau di DB kamu namanya beda, ganti di sini.
+const LEDGER_INVOICE_COL = 'ref_invoice_code' // kalau kolom invoice di ledger beda, ganti di sini.
+const LEDGER_TYPE_COL = 'jenis' // atau 'type' di DB kamu
+const LEDGER_POINTS_COL = 'poin' // atau 'points' di DB kamu
+
+const getLedgerPoint = (r) => {
+  const v = r?.[LEDGER_POINTS_COL] ?? r?.points ?? r?.amount ?? r?.nilai ?? 0
+  return toNumber(v)
+}
+
+async function fetchLedgerByInvoice(invoiceId) {
+  if (!invoiceId) return []
+  try {
+    const { data, error } = await supabase
+      .from(LEDGER_TABLE)
+      .select(`${LEDGER_TYPE_COL},${LEDGER_POINTS_COL},${LEDGER_INVOICE_COL}`)
+      .eq(LEDGER_INVOICE_COL, invoiceId)
+
+    if (error) return []
+    return data || []
+  } catch {
+    return []
+  }
+}
+
+async function fetchMaxInvoiceFromLedger(prefix) {
+  try {
+    const { data, error } = await supabase
+      .from(LEDGER_TABLE)
+      .select(LEDGER_INVOICE_COL)
+      .ilike(LEDGER_INVOICE_COL, `${prefix}%`)
+      .range(0, 9999)
+
+    if (error) return 0
+    const rows = data || []
+    const maxNum = rows.reduce((max, row) => {
+      const s = String(row?.[LEDGER_INVOICE_COL] || '')
+      const m = s.match(/-(\d+)$/)
+      const n = m ? parseInt(m[1], 10) : 0
+      return Number.isFinite(n) ? Math.max(max, n) : max
+    }, 0)
+    return maxNum
+  } catch {
+    return 0
+  }
 }
 
 // ======================
@@ -264,8 +316,7 @@ export default function Penjualan() {
         const sisa = toNumber(r.sisa_pembayaran || (hargaJual - dp) || 0)
 
         const infoProduk = [namaProduk, warna, storage].filter(Boolean).join(' ')
-        const infoBayar =
-          hargaJual > 0 || dp > 0 ? `DP Rp ${fmt(dp)} • Sisa Rp ${fmt(sisa)}` : ''
+        const infoBayar = hargaJual > 0 || dp > 0 ? `DP Rp ${fmt(dp)} • Sisa Rp ${fmt(sisa)}` : ''
 
         return {
           value: r.id,
@@ -321,10 +372,7 @@ export default function Penjualan() {
   // ======================
   const sumHarga = useMemo(
     () =>
-      produkList.reduce(
-        (s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1),
-        0
-      ),
+      produkList.reduce((s, p) => s + toNumber(p.harga_jual) * (p.is_aksesoris ? clampInt(p.qty, 1, 999) : 1), 0),
     [produkList]
   )
 
@@ -347,21 +395,18 @@ export default function Penjualan() {
 
   const totalAkhirBayar = Math.max(0, totalSetelahDiskonManual - poinDipakaiFinal)
 
-  // ✅ FIX: tombol ON harus tetap munculin input + isi "0" meskipun belum ada produk.
-  // + auto isi = MAX yang boleh dipakai (kalau max=0 tampil 0, bukan kosong)
   useEffect(() => {
     if (!usePoinOn) {
       setUsePoinWanted(0)
       setUsePoinDisplay('')
       return
     }
-    const target = maxPoinDipakai // bisa 0 jika belum ada produk
+    const target = maxPoinDipakai
     setUsePoinWanted(target)
     setUsePoinDisplay(String(target).length ? fmt(target) : '0')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usePoinOn, maxPoinDipakai])
 
-  // ✅ kalau user edit manual lalu subtotal berubah, pastikan tidak lewat max
   useEffect(() => {
     if (!usePoinOn) return
     const w = toNumber(usePoinWanted)
@@ -410,7 +455,6 @@ export default function Penjualan() {
 
       const row = await fetchLoyaltyCustomer(wa)
       if (!row) {
-        // belum ada akun -> eligible true, poin 0
         setPoinAktif(0)
         setMemberTier('SILVER')
         setLoyaltyEligible(true)
@@ -566,12 +610,14 @@ export default function Penjualan() {
     setBiayaList((p) => p.filter((_, i) => i !== index))
   }
 
+  // ✅ FIX: generator invoice sekarang cek juga loyalty_ledger,
+  // supaya kalau pernah redeem/earn sukses tapi penjualan gagal insert, invoice tidak dipakai ulang.
   async function generateInvoiceId(tanggal) {
     const bulan = dayjs(tanggal).format('MM')
     const tahun = dayjs(tanggal).format('YYYY')
     const prefix = `INV-CTI-${bulan}-${tahun}-`
 
-    const { data, error } = await supabase
+    const { data: penjualanRows, error } = await supabase
       .from('penjualan_baru')
       .select('invoice_id')
       .ilike('invoice_id', `${prefix}%`)
@@ -582,12 +628,15 @@ export default function Penjualan() {
       return `${prefix}1`
     }
 
-    const maxNum = (data || []).reduce((max, row) => {
+    const maxPenjualan = (penjualanRows || []).reduce((max, row) => {
       const m = row.invoice_id?.match(/-(\d+)$/)
       const n = m ? parseInt(m[1], 10) : 0
       return Number.isFinite(n) ? Math.max(max, n) : max
     }, 0)
 
+    const maxLedger = await fetchMaxInvoiceFromLedger(prefix)
+
+    const maxNum = Math.max(maxPenjualan, maxLedger)
     return `${prefix}${maxNum + 1}`
   }
 
@@ -666,11 +715,24 @@ export default function Penjualan() {
       const unitCountInvoice = produkBerbayarExpanded.filter((x) => !x.is_aksesoris).length
 
       // ======================
+      // ✅ Cek ledger dulu (idempotent)
+      // Kalau invoice ini sudah pernah punya REDEEM/EARN (karena retry),
+      // maka jangan insert lagi -> ambil nilai existing.
+      // ======================
+      const ledgerExisting = isValidWANumericLocal(waTrim) ? await fetchLedgerByInvoice(invoice) : []
+      const findLedger = (jenis) =>
+        (ledgerExisting || []).find((r) => String(r?.[LEDGER_TYPE_COL] || '').toUpperCase() === String(jenis).toUpperCase())
+
+      // ======================
       // REDEEM (1x per invoice) jika tombol ON
       // - redeem pakai RPC (server akan clamp max 50% balance)
       // ======================
       let poinDipakaiReal = 0
-      if (loyaltyEligible && usePoinOn && toNumber(poinDipakaiFinal) > 0 && isValidWANumericLocal(waTrim)) {
+
+      const existingRedeem = findLedger('REDEEM') || findLedger('PAKAI') || findLedger('Poin Dipakai')
+      if (existingRedeem) {
+        poinDipakaiReal = Math.abs(getLedgerPoint(existingRedeem))
+      } else if (loyaltyEligible && usePoinOn && toNumber(poinDipakaiFinal) > 0 && isValidWANumericLocal(waTrim)) {
         const { data, error } = await supabase.rpc('loyalty_redeem', {
           p_customer_key: waTrim,
           p_invoice_id: invoice,
@@ -775,8 +837,10 @@ export default function Penjualan() {
 
       // ======================
       // EARN (1x per invoice) — panggil RPC server
+      // ✅ idempotent: kalau sudah ada EARN di ledger untuk invoice ini, skip.
       // ======================
-      if (isValidWANumericLocal(waTrim)) {
+      const existingEarn = findLedger('EARN') || findLedger('MASUK') || findLedger('Poin Masuk')
+      if (isValidWANumericLocal(waTrim) && !existingEarn) {
         const { error: earnErr } = await supabase.rpc('loyalty_earn_invoice', {
           p_customer_key: waTrim,
           p_nama: namaUpper,
@@ -1026,7 +1090,11 @@ export default function Penjualan() {
                       <div className="text-sm">
                         <div className="flex items-center gap-2 flex-wrap">
                           <div className="font-semibold">Membership / Loyalty</div>
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(memberTier)}`}>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(
+                              memberTier
+                            )}`}
+                          >
                             {normalizeTier(memberTier)}
                           </span>
                           {!loyaltyEligible && loyaltyReason ? (
@@ -1049,7 +1117,9 @@ export default function Penjualan() {
                           <div className={label}>Gunakan Poin (Rp)</div>
                           <button
                             type="button"
-                            className={`${usePoinOn ? 'bg-black text-white border-black' : 'bg-white border-gray-200'} px-3 py-1.5 rounded-xl border text-xs font-semibold`}
+                            className={`${
+                              usePoinOn ? 'bg-black text-white border-black' : 'bg-white border-gray-200'
+                            } px-3 py-1.5 rounded-xl border text-xs font-semibold`}
                             onClick={() => {
                               if (!loyaltyEligible) return
                               setUsePoinOn((v) => !v)
@@ -1329,8 +1399,7 @@ export default function Penjualan() {
               </div>
 
               <div className="mt-4 text-xs text-gray-700">
-                Poin akan didapat:{' '}
-                <b>{fmt(isValidWANumericLocal(formData.no_wa) ? Math.floor(totalAkhirBayar * 0.005) : 0)}</b>
+                Poin akan didapat: <b>{fmt(isValidWANumericLocal(formData.no_wa) ? Math.floor(totalAkhirBayar * 0.005) : 0)}</b>
               </div>
             </div>
 
@@ -1342,9 +1411,7 @@ export default function Penjualan() {
               </div>
 
               {produkList.length === 0 ? (
-                <div className="border border-gray-200 rounded-2xl p-4 text-sm text-gray-600 bg-gray-50">
-                  Belum ada produk.
-                </div>
+                <div className="border border-gray-200 rounded-2xl p-4 text-sm text-gray-600 bg-gray-50">Belum ada produk.</div>
               ) : (
                 <div className="space-y-3">
                   {produkList.map((p, i) => (
@@ -1354,18 +1421,12 @@ export default function Penjualan() {
                         <div className="text-gray-600 mt-1">
                           {p.sn_sku}
                           {p.is_aksesoris ? ` • QTY ${clampInt(p.qty, 1, 999)}` : ''}
-                          {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username
-                            ? ` • Office: ${p.office_username}`
-                            : ''}
+                          {p.sn_sku?.toUpperCase() === SKU_OFFICE && p.office_username ? ` • Office: ${p.office_username}` : ''}
                         </div>
                         <div className="mt-2 font-semibold">Rp {fmt(p.harga_jual)}</div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => hapusProduk(i)}
-                        className="text-red-600 text-sm font-semibold hover:underline"
-                      >
+                      <button type="button" onClick={() => hapusProduk(i)} className="text-red-600 text-sm font-semibold hover:underline">
                         Hapus
                       </button>
                     </div>
@@ -1382,33 +1443,22 @@ export default function Penjualan() {
               </div>
 
               {bonusList.length === 0 ? (
-                <div className="border border-amber-200 rounded-2xl p-4 text-sm text-amber-700 bg-amber-50">
-                  Belum ada bonus.
-                </div>
+                <div className="border border-amber-200 rounded-2xl p-4 text-sm text-amber-700 bg-amber-50">Belum ada bonus.</div>
               ) : (
                 <div className="space-y-3">
                   {bonusList.map((b, i) => (
-                    <div
-                      key={i}
-                      className="border border-amber-200 rounded-2xl p-4 flex items-start justify-between gap-3 bg-amber-50/60"
-                    >
+                    <div key={i} className="border border-amber-200 rounded-2xl p-4 flex items-start justify-between gap-3 bg-amber-50/60">
                       <div className="text-sm">
                         <div className="font-semibold">{b.nama_produk || '-'}</div>
                         <div className="text-gray-600 mt-1">
                           {b.sn_sku}
                           {b.is_aksesoris ? ` • QTY ${clampInt(b.qty, 1, 999)}` : ''}
-                          {b.sn_sku?.toUpperCase() === SKU_OFFICE && b.office_username
-                            ? ` • Office: ${b.office_username}`
-                            : ''}
+                          {b.sn_sku?.toUpperCase() === SKU_OFFICE && b.office_username ? ` • Office: ${b.office_username}` : ''}
                         </div>
                         <div className="mt-2 font-bold text-amber-700">BONUS</div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => hapusBonus(i)}
-                        className="text-red-600 text-sm font-semibold hover:underline"
-                      >
+                      <button type="button" onClick={() => hapusBonus(i)} className="text-red-600 text-sm font-semibold hover:underline">
                         Hapus
                       </button>
                     </div>
@@ -1425,9 +1475,7 @@ export default function Penjualan() {
               </div>
 
               {biayaList.length === 0 ? (
-                <div className="border border-gray-200 rounded-2xl p-4 text-sm text-gray-600 bg-gray-50">
-                  Belum ada biaya.
-                </div>
+                <div className="border border-gray-200 rounded-2xl p-4 text-sm text-gray-600 bg-gray-50">Belum ada biaya.</div>
               ) : (
                 <div className="space-y-3">
                   {biayaList.map((b, i) => (
@@ -1437,11 +1485,7 @@ export default function Penjualan() {
                         <div className="text-gray-600 mt-1">Rp {fmt(b.nominal)}</div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => hapusBiaya(i)}
-                        className="text-red-600 text-sm font-semibold hover:underline"
-                      >
+                      <button type="button" onClick={() => hapusBiaya(i)} className="text-red-600 text-sm font-semibold hover:underline">
                         Hapus
                       </button>
                     </div>
