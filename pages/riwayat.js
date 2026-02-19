@@ -409,7 +409,7 @@ export default function RiwayatPenjualan() {
 
   const totalLaba = (produk = []) => (produk || []).reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
-  // ====== Kinerja: referral -> referal ======
+  // ====== Kinerja: referral -> referral ======
   const computeKinerjaFromRows = (data = []) => {
     const invMap = new Map()
 
@@ -417,37 +417,37 @@ export default function RiwayatPenjualan() {
       const inv = (r.invoice_id || '').toString().trim()
       if (!inv) continue
 
-      if (!invMap.has(inv)) invMap.set(inv, { dilayani: new Set(), referal: new Set() })
+      if (!invMap.has(inv)) invMap.set(inv, { dilayani: new Set(), referral: new Set() })
       const bucket = invMap.get(inv)
 
       const dil = (r.dilayani_oleh || '').toString().trim().toUpperCase()
       if (dil && dil !== '-') bucket.dilayani.add(dil)
 
-      const ref = (r.referal || '').toString().trim().toUpperCase()
-      if (ref && ref !== '-') bucket.referal.add(ref)
+      const ref = (r.referral || '').toString().trim().toUpperCase()
+      if (ref && ref !== '-') bucket.referral.add(ref)
     }
 
     const emp = new Map()
     for (const [, v] of invMap.entries()) {
       for (const name of v.dilayani) {
-        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referal: 0 })
+        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referral: 0 })
         emp.get(name).dilayani += 1
       }
-      for (const name of v.referal) {
-        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referal: 0 })
-        emp.get(name).referal += 1
+      for (const name of v.referral) {
+        if (!emp.has(name)) emp.set(name, { nama: name, dilayani: 0, referral: 0 })
+        emp.get(name).referral += 1
       }
     }
 
-    const arr = Array.from(emp.values()).map((x) => ({ ...x, total: (x.dilayani || 0) + (x.referal || 0) }))
-    arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referal - a.referal)
+    const arr = Array.from(emp.values()).map((x) => ({ ...x, total: (x.dilayani || 0) + (x.referral || 0) }))
+    arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referral - a.referral)
     return arr
   }
 
   async function fetchKinerja() {
     setLoadingKinerja(true)
     try {
-      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referal')
+      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referral')
 
       if (mode === 'harian') {
         const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
@@ -912,7 +912,7 @@ export default function RiwayatPenjualan() {
                 <tr className="text-gray-600">
                   <th className="px-4 py-3 text-left">Nama</th>
                   <th className="px-4 py-3 text-center">Dilayani (Invoice)</th>
-                  <th className="px-4 py-3 text-center">Referal (Invoice)</th>
+                  <th className="px-4 py-3 text-center">Referral (Invoice)</th>
                   <th className="px-4 py-3 text-center">Total</th>
                 </tr>
               </thead>
@@ -930,7 +930,7 @@ export default function RiwayatPenjualan() {
                     <tr key={k.nama} className="border-t border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3 font-semibold text-gray-900">{k.nama}</td>
                       <td className="px-4 py-3 text-center">{k.dilayani}</td>
-                      <td className="px-4 py-3 text-center">{k.referal}</td>
+                      <td className="px-4 py-3 text-center">{k.referral}</td>
                       <td className="px-4 py-3 text-center font-bold text-gray-900">{k.total}</td>
                     </tr>
                   ))}
@@ -966,7 +966,7 @@ export default function RiwayatPenjualan() {
                   <th className="px-4 py-3 text-left min-w-[320px]">Produk</th>
                   <th className="px-4 py-3 text-left">Metode Bayar</th>
                   <th className="px-4 py-3 text-left">Dilayani</th>
-                  <th className="px-4 py-3 text-left">Referal</th>
+                  <th className="px-4 py-3 text-left">Referral</th>
                   <th className="px-4 py-3 text-right">Poin Dapat</th>
                   <th className="px-4 py-3 text-right">Poin Pakai</th>
                   <th className="px-4 py-3 text-right">Total Bayar</th>
@@ -1029,7 +1029,7 @@ export default function RiwayatPenjualan() {
                       </td>
 
                       <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
-                      <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'referal')}</td>
+                      <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'referral')}</td>
 
                       <td className="px-4 py-3 align-top text-right tabular-nums">{earned ? `${earned.toLocaleString('id-ID')} pts` : '-'}</td>
                       <td className="px-4 py-3 align-top text-right tabular-nums">{used ? `${used.toLocaleString('id-ID')} pts` : '-'}</td>

@@ -163,7 +163,7 @@ export default function Penjualan() {
     no_wa: '',
     email: '',
     metode_pembayaran: '',
-    referal: '', // ✅ konsisten sama riwayat.js kamu (referal)
+    referral: '', // ✅ konsisten sama riwayat.js kamu (referral)
     dilayani_oleh: '',
   })
 
@@ -776,7 +776,7 @@ export default function Penjualan() {
           no_wa: waTrim,
           email: emailLower,
           metode_pembayaran: (formData.metode_pembayaran || '').toString().trim().toUpperCase(),
-          referal: (formData.referal || '').toString().trim().toUpperCase(),
+          referral: (formData.referral || '').toString().trim().toUpperCase(),
           dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
 
           sn_sku: item.sn_sku,
@@ -863,7 +863,7 @@ export default function Penjualan() {
         no_wa: '',
         email: '',
         metode_pembayaran: '',
-        referal: '',
+        referral: '',
         dilayani_oleh: '',
       })
       setSelectedCustomer(null)
@@ -1037,14 +1037,14 @@ export default function Penjualan() {
                 </div>
 
                 <div>
-                  <div className={label}>Referal</div>
+                  <div className={label}>Referral</div>
                   <select
                     className={input}
-                    value={formData.referal}
-                    onChange={(e) => setFormData({ ...formData, referal: e.target.value })}
+                    value={formData.referral}
+                    onChange={(e) => setFormData({ ...formData, referral: e.target.value })}
                     required
                   >
-                    <option value="">Pilih Referal</option>
+                    <option value="">Pilih Referral</option>
                     {KARYAWAN.map((n) => (
                       <option key={n} value={n}>
                         {n}
