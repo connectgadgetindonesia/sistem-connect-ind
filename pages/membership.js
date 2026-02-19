@@ -31,6 +31,7 @@ const toNumber = (v) => {
 const formatRp = (n) => 'Rp ' + toNumber(n).toLocaleString('id-ID')
 const formatPts = (n) => `${toNumber(n).toLocaleString('id-ID')} pts`
 const formatDateTime = (v) => (v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '-')
+const formatDate = (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '-')
 
 const normalizeWA = (wa) => String(wa ?? '').replace(/[^\d]/g, '')
 
@@ -47,7 +48,6 @@ const entryLabel = (entryType, points, note) => {
   const t = String(entryType || '').toUpperCase()
   const p = toNumber(points)
 
-  // prioritaskan note yang jelas (BACKFILL/IMPORT)
   if (typeof note === 'string' && note.trim()) {
     let n = note.trim()
     n = n.replace(/BACKFILL\s*2026\s*/gi, 'Penyesuaian otomatis 2026 ')
@@ -77,10 +77,21 @@ const typePill = (entryType, points) => {
     return 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200'
   if (t === 'REDEEM')
     return 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-rose-50 text-rose-700 border-rose-200'
-  // fallback
   return p >= 0
     ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200'
     : 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-rose-50 text-rose-700 border-rose-200'
+}
+
+const expiryLine = (c) => {
+  const pts = toNumber(c?.next_expiring_points)
+  const dt = c?.next_expiry_at
+  if (!pts || !dt) return null
+  return (
+    <div className="text-[11px] text-gray-500 mt-1">
+      Akan expired: <span className="font-semibold">{formatPts(pts)}</span> •{' '}
+      <span className="font-semibold">{formatDate(dt)}</span>
+    </div>
+  )
 }
 
 export default function Membership() {
@@ -108,8 +119,6 @@ export default function Membership() {
   const [adjPoints, setAdjPoints] = useState('')
   const [adjNote, setAdjNote] = useState('Penyesuaian manual')
   const [adjSaving, setAdjSaving] = useState(false)
-
-  const totalCustomers = customers.length
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase()
@@ -144,9 +153,13 @@ export default function Membership() {
 
   const fetchCustomers = async () => {
     setLoading(true)
+
+    // ✅ ambil dari VIEW yang sudah include next_expiry_at & next_expiring_points
     const { data, error } = await supabase
-      .from('loyalty_customer')
-      .select('customer_key,nama,no_wa,email,level,points_balance,total_belanja,transaksi_unit,created_at,updated_at')
+      .from('loyalty_customer_with_expiry')
+      .select(
+        'customer_key,nama,no_wa,email,level,points_balance,total_belanja,transaksi_unit,created_at,updated_at,next_expiry_at,next_expiring_points'
+      )
       .order('updated_at', { ascending: false })
 
     setLoading(false)
@@ -225,7 +238,6 @@ export default function Membership() {
       return
     }
 
-    // refresh local
     setCustomers((prev) =>
       prev.map((x) =>
         x.customer_key === selected.customer_key ? { ...x, email, updated_at: new Date().toISOString() } : x
@@ -239,7 +251,6 @@ export default function Membership() {
     if (!selected?.customer_key) return
     setLedgerLoading(true)
 
-    // 1) hitung ulang dari ledger
     const { data: sumData, error: sumErr } = await supabase
       .from('loyalty_point_ledger')
       .select('points')
@@ -254,7 +265,6 @@ export default function Membership() {
 
     const balance = (sumData || []).reduce((acc, r) => acc + toNumber(r.points), 0)
 
-    // 2) update loyalty_customer.points_balance + updated_at
     const { error: upErr } = await supabase
       .from('loyalty_customer')
       .update({ points_balance: balance, updated_at: new Date().toISOString() })
@@ -268,11 +278,12 @@ export default function Membership() {
       return
     }
 
-    // refresh local customer state
-    setCustomers((prev) =>
-      prev.map((x) => (x.customer_key === selected.customer_key ? { ...x, points_balance: balance } : x))
-    )
-    setSelected((s) => (s ? { ...s, points_balance: balance } : s))
+    // refresh list + selected (plus refresh expiry fields via refetch)
+    await fetchCustomers()
+    setSelected((s) => {
+      const latest = (customers || []).find((x) => x.customer_key === s?.customer_key)
+      return latest ? { ...latest, points_balance: balance } : s ? { ...s, points_balance: balance } : s
+    })
 
     alert('Saldo poin berhasil dihitung ulang.')
   }
@@ -293,7 +304,6 @@ export default function Membership() {
     }
 
     const points = adjMode === 'SUB' ? -Math.abs(ptsRaw) : Math.abs(ptsRaw)
-    // supaya aman dengan enum yang sudah ada: pakai EARN untuk tambah, REDEEM untuk kurang (poin negatif)
     const entry_type = adjMode === 'SUB' ? 'REDEEM' : 'EARN'
     const note = String(adjNote || '').trim() || 'Penyesuaian manual'
 
@@ -306,6 +316,7 @@ export default function Membership() {
         points,
         note,
         created_at: new Date().toISOString(),
+        // expires_at & points_remaining utk EARN akan diisi otomatis oleh trigger
       },
     ])
     setAdjSaving(false)
@@ -316,13 +327,12 @@ export default function Membership() {
       return
     }
 
-    // reload ledger + recalc points balance
     await fetchLedger(selected.customer_key)
     await recalcBalance()
     setAdjOpen(false)
   }
 
-  // Tab ledger global (opsional): menampilkan ledger terbaru semua customer
+  // Tab ledger global
   const [globalLedger, setGlobalLedger] = useState([])
   const [globalLoading, setGlobalLoading] = useState(false)
 
@@ -471,7 +481,13 @@ export default function Membership() {
                         <td className="px-4 py-3 border-b">
                           <span className={levelBadge(c.level)}>{String(c.level || 'SILVER').toUpperCase()}</span>
                         </td>
-                        <td className="px-4 py-3 border-b text-right font-semibold">{formatPts(c.points_balance)}</td>
+
+                        {/* ✅ POIN + INFO EXPIRED TERDEKAT */}
+                        <td className="px-4 py-3 border-b text-right">
+                          <div className="font-semibold">{formatPts(c.points_balance)}</div>
+                          {expiryLine(c)}
+                        </td>
+
                         <td className="px-4 py-3 border-b text-right">{formatRp(c.total_belanja)}</td>
                         <td className="px-4 py-3 border-b text-right">{toNumber(c.transaksi_unit)}</td>
                         <td className="px-4 py-3 border-b text-gray-700">{formatDateTime(c.updated_at)}</td>
@@ -561,16 +577,27 @@ export default function Membership() {
               </div>
 
               <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-                {/* Left card */}
+                {/* Left */}
                 <div className="lg:col-span-4">
                   <div className={card + ' p-4'}>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="border border-gray-200 rounded-xl p-3">
                         <div className="text-xs text-gray-600">Saldo Poin</div>
                         <div className="text-2xl font-bold mt-1">{formatPts(selected.points_balance)}</div>
+
                         <div className="text-xs text-gray-500 mt-1">
                           Maks. dipakai (50%): <span className="font-semibold">{formatPts(maxRedeem)}</span>
                         </div>
+
+                        {/* ✅ INFO EXPIRED TERDEKAT */}
+                        {toNumber(selected?.next_expiring_points) > 0 && selected?.next_expiry_at ? (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Akan expired: <span className="font-semibold">{formatPts(selected.next_expiring_points)}</span> •{' '}
+                            <span className="font-semibold">{formatDate(selected.next_expiry_at)}</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400 mt-1">Akan expired: -</div>
+                        )}
                       </div>
 
                       <div className="border border-gray-200 rounded-xl p-3">
@@ -620,7 +647,7 @@ export default function Membership() {
                     </div>
                   </div>
 
-                  {/* Adjust modal (inline) */}
+                  {/* Adjust */}
                   {adjOpen && (
                     <div className={card + ' p-4 mt-4'}>
                       <div className="font-semibold mb-3">Sesuaikan Poin</div>
@@ -722,8 +749,7 @@ export default function Membership() {
                     </div>
 
                     <div className="text-xs text-gray-500 mt-3">
-                      Catatan: Poin dipakai akan tersimpan sebagai angka minus, supaya saldo = total semua points di
-                      ledger.
+                      Catatan: Poin dipakai akan tersimpan sebagai angka minus, supaya saldo = total semua points di ledger.
                     </div>
                   </div>
                 </div>
