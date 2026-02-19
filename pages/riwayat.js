@@ -45,9 +45,11 @@ const safe = (v) => String(v ?? '').trim()
 const clampArray = (arr) => (Array.isArray(arr) ? arr : [])
 
 // ====== hitungan total INVOICE ======
-// penjualan_baru hasil expand qty -> biasanya qty kosong; default 1
+// penjualan_baru disimpan per-item (qty sudah di-expand untuk aksesoris), tapi kita tetap amanin qty kalau ada.
 function computeInvoiceTotals(rows = []) {
-  const subtotal = (rows || []).reduce((acc, r) => {
+  const paidRows = (rows || []).filter((r) => !r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
+
+  const subtotal = paidRows.reduce((acc, r) => {
     const qty = Math.max(1, toNumber(r.qty || 1))
     const price = toNumber(r.harga_jual)
     return acc + price * qty
@@ -61,6 +63,29 @@ function computeInvoiceTotals(rows = []) {
   const total = Math.max(0, subtotal - discount)
 
   return { subtotal, discount, total }
+}
+
+function getInvoiceLoyaltyFromRows(rows = []) {
+  // ✅ sistem baru: poin_didapat & poin_dipakai disimpan 1x per invoice (baris pertama),
+  // tapi kita cari yang nilainya > 0 biar aman.
+  const earned = (rows || []).reduce((mx, r) => Math.max(mx, toNumber(r.poin_didapat || 0)), 0)
+  const used = (rows || []).reduce((mx, r) => Math.max(mx, toNumber(r.poin_dipakai || 0)), 0)
+  return { earned, used }
+}
+
+function getInvoiceCostBreakdown(rows = []) {
+  // Produk berbayar: is_bonus=false & bukan FEE-
+  const paid = (rows || []).filter((r) => !r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
+  // Bonus gratis: is_bonus=true & bukan FEE-
+  const bonus = (rows || []).filter((r) => !!r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
+  // Biaya lain: SN/SKU diawali FEE-
+  const fee = (rows || []).filter((r) => String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
+
+  const modalProduk = paid.reduce((s, r) => s + toNumber(r.harga_modal), 0)
+  const modalBonus = bonus.reduce((s, r) => s + toNumber(r.harga_modal), 0)
+  const biayaLain = fee.reduce((s, r) => s + toNumber(r.harga_modal), 0)
+
+  return { modalProduk, modalBonus, biayaLain }
 }
 
 function formatInvoiceDateLong(ymdOrIso) {
@@ -299,12 +324,7 @@ function parsePointLedgerRow(r) {
 }
 
 function getLedgerInvoiceCode(row) {
-  // ✅ yang baru: ref_invoice_code (string invoice_id)
-  return (
-    (row?.ref_invoice_code || row?.invoice_code || row?.invoice_id || row?.ref_invoice_id || '')
-      .toString()
-      .trim()
-  )
+  return (row?.ref_invoice_code || row?.invoice_code || row?.invoice_id || row?.ref_invoice_id || '').toString().trim()
 }
 
 export default function RiwayatPenjualan() {
@@ -327,11 +347,9 @@ export default function RiwayatPenjualan() {
   const [page, setPage] = useState(1)
   const [downloading, setDownloading] = useState({}) // { [invoice_id]: true/false }
 
-  // poin batch
+  // poin batch (fallback dari ledger) + status
   const [loadingPoin, setLoadingPoin] = useState(false)
   const [poinByInvoice, setPoinByInvoice] = useState({}) // { [inv]: { earned, used } }
-
-  // ledger availability (biar ga spam error)
   const [ledgerReady, setLedgerReady] = useState(true)
 
   // modal loyalty
@@ -340,6 +358,11 @@ export default function RiwayatPenjualan() {
   const [loyaltyRows, setLoyaltyRows] = useState([])
   const [loadingLoyaltyModal, setLoadingLoyaltyModal] = useState(false)
   const [loyaltyError, setLoyaltyError] = useState('')
+
+  // modal detail laba
+  const [openProfit, setOpenProfit] = useState(false)
+  const [profitInvoice, setProfitInvoice] = useState('')
+  const [profitDetail, setProfitDetail] = useState(null)
 
   useEffect(() => {
     checkLedger()
@@ -447,7 +470,7 @@ export default function RiwayatPenjualan() {
   async function fetchKinerja() {
     setLoadingKinerja(true)
     try {
-      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referal') // ✅ FIX
+      let q = supabase.from('penjualan_baru').select('invoice_id,tanggal,dilayani_oleh,referal')
 
       if (mode === 'harian') {
         const start = dayjs(today).startOf('month').format('YYYY-MM-DD')
@@ -474,25 +497,40 @@ export default function RiwayatPenjualan() {
   }
 
   // ===== poin per invoice (batch) =====
+  // ✅ sekarang kolom Poin Didapat / Pakai pakai sistem baru dari penjualan_baru dulu.
+  // Ledger dipakai sebagai fallback (dan untuk tombol "Loyalty History").
   async function hydratePoinByInvoice(groupedInvoices = []) {
-    if (!ledgerReady) {
-      setPoinByInvoice({})
-      return
-    }
-
     const invoiceIds = clampArray(groupedInvoices)
       .map((x) => (x?.invoice_id || '').toString().trim())
       .filter(Boolean)
-
     const uniq = Array.from(new Set(invoiceIds))
     if (uniq.length === 0) {
       setPoinByInvoice({})
       return
     }
 
+    // 1) ambil dari penjualan_baru (paling akurat & langsung)
+    const baseMap = {}
+    for (const invObj of groupedInvoices || []) {
+      const inv = invObj?.invoice_id
+      if (!inv) continue
+      const fromMeta = getInvoiceLoyaltyFromRows(invObj.produk || [])
+      baseMap[inv] = { earned: toNumber(fromMeta.earned), used: toNumber(fromMeta.used) }
+    }
+    setPoinByInvoice(baseMap)
+
+    // 2) fallback ledger hanya untuk invoice yang belum ketemu meta (earned=0 & used=0)
+    if (!ledgerReady) return
+
+    const needLedger = uniq.filter((inv) => {
+      const v = baseMap?.[inv]
+      return !v || (toNumber(v.earned) === 0 && toNumber(v.used) === 0)
+    })
+    if (needLedger.length === 0) return
+
     setLoadingPoin(true)
     try {
-      const chunks = chunkArray(uniq, 200)
+      const chunks = chunkArray(needLedger, 200)
       let allLedger = []
 
       for (const ch of chunks) {
@@ -501,22 +539,30 @@ export default function RiwayatPenjualan() {
         allLedger = allLedger.concat(data || [])
       }
 
-      const map = {}
+      const addMap = {}
       for (const row of allLedger) {
-        // ✅ FIX UTAMA: mapping invoice pakai ref_invoice_code, bukan invoice_id
         const inv = getLedgerInvoiceCode(row)
         if (!inv) continue
 
         const parsed = parsePointLedgerRow(row)
-        if (!map[inv]) map[inv] = { earned: 0, used: 0 }
-        map[inv].earned += toNumber(parsed.earned)
-        map[inv].used += toNumber(parsed.used)
+        if (!addMap[inv]) addMap[inv] = { earned: 0, used: 0 }
+        addMap[inv].earned += toNumber(parsed.earned)
+        addMap[inv].used += toNumber(parsed.used)
       }
 
-      setPoinByInvoice(map)
+      setPoinByInvoice((prev) => {
+        const next = { ...(prev || {}) }
+        for (const inv of Object.keys(addMap)) {
+          const cur = next[inv] || { earned: 0, used: 0 }
+          const curE = toNumber(cur.earned)
+          const curU = toNumber(cur.used)
+          // cuma isi kalau sebelumnya kosong
+          if (curE === 0 && curU === 0) next[inv] = addMap[inv]
+        }
+        return next
+      })
     } catch (e) {
       console.warn('hydratePoinByInvoice skipped/error:', e)
-      setPoinByInvoice({})
       setLedgerReady(false)
     } finally {
       setLoadingPoin(false)
@@ -569,12 +615,10 @@ export default function RiwayatPenjualan() {
       if (e1) throw e1
 
       // restore stok:
-      // - UNIT SN: status READY
-      // - AKSESORIS SKU: coba RPC tambah_stok_aksesoris (jika ada), kalau tidak ada -> skip (biar tidak error)
       for (const item of penjualan || []) {
         const code = (item.sn_sku || '').toString().trim()
         if (!code) continue
-        if (code.toUpperCase().startsWith('FEE-')) continue // biaya internal
+        if (code.toUpperCase().startsWith('FEE-')) continue
 
         const { data: stokData, error: cekErr } = await supabase.from('stok').select('id').eq('sn', code).maybeSingle()
         if (cekErr) throw cekErr
@@ -585,10 +629,7 @@ export default function RiwayatPenjualan() {
           // aksesoris: best-effort restore
           try {
             const { error: rpcErr } = await supabase.rpc('tambah_stok_aksesoris', { sku_input: code })
-            if (rpcErr) {
-              // kalau RPC belum ada, jangan bikin gagal hapus
-              console.warn('tambah_stok_aksesoris rpc error (ignored):', rpcErr)
-            }
+            if (rpcErr) console.warn('tambah_stok_aksesoris rpc error (ignored):', rpcErr)
           } catch (err) {
             console.warn('tambah_stok_aksesoris rpc exception (ignored):', err)
           }
@@ -675,7 +716,7 @@ export default function RiwayatPenjualan() {
 
     if (!ledgerReady) {
       setLoadingLoyaltyModal(false)
-      setLoyaltyError('Loyalty History belum aktif. (Tabel point_ledger belum tersedia / belum sesuai).')
+      setLoyaltyError('Riwayat poin belum aktif. (Tabel point_ledger belum tersedia / belum sesuai).')
       return
     }
 
@@ -692,7 +733,7 @@ export default function RiwayatPenjualan() {
       console.error('openLoyaltyModal error:', e)
       setLoyaltyRows([])
       setLedgerReady(false)
-      setLoyaltyError('Loyalty History belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
+      setLoyaltyError('Riwayat poin belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
     } finally {
       setLoadingLoyaltyModal(false)
     }
@@ -703,6 +744,41 @@ export default function RiwayatPenjualan() {
     setLoyaltyInvoice('')
     setLoyaltyRows([])
     setLoyaltyError('')
+  }
+
+  // ====== Profit Detail modal ======
+  function openProfitModal(inv, produkRows = []) {
+    const rows = clampArray(produkRows)
+    const totals = computeInvoiceTotals(rows)
+    const { earned, used } = poinByInvoice?.[inv] ? poinByInvoice[inv] : getInvoiceLoyaltyFromRows(rows)
+    const { modalProduk, modalBonus, biayaLain } = getInvoiceCostBreakdown(rows)
+
+    const diskonTotal = toNumber(totals.discount)
+    const poinDipakai = Math.max(0, toNumber(used))
+    const diskonManual = Math.max(0, diskonTotal - poinDipakai)
+
+    const laba = totalLaba(rows)
+
+    setProfitInvoice(inv)
+    setProfitDetail({
+      subtotal: toNumber(totals.subtotal),
+      diskonTotal,
+      diskonManual,
+      poinDipakai,
+      totalBayar: toNumber(totals.total),
+      poinDidapat: Math.max(0, toNumber(earned)),
+      modalProduk,
+      modalBonus,
+      biayaLain,
+      laba,
+    })
+    setOpenProfit(true)
+  }
+
+  function closeProfitModal() {
+    setOpenProfit(false)
+    setProfitInvoice('')
+    setProfitDetail(null)
   }
 
   // ===================== PAGINATION (STOPPER) =====================
@@ -732,7 +808,7 @@ export default function RiwayatPenjualan() {
             <h1 className="text-2xl font-bold text-gray-900">Riwayat Penjualan CONNECT.IND</h1>
             <div className="text-sm text-gray-600">Mode harian untuk hari ini, mode history untuk periode tertentu.</div>
             <div className="text-xs text-gray-500 mt-1">
-              Poin: {ledgerReady ? (loadingPoin ? 'memuat…' : 'aktif') : 'nonaktif'}
+              Riwayat poin: {ledgerReady ? (loadingPoin ? 'memuat…' : 'aktif') : 'nonaktif'}
             </div>
           </div>
 
@@ -894,9 +970,9 @@ export default function RiwayatPenjualan() {
                   <th className="px-4 py-3 text-left">Referal</th>
                   <th className="px-4 py-3 text-right">Poin Dapat</th>
                   <th className="px-4 py-3 text-right">Poin Pakai</th>
-                  <th className="px-4 py-3 text-right">Harga Jual</th>
+                  <th className="px-4 py-3 text-right">Total Bayar</th>
                   <th className="px-4 py-3 text-right">Laba</th>
-                  <th className="px-4 py-3 text-left w-[190px]">Aksi</th>
+                  <th className="px-4 py-3 text-left w-[220px]">Aksi</th>
                 </tr>
               </thead>
 
@@ -904,13 +980,16 @@ export default function RiwayatPenjualan() {
                 {pageRows.map((item) => {
                   const inv = item.invoice_id
                   const busy = !!downloading[inv]
-                  const poin = poinByInvoice?.[inv]
-                  const earned = poin ? toNumber(poin.earned) : null
-                  const used = poin ? toNumber(poin.used) : null
+                  const poin = poinByInvoice?.[inv] || getInvoiceLoyaltyFromRows(item.produk || [])
+                  const earned = toNumber(poin?.earned || 0)
+                  const used = toNumber(poin?.used || 0)
+
+                  const labaVal = totalLaba(item.produk)
+                  const totalBayar = totalInvoice(item.produk)
 
                   return (
                     <tr key={inv} className="border-t border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-top">
                         <div className="text-[11px] text-gray-500 font-mono">{inv}</div>
                         <div className="mt-2 flex flex-col gap-2">
                           <button
@@ -927,45 +1006,66 @@ export default function RiwayatPenjualan() {
                             type="button"
                             disabled={loading || busy || !ledgerReady}
                             onClick={() => openLoyaltyModal(inv)}
-                            title="Lihat detail poin (earn/redeem) untuk invoice ini"
+                            title="Lihat detail poin untuk invoice ini"
                           >
-                            Loyalty History
+                            Riwayat Poin
                           </button>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-900">{item.nama_pembeli}</td>
+                      <td className="px-4 py-3 align-top">{dayjs(item.tanggal).format('YYYY-MM-DD')}</td>
+                      <td className="px-4 py-3 align-top font-semibold text-gray-900">{item.nama_pembeli}</td>
 
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-top">
                         <div className="text-gray-900">
-                          {item.produk.map((p) => `${p.nama_produk} (${p.sn_sku})`).join(', ')}
+                          {item.produk
+                            .filter((p) => !String(p?.sn_sku || '').toUpperCase().startsWith('FEE-'))
+                            .map((p) => `${p.nama_produk} (${p.sn_sku})`)
+                            .join(', ')}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           Item: <b className="text-gray-900">{item.produk.length}</b>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-top">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-800 border border-gray-200">
                           {getUniqueMetode(item.produk)}
                         </span>
                       </td>
 
-                      <td className="px-4 py-3">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
-                      <td className="px-4 py-3">{getUniqueText(item.produk, 'referal')}</td>
+                      <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
+                      <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'referal')}</td>
 
-                      <td className="px-4 py-3 text-right tabular-nums">{earned === null ? '-' : earned.toLocaleString('id-ID')}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{used === null ? '-' : used.toLocaleString('id-ID')}</td>
-
-                      <td className="px-4 py-3 text-right">{formatRp(totalInvoice(item.produk))}</td>
-
-                      <td className="px-4 py-3 text-right">
-                        <span className={badge(totalLaba(item.produk) > 0 ? 'ok' : 'warn')}>{formatRp(totalLaba(item.produk))}</span>
+                      <td className="px-4 py-3 align-top text-right tabular-nums">
+                        {earned ? `${earned.toLocaleString('id-ID')} pts` : '-'}
+                      </td>
+                      <td className="px-4 py-3 align-top text-right tabular-nums">
+                        {used ? `${used.toLocaleString('id-ID')} pts` : '-'}
                       </td>
 
-                      <td className="px-4 py-3">
-                        <button onClick={() => handleDelete(inv)} className={btnDanger} disabled={loading || busy} type="button">
+                      <td className="px-4 py-3 align-top text-right">{formatRp(totalBayar)}</td>
+
+                      <td className="px-4 py-3 align-top text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={badge(labaVal >= 0 ? 'ok' : 'warn')}>{formatRp(labaVal)}</span>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-blue-700 hover:underline"
+                            onClick={() => openProfitModal(inv, item.produk)}
+                          >
+                            Detail
+                          </button>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3 align-top">
+                        <button
+                          onClick={() => handleDelete(inv)}
+                          className={btnDanger}
+                          disabled={loading || busy}
+                          type="button"
+                        >
                           Hapus
                         </button>
                       </td>
@@ -995,7 +1095,8 @@ export default function RiwayatPenjualan() {
           {/* PAGINATION */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
+              <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
             </div>
 
             <div className="flex gap-2">
@@ -1023,7 +1124,12 @@ export default function RiwayatPenjualan() {
               >
                 Next ›
               </button>
-              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
+              <button
+                className={btn}
+                onClick={() => setPage(totalPages)}
+                disabled={safePage === totalPages || loading}
+                type="button"
+              >
                 Last »
               </button>
             </div>
@@ -1036,7 +1142,7 @@ export default function RiwayatPenjualan() {
             <div className={`${card} w-full max-w-2xl`}>
               <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                 <div>
-                  <div className="font-bold text-gray-900">Loyalty History</div>
+                  <div className="font-bold text-gray-900">Riwayat Poin</div>
                   <div className="text-xs text-gray-600 font-mono">{loyaltyInvoice}</div>
                 </div>
                 <button className={btn} type="button" onClick={closeLoyaltyModal} disabled={loadingLoyaltyModal}>
@@ -1045,14 +1151,16 @@ export default function RiwayatPenjualan() {
               </div>
 
               <div className="p-4">
-                {loadingLoyaltyModal && <div className="py-10 text-center text-gray-500 text-sm">Memuat data loyalty…</div>}
+                {loadingLoyaltyModal && <div className="py-10 text-center text-gray-500 text-sm">Memuat riwayat poin…</div>}
 
                 {!loadingLoyaltyModal && !!loyaltyError && (
-                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">{loyaltyError}</div>
+                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
+                    {loyaltyError}
+                  </div>
                 )}
 
                 {!loadingLoyaltyModal && !loyaltyError && loyaltyRows.length === 0 && (
-                  <div className="py-10 text-center text-gray-500 text-sm">Tidak ada data loyalty untuk invoice ini.</div>
+                  <div className="py-10 text-center text-gray-500 text-sm">Tidak ada riwayat poin untuk invoice ini.</div>
                 )}
 
                 {!loadingLoyaltyModal && !loyaltyError && loyaltyRows.length > 0 && (
@@ -1062,7 +1170,7 @@ export default function RiwayatPenjualan() {
                         <tr className="text-gray-600">
                           <th className="px-4 py-3 text-left">Waktu</th>
                           <th className="px-4 py-3 text-left">Jenis</th>
-                          <th className="px-4 py-3 text-right">Poin Awal</th>
+                          <th className="px-4 py-3 text-right">Nilai</th>
                           <th className="px-4 py-3 text-right">Masuk</th>
                           <th className="px-4 py-3 text-right">Keluar</th>
                           <th className="px-4 py-3 text-left">Keterangan</th>
@@ -1089,7 +1197,92 @@ export default function RiwayatPenjualan() {
                   </div>
                 )}
 
-                <div className="text-xs text-gray-500 mt-3">Catatan: data ditarik dari point_ledger berdasarkan ref_invoice_code.</div>
+                <div className="text-xs text-gray-500 mt-3">Catatan: riwayat poin ditarik dari point_ledger berdasarkan ref_invoice_code.</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Detail Laba */}
+        {openProfit && profitDetail && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className={`${card} w-full max-w-xl`}>
+              <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                <div>
+                  <div className="font-bold text-gray-900">Detail Perhitungan Laba</div>
+                  <div className="text-xs text-gray-600 font-mono">{profitInvoice}</div>
+                </div>
+                <button className={btn} type="button" onClick={closeProfitModal}>
+                  Tutup
+                </button>
+              </div>
+
+              <div className="p-4">
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-white border-b border-gray-200">
+                    <div className="text-sm text-gray-900 font-semibold">Ringkasan</div>
+                    <div className="text-xs text-gray-500 mt-1">Rumus: Harga Jual − Diskon − Modal − Biaya Lain − Bonus (modal)</div>
+                  </div>
+
+                  <div className="px-4 py-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Harga jual (subtotal)</div>
+                      <div className="font-semibold">{formatRp(profitDetail.subtotal)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Diskon manual</div>
+                      <div className="font-semibold">{formatRp(profitDetail.diskonManual)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Poin dipakai</div>
+                      <div className="font-semibold">{formatRp(profitDetail.poinDipakai)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Total diskon (manual + poin)</div>
+                      <div className="font-semibold">{formatRp(profitDetail.diskonTotal)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Total bayar</div>
+                      <div className="font-semibold">{formatRp(profitDetail.totalBayar)}</div>
+                    </div>
+
+                    <div className="h-px bg-gray-200 my-2" />
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Modal produk</div>
+                      <div className="font-semibold">{formatRp(profitDetail.modalProduk)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Modal bonus (gratis)</div>
+                      <div className="font-semibold">{formatRp(profitDetail.modalBonus)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-600">Biaya lain-lain</div>
+                      <div className="font-semibold">{formatRp(profitDetail.biayaLain)}</div>
+                    </div>
+
+                    <div className="h-px bg-gray-200 my-2" />
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-gray-900 font-bold">Laba bersih</div>
+                      <div className="font-bold">{formatRp(profitDetail.laba)}</div>
+                    </div>
+
+                    <div className="mt-2 text-xs text-gray-500">
+                      Poin didapat (info): <b className="text-gray-900">{profitDetail.poinDidapat.toLocaleString('id-ID')} pts</b>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 text-xs text-gray-500">
+                  Catatan: “Biaya lain-lain” diambil dari item SN/SKU yang diawali <b>FEE-</b>. Bonus dihitung dari item <b>is_bonus=true</b>.
+                </div>
               </div>
             </div>
           </div>
