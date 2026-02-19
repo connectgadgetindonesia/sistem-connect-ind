@@ -67,14 +67,34 @@ const THRESHOLD_GOLD_UNIT_TRX = 3
 const THRESHOLD_PLATINUM_UNIT_TRX = 5
 const EXPIRY_DAYS = 365
 
-// ✅ Standar WA untuk matching DB (0xxx -> 62xxx, +62xxx -> 62xxx)
-const normalizeWa = (no_wa) => {
-  const raw = safe(no_wa)
-  if (!raw) return ''
-  let s = raw.replace(/[^\d+]/g, '')
-  s = s.replace(/^\+/, '') // +62 -> 62
-  if (s.startsWith('0')) s = '62' + s.slice(1)
-  return s
+// ======================
+// ✅ LOYALTY SOURCES (sesuai DB Bapak)
+// ======================
+const LOYALTY_LEDGER_TABLE = 'loyalty_point_ledger'
+// ✅ kalau view ini ada (di sidebar terlihat), ini paling akurat utk total+expiry
+const LOYALTY_VIEW_SNAPSHOT = 'loyalty_customer_with_expiry_next'
+
+// ✅ Normalisasi nomor WA → kandidat customer_key (0xxx dan 62xxx)
+const digitsOnly = (v) => String(v || '').replace(/[^\d]/g, '')
+const buildCustomerKeyCandidates = (no_wa) => {
+  const raw = digitsOnly(no_wa)
+  if (!raw) return []
+  const arr = new Set()
+
+  // as-is
+  arr.add(raw)
+
+  // jika mulai 0 → buat 62...
+  if (raw.startsWith('0')) arr.add('62' + raw.slice(1))
+
+  // jika mulai 62 → buat 0...
+  if (raw.startsWith('62')) arr.add('0' + raw.slice(2))
+
+  // juga simpan bentuk tanpa leading zero yang kadang kepotong (opsional aman)
+  // contoh: kalau DB pernah nyimpen 8111... tanpa 0
+  if (raw.startsWith('0') && raw.length > 3) arr.add(raw.slice(1))
+
+  return Array.from(arr).filter(Boolean)
 }
 
 function isUnitRow(r) {
@@ -154,105 +174,6 @@ function computeTotals(rows = []) {
   const total = Math.max(0, subtotal - discount)
 
   return { subtotal, discount, total }
-}
-
-// =====================================================
-// ✅ FIX POINTS SNAPSHOT (pakai ledger + FIFO expiring)
-// =====================================================
-
-// Kalau tabel ledger kamu namanya beda, edit list ini sesuai tabel yang benar.
-const POINTS_LEDGER_TABLE_CANDIDATES = ['poin_ledger', 'points_ledger', 'loyalty_ledger', 'membership_points_ledger']
-
-const pickLedgerDate = (r) => {
-  const cand = r?.created_at || r?.tanggal || r?.waktu || r?.sent_at
-  const d = dayjs(cand)
-  return d.isValid() ? d : null
-}
-
-const parseLedgerPoints = (r) => {
-  const v = r?.poin ?? r?.points ?? r?.amount ?? 0
-  return toNumber(v)
-}
-
-function computePointsFromLedger(ledgerRows = [], asOfYmd) {
-  const asOf = dayjs(asOfYmd || dayjs().format('YYYY-MM-DD'))
-  const rows = Array.isArray(ledgerRows) ? ledgerRows : []
-
-  const ins = []
-  const outs = []
-
-  for (const r of rows) {
-    const pts = parseLedgerPoints(r)
-    const d = pickLedgerDate(r)
-    if (!d) continue
-    if (d.isAfter(asOf, 'day')) continue
-
-    if (pts > 0) ins.push({ pts, date: d })
-    if (pts < 0) outs.push({ pts: Math.abs(pts), date: d })
-  }
-
-  ins.sort((a, b) => a.date.valueOf() - b.date.valueOf())
-  outs.sort((a, b) => a.date.valueOf() - b.date.valueOf())
-
-  const buckets = ins.map((x) => ({
-    remaining: x.pts,
-    date: x.date,
-    expireAt: x.date.add(EXPIRY_DAYS, 'day'),
-  }))
-
-  for (const o of outs) {
-    let need = o.pts
-    for (const b of buckets) {
-      if (need <= 0) break
-      if (b.remaining <= 0) continue
-      const take = Math.min(b.remaining, need)
-      b.remaining -= take
-      need -= take
-    }
-  }
-
-  const remainingBuckets = buckets.filter((b) => b.remaining > 0)
-  const validBuckets = remainingBuckets.filter(
-    (b) => b.expireAt.isSame(asOf, 'day') || b.expireAt.isAfter(asOf, 'day')
-  )
-
-  const total = validBuckets.reduce((a, b) => a + b.remaining, 0)
-
-  validBuckets.sort((a, b) => a.expireAt.valueOf() - b.expireAt.valueOf())
-  const nextBucket = validBuckets[0] || null
-
-  return {
-    total_points: total,
-    expiring_points: nextBucket ? nextBucket.remaining : 0,
-    expire_at: nextBucket ? nextBucket.expireAt.format('YYYY-MM-DD') : null,
-  }
-}
-
-async function tryFetchLedgerRows({ wa, namaUpper, startYmd, endYmd }) {
-  for (const table of POINTS_LEDGER_TABLE_CANDIDATES) {
-    try {
-      let q = supabase
-        .from(table)
-        .select('*')
-        .gte('created_at', dayjs(startYmd).startOf('day').toISOString())
-        .lte('created_at', dayjs(endYmd).endOf('day').toISOString())
-        .order('created_at', { ascending: true })
-        .limit(5000)
-
-      if (wa) {
-        q = q.or(`no_wa.eq.${wa},customer_key.eq.${wa},key.eq.${wa}`)
-      } else if (namaUpper) {
-        q = q.or(`nama_pembeli.eq.${namaUpper},customer.eq.${namaUpper},nama.eq.${namaUpper}`)
-      }
-
-      const { data, error } = await q
-      if (error) continue
-      if (Array.isArray(data)) return { table, rows: data }
-    } catch {
-      // continue
-    }
-  }
-  return { table: null, rows: [] }
 }
 
 /**
@@ -383,25 +304,36 @@ function buildInvoiceEmailTemplate(payload) {
     if (!membership) return ''
 
     const earned = toNumber(membership.earned_points)
-    const totalPts = toNumber(membership.total_points)
+    const totalPts = membership.total_points == null ? null : toNumber(membership.total_points)
     const tier = safe(membership.tier || 'SILVER').toUpperCase()
 
-    // ✅ FIX: pakai hasil FIFO snapshot
+    const nextExpPts = membership.next_expiring_points == null ? null : toNumber(membership.next_expiring_points)
+    const nextExpAt = safe(membership.next_expiry_at || '')
     const expireAt = safe(membership.expire_at || '')
-    const expSoon = toNumber(membership.expiring_points || 0)
 
     const benefits =
       Array.isArray(membership.benefits) && membership.benefits.length
         ? membership.benefits
         : getTierBenefits(tier)
 
-    const expText = expireAt
-      ? expSoon > 0
-        ? `Point yang akan hangus paling dekat: <b style="color:#111827;">${formatPoints(expSoon)}</b> pada tanggal <b style="color:#111827;">${formatDateIndo(
-            expireAt
+    const expText = (() => {
+      // ✅ kalau ada next expiry, tampilkan poin + tanggal
+      if (nextExpAt) {
+        if (nextExpPts != null && nextExpPts > 0) {
+          return `Sebanyak <b style="color:#111827;">${formatPoints(nextExpPts)}</b> akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(
+            nextExpAt
           )}</b>.`
-        : `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
-      : `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
+        }
+        return `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(nextExpAt)}</b>.`
+      }
+
+      // fallback expiry umum
+      if (expireAt) {
+        return `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
+      }
+
+      return `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
+    })()
 
     const benefitRows =
       benefits.length > 0
@@ -423,7 +355,9 @@ function buildInvoiceEmailTemplate(payload) {
 
         <div style="margin-top:8px; color:#374151; font-size:13px; line-height:1.7;">
           Selamat! Anda mendapatkan tambahan point <b style="color:#111827;">${formatPoints(earned)}</b> dari transaksi ini.<br/>
-          Total point Anda sekarang <b style="color:#111827;">${formatPoints(totalPts)}</b>.<br/>
+          Total point Anda sekarang <b style="color:#111827;">${
+            totalPts == null ? '-' : formatPoints(totalPts)
+          }</b>.<br/>
           ${expText}<br/>
           Level membership Anda: <b style="color:#111827;">${tier}</b>.
         </div>
@@ -1200,142 +1134,127 @@ export default function EmailPage() {
   }
 
   // ======================
-  // ✅ MEMBERSHIP SNAPSHOT FETCH (FIX)
+  // ✅ MEMBERSHIP SNAPSHOT FETCH (FIXED: pakai loyalty ledger / view)
   // ======================
   const fetchMembershipSnapshot = async (invPayload) => {
     const p = invPayload || {}
-    const invDate = p?.tanggal ? dayjs(p.tanggal) : dayjs()
-    const asOf = invDate.isValid() ? invDate.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')
+    const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
 
-    // ambil ledger longgar 2 tahun biar aman
-    const start = dayjs(asOf).subtract(730, 'day').format('YYYY-MM-DD')
-    const end = asOf
-
-    const wa = normalizeWa(p.no_wa)
-    const nama = safe(p.nama_pembeli).toUpperCase()
-    if (!wa && !nama) return null
+    const keys = buildCustomerKeyCandidates(p.no_wa)
+    if (!keys.length) {
+      return {
+        earned_points: earnedPoints,
+        total_points: null,
+        tier: null,
+        expire_at: null,
+        trx_count: null,
+        next_expiring_points: null,
+        next_expiry_at: null,
+        benefits: null,
+      }
+    }
 
     setMembershipLoading(true)
     try {
-      const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
+      // ======================
+      // 1) Coba ambil snapshot dari VIEW (paling akurat)
+      // ======================
+      try {
+        const { data: snap, error: snapErr } = await supabase
+          .from(LOYALTY_VIEW_SNAPSHOT)
+          .select('customer_key,total_points,next_expiring_points,next_expiry_at,tier,trx_count,expire_at')
+          .in('customer_key', keys)
+          .limit(1)
 
-      // 1) ambil ledger (sumber paling akurat)
-      const { table, rows } = await tryFetchLedgerRows({ wa, namaUpper: nama, startYmd: start, endYmd: end })
-
-      let totalPoints = null
-      let expireAt = null
-      let expiringPoints = 0
-
-      if (table && Array.isArray(rows) && rows.length) {
-        const computed = computePointsFromLedger(rows, asOf)
-        totalPoints = computed.total_points
-        expireAt = computed.expire_at
-        expiringPoints = computed.expiring_points
-      } else {
-        // 2) fallback: hitung dari penjualan_baru per invoice total (tanpa redeem)
-        let q = supabase
-          .from('penjualan_baru')
-          .select('invoice_id,tanggal,harga_jual,qty,storage,garansi,no_wa,nama_pembeli,is_bonus,diskon_item,diskon_invoice')
-          .gte('tanggal', start)
-          .lte('tanggal', end)
-          .eq('is_bonus', false)
-          .order('tanggal', { ascending: true })
-          .limit(5000)
-
-        if (wa) q = q.eq('no_wa', wa)
-        else q = q.eq('nama_pembeli', nama)
-
-        const { data, error } = await q
-        if (error) throw error
-
-        const map = new Map()
-        for (const r of Array.isArray(data) ? data : []) {
-          const inv = safe(r.invoice_id)
-          if (!inv) continue
-          if (!map.has(inv)) map.set(inv, { invoice_id: inv, tanggal: r.tanggal, items: [] })
-          map.get(inv).items.push({
-            qty: r.qty,
-            harga_jual: r.harga_jual,
-            diskon_item: r.diskon_item,
-            diskon_invoice: r.diskon_invoice,
-          })
+        if (!snapErr && Array.isArray(snap) && snap.length) {
+          const row = snap[0] || {}
+          const tier = String(row.tier || 'SILVER').toUpperCase()
+          return {
+            earned_points: earnedPoints,
+            total_points: row.total_points ?? null,
+            tier,
+            expire_at: row.expire_at ?? null,
+            trx_count: row.trx_count ?? null,
+            next_expiring_points: row.next_expiring_points ?? null,
+            next_expiry_at: row.next_expiry_at ?? null,
+            benefits: getTierBenefits(tier),
+          }
         }
-
-        const invs = Array.from(map.values())
-          .map((x) => {
-            const totals = computeTotals(x.items)
-            const pts = Math.floor(toNumber(totals.total) * POINT_RATE)
-            const d = dayjs(x.tanggal)
-            return {
-              date: d.isValid() ? d : null,
-              points: pts,
-              expireAt: d.isValid() ? d.add(EXPIRY_DAYS, 'day') : null,
-            }
-          })
-          .filter(
-            (x) =>
-              x.date &&
-              x.expireAt &&
-              (x.expireAt.isSame(invDate, 'day') || x.expireAt.isAfter(invDate, 'day')) &&
-              x.points > 0
-          )
-          .sort((a, b) => a.date.valueOf() - b.date.valueOf())
-
-        totalPoints = invs.reduce((a, b) => a + toNumber(b.points), 0)
-        invs.sort((a, b) => a.expireAt.valueOf() - b.expireAt.valueOf())
-        expireAt = invs[0]?.expireAt ? invs[0].expireAt.format('YYYY-MM-DD') : null
-        expiringPoints = invs[0]?.points || 0
+      } catch {
+        // ignore → fallback ledger
       }
 
-      // tier tetap rolling omzet & unit trx (365 hari)
-      const rollStart = dayjs(asOf).subtract(EXPIRY_DAYS, 'day').format('YYYY-MM-DD')
-      let omzet = 0
-      const unitInv = new Set()
+      // ======================
+      // 2) Fallback: hitung manual dari ledger
+      //    Asumsi: ledger punya kolom points & expires_at (atau expire_at)
+      // ======================
+      const { data, error } = await supabase
+        .from(LOYALTY_LEDGER_TABLE)
+        .select('customer_key,invoice_id,entry_type,points,expires_at,expire_at,created_at')
+        .in('customer_key', keys)
+        .order('created_at', { ascending: false })
+        .limit(5000)
 
-      {
-        let q2 = supabase
-          .from('penjualan_baru')
-          .select('invoice_id,tanggal,harga_jual,qty,storage,garansi,no_wa,nama_pembeli,is_bonus')
-          .gte('tanggal', rollStart)
-          .lte('tanggal', asOf)
-          .eq('is_bonus', false)
-          .order('tanggal', { ascending: false })
-          .limit(5000)
+      if (error) throw error
 
-        if (wa) q2 = q2.eq('no_wa', wa)
-        else q2 = q2.eq('nama_pembeli', nama)
+      const rows = Array.isArray(data) ? data : []
 
-        const { data: rows2, error: err2 } = await q2
-        if (!err2 && Array.isArray(rows2)) {
-          for (const r of rows2) {
-            const qty = Math.max(1, toNumber(r.qty))
-            omzet += toNumber(r.harga_jual) * qty
-            if (isUnitRow(r)) {
-              const inv = safe(r.invoice_id)
-              if (inv) unitInv.add(inv)
-            }
+      // total points = sum(points)
+      let totalPoints = 0
+      const invSet = new Set()
+
+      // expiry bucket (hanya yg points > 0)
+      const buckets = new Map()
+
+      const now = dayjs()
+      for (const r of rows) {
+        const pts = toNumber(r.points)
+        totalPoints += pts
+
+        const invId = safe(r.invoice_id)
+        if (invId) invSet.add(invId)
+
+        const exp = r.expires_at || r.expire_at || null
+        if (pts > 0 && exp) {
+          const d = dayjs(exp)
+          if (d.isValid() && d.isAfter(now)) {
+            const key = d.format('YYYY-MM-DD')
+            buckets.set(key, (buckets.get(key) || 0) + pts)
           }
         }
       }
 
-      const tier = getTier({ omzetRolling: omzet, unitTrxRolling: unitInv.size })
+      const expiryList = Array.from(buckets.entries())
+        .map(([dt, pts]) => ({ dt, pts: toNumber(pts) }))
+        .filter((x) => x.dt && x.pts > 0)
+        .sort((a, b) => new Date(a.dt).getTime() - new Date(b.dt).getTime())
+
+      const nextExpiryAt = expiryList[0]?.dt || null
+      const nextExpiringPoints = expiryList[0]?.pts || null
+
+      // tier fallback (kalau view tier tidak ada)
+      const tier = 'SILVER'
 
       return {
         earned_points: earnedPoints,
-        total_points: toNumber(totalPoints),
+        total_points: totalPoints,
         tier,
-        expire_at: expireAt,
-        expiring_points: toNumber(expiringPoints),
+        expire_at: nextExpiryAt,
+        trx_count: invSet.size || null,
+        next_expiring_points: nextExpiringPoints,
+        next_expiry_at: nextExpiryAt,
         benefits: getTierBenefits(tier),
       }
     } catch (e) {
       console.warn('fetchMembershipSnapshot error:', e?.message || e)
       return {
-        earned_points: Math.floor(toNumber(invPayload?.total) * POINT_RATE),
+        earned_points: earnedPoints,
         total_points: null,
         tier: null,
         expire_at: null,
-        expiring_points: null,
+        trx_count: null,
+        next_expiring_points: null,
+        next_expiry_at: null,
         benefits: null,
       }
     } finally {
@@ -1691,7 +1610,7 @@ export default function EmailPage() {
       tanggal_raw: inv.tanggal_raw,
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
-      no_wa: normalizeWa(inv.no_wa || '') || inv.no_wa || '',
+      no_wa: inv.no_wa || '',
       email: inv.email || '',
 
       email_sent_count: inv.email_sent_count || 0,
@@ -2045,17 +1964,23 @@ export default function EmailPage() {
             ) : membershipSnap ? (
               <>
                 Earned: <b>{formatPoints(membershipSnap.earned_points || 0)}</b> • Total:{' '}
-                <b>{formatPoints(membershipSnap.total_points || 0)}</b>
-                {membershipSnap.expire_at ? (
+                <b>{membershipSnap.total_points == null ? '-' : formatPoints(membershipSnap.total_points)}</b>
+                {membershipSnap.next_expiry_at ? (
+                  membershipSnap.next_expiring_points ? (
+                    <>
+                      {' '}
+                      • Exp Soon: <b>{formatPoints(membershipSnap.next_expiring_points)}</b> (<b>{formatDateIndo(membershipSnap.next_expiry_at)}</b>)
+                    </>
+                  ) : (
+                    <>
+                      {' '}
+                      • Exp: <b>{formatDateIndo(membershipSnap.next_expiry_at)}</b>
+                    </>
+                  )
+                ) : membershipSnap.expire_at ? (
                   <>
                     {' '}
                     • Exp: <b>{formatDateIndo(membershipSnap.expire_at)}</b>
-                    {toNumber(membershipSnap.expiring_points || 0) > 0 ? (
-                      <>
-                        {' '}
-                        • Akan hangus: <b>{formatPoints(membershipSnap.expiring_points)}</b>
-                      </>
-                    ) : null}
                   </>
                 ) : null}
               </>
@@ -2066,7 +1991,9 @@ export default function EmailPage() {
 
           {!membershipLoading && membershipSnap?.tier ? (
             <div className="mt-2 text-xs text-gray-600">
-              <div className="font-semibold text-gray-700 mb-1">Benefit ({String(membershipSnap.tier).toUpperCase()}):</div>
+              <div className="font-semibold text-gray-700 mb-1">
+                Benefit ({String(membershipSnap.tier).toUpperCase()}):
+              </div>
               <ul className="list-disc pl-5 space-y-0.5">
                 {(getTierBenefits(membershipSnap.tier) || []).map((b, i) => (
                   <li key={i}>{b}</li>
