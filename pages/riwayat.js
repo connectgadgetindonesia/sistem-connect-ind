@@ -8,10 +8,8 @@ const PAGE_SIZE = 10
 
 const card = 'bg-white border border-gray-200 rounded-xl shadow-sm'
 const label = 'text-xs text-gray-600 mb-1'
-const input =
-  'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
-const btn =
-  'border border-gray-200 px-4 py-2 rounded-lg bg-white hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+const input = 'border border-gray-200 px-3 py-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
+const btn = 'border border-gray-200 px-4 py-2 rounded-lg bg-white hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
 const btnTab = (active) =>
   `px-3 py-2 rounded-lg text-sm border ${
     active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-200 hover:bg-gray-50'
@@ -29,9 +27,7 @@ const btnMini =
 
 const badge = (type) =>
   `inline-flex items-center px-2.5 py-1 rounded-full text-xs border ${
-    type === 'ok'
-      ? 'bg-green-50 text-green-700 border-green-200'
-      : 'bg-amber-50 text-amber-700 border-amber-200'
+    type === 'ok' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'
   }`
 
 // ===== helpers angka & format =====
@@ -45,7 +41,6 @@ const safe = (v) => String(v ?? '').trim()
 const clampArray = (arr) => (Array.isArray(arr) ? arr : [])
 
 // ====== hitungan total INVOICE ======
-// penjualan_baru disimpan per-item (qty sudah di-expand untuk aksesoris), tapi kita tetap amanin qty kalau ada.
 function computeInvoiceTotals(rows = []) {
   const paidRows = (rows || []).filter((r) => !r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
 
@@ -66,19 +61,14 @@ function computeInvoiceTotals(rows = []) {
 }
 
 function getInvoiceLoyaltyFromRows(rows = []) {
-  // ✅ sistem baru: poin_didapat & poin_dipakai disimpan 1x per invoice (baris pertama),
-  // tapi kita cari yang nilainya > 0 biar aman.
   const earned = (rows || []).reduce((mx, r) => Math.max(mx, toNumber(r.poin_didapat || 0)), 0)
   const used = (rows || []).reduce((mx, r) => Math.max(mx, toNumber(r.poin_dipakai || 0)), 0)
   return { earned, used }
 }
 
 function getInvoiceCostBreakdown(rows = []) {
-  // Produk berbayar: is_bonus=false & bukan FEE-
   const paid = (rows || []).filter((r) => !r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
-  // Bonus gratis: is_bonus=true & bukan FEE-
   const bonus = (rows || []).filter((r) => !!r?.is_bonus && !String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
-  // Biaya lain: SN/SKU diawali FEE-
   const fee = (rows || []).filter((r) => String(r?.sn_sku || '').toUpperCase().startsWith('FEE-'))
 
   const modalProduk = paid.reduce((s, r) => s + toNumber(r.harga_modal), 0)
@@ -119,9 +109,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
       return `
         <tr>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; vertical-align:top;">
-            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(
-              it.nama_produk
-            )}</div>
+            <div style="font-weight:600; font-size:12px; color:#0b1220; letter-spacing:0.2px;">${safe(it.nama_produk)}</div>
             ${
               metaTop
                 ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">${metaTop}</div>`
@@ -129,19 +117,13 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
             }
             ${
               it.sn_sku
-                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(
-                    it.sn_sku
-                  )}</div>`
+                ? `<div style="margin-top:6px; font-size:12px; font-weight:400; color:#6a768a; line-height:1.45;">SN/SKU: ${safe(it.sn_sku)}</div>`
                 : ''
             }
           </td>
           <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:center; font-size:12px; font-weight:600; color:#0b1220;">${qty}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
-            unit
-          )}</td>
-          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(
-            line
-          )}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(unit)}</td>
+          <td style="padding:18px 18px; border-top:1px solid #eef2f7; text-align:right; font-size:12px; font-weight:600; color:#0b1220;">${formatRp(line)}</td>
         </tr>
       `
     })
@@ -227,9 +209,7 @@ function buildInvoiceA4Html({ invoice_id, rows, totals }) {
         <div style="flex:1;">
           <div style="font-size:12px; font-weight:400; color:#6a768a; margin-bottom:10px;">Bill to:</div>
           <div style="border:1px solid #eef2f7; border-radius:8px; background:#f7f9fc; padding:18px 18px; min-height:138px;">
-            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(
-              first?.nama_pembeli
-            )}</div>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:10px;">${safe(first?.nama_pembeli)}</div>
             <div style="font-size:12px; font-weight:400; color:#6a768a; line-height:1.75;">
               ${safe(first?.no_wa)}<br/>
               ${safe(first?.alamat)}
@@ -310,21 +290,21 @@ function chunkArray(arr, size) {
   return out
 }
 
-// ====== parse point_ledger row flex ======
+// ====== parse loyalty_point_ledger row ======
 function parsePointLedgerRow(r) {
-  const jenis = (r?.jenis || r?.type || r?.tipe || '').toString().trim().toUpperCase()
-  const poinAwal = toNumber(r?.poin_awal ?? r?.poin ?? r?.points ?? r?.amount ?? 0)
+  const type = (r?.entry_type || '').toString().trim().toUpperCase()
+  const pts = toNumber(r?.points ?? 0)
 
-  if (['EARN', 'BONUS', 'CASHBACK'].includes(jenis)) return { earned: Math.abs(poinAwal), used: 0 }
-  if (jenis === 'REDEEM') return { earned: 0, used: Math.abs(poinAwal) }
+  if (type === 'EARN') return { earned: Math.max(0, pts), used: 0 }
+  if (type === 'REDEEM') return { earned: 0, used: Math.abs(Math.min(0, pts)) }
 
-  if (poinAwal > 0) return { earned: poinAwal, used: 0 }
-  if (poinAwal < 0) return { earned: 0, used: Math.abs(poinAwal) }
+  if (pts > 0) return { earned: pts, used: 0 }
+  if (pts < 0) return { earned: 0, used: Math.abs(pts) }
   return { earned: 0, used: 0 }
 }
 
 function getLedgerInvoiceCode(row) {
-  return (row?.ref_invoice_code || row?.invoice_code || row?.invoice_id || row?.ref_invoice_id || '').toString().trim()
+  return (row?.invoice_id || '').toString().trim()
 }
 
 export default function RiwayatPenjualan() {
@@ -380,7 +360,7 @@ export default function RiwayatPenjualan() {
 
   async function checkLedger() {
     try {
-      const { error } = await supabase.from('point_ledger').select('id', { head: true, count: 'exact' }).limit(1)
+      const { error } = await supabase.from('loyalty_point_ledger').select('id', { head: true, count: 'exact' }).limit(1)
       if (error) {
         setLedgerReady(false)
         return
@@ -429,7 +409,7 @@ export default function RiwayatPenjualan() {
 
   const totalLaba = (produk = []) => (produk || []).reduce((t, p) => t + (parseInt(p.laba, 10) || 0), 0)
 
-  // ====== Kinerja: FIX referral -> referal ======
+  // ====== Kinerja: referral -> referal ======
   const computeKinerjaFromRows = (data = []) => {
     const invMap = new Map()
 
@@ -459,10 +439,7 @@ export default function RiwayatPenjualan() {
       }
     }
 
-    const arr = Array.from(emp.values()).map((x) => ({
-      ...x,
-      total: (x.dilayani || 0) + (x.referal || 0),
-    }))
+    const arr = Array.from(emp.values()).map((x) => ({ ...x, total: (x.dilayani || 0) + (x.referal || 0) }))
     arr.sort((a, b) => b.total - a.total || b.dilayani - a.dilayani || b.referal - a.referal)
     return arr
   }
@@ -497,8 +474,6 @@ export default function RiwayatPenjualan() {
   }
 
   // ===== poin per invoice (batch) =====
-  // ✅ sekarang kolom Poin Didapat / Pakai pakai sistem baru dari penjualan_baru dulu.
-  // Ledger dipakai sebagai fallback (dan untuk tombol "Loyalty History").
   async function hydratePoinByInvoice(groupedInvoices = []) {
     const invoiceIds = clampArray(groupedInvoices)
       .map((x) => (x?.invoice_id || '').toString().trim())
@@ -509,7 +484,7 @@ export default function RiwayatPenjualan() {
       return
     }
 
-    // 1) ambil dari penjualan_baru (paling akurat & langsung)
+    // 1) ambil dari penjualan_baru dulu
     const baseMap = {}
     for (const invObj of groupedInvoices || []) {
       const inv = invObj?.invoice_id
@@ -519,7 +494,7 @@ export default function RiwayatPenjualan() {
     }
     setPoinByInvoice(baseMap)
 
-    // 2) fallback ledger hanya untuk invoice yang belum ketemu meta (earned=0 & used=0)
+    // 2) fallback ledger hanya untuk invoice yang meta nya 0-0
     if (!ledgerReady) return
 
     const needLedger = uniq.filter((inv) => {
@@ -534,7 +509,7 @@ export default function RiwayatPenjualan() {
       let allLedger = []
 
       for (const ch of chunks) {
-        const { data, error } = await supabase.from('point_ledger').select('*').in('ref_invoice_code', ch)
+        const { data, error } = await supabase.from('loyalty_point_ledger').select('*').in('invoice_id', ch)
         if (error) throw error
         allLedger = allLedger.concat(data || [])
       }
@@ -556,7 +531,6 @@ export default function RiwayatPenjualan() {
           const cur = next[inv] || { earned: 0, used: 0 }
           const curE = toNumber(cur.earned)
           const curU = toNumber(cur.used)
-          // cuma isi kalau sebelumnya kosong
           if (curE === 0 && curU === 0) next[inv] = addMap[inv]
         }
         return next
@@ -614,7 +588,7 @@ export default function RiwayatPenjualan() {
       const { data: penjualan, error: e1 } = await supabase.from('penjualan_baru').select('*').eq('invoice_id', invoice_id)
       if (e1) throw e1
 
-      // restore stok:
+      // restore stok
       for (const item of penjualan || []) {
         const code = (item.sn_sku || '').toString().trim()
         if (!code) continue
@@ -635,41 +609,33 @@ export default function RiwayatPenjualan() {
           }
         }
       }
-// ===== rollback loyalty dulu (refund poin pakai + reverse poin dapat) =====
-try {
-  // ambil metadata invoice (no_wa & total_transaksi & unit_count)
-  const first = (penjualan || [])[0] || {}
-  const wa = String(first.no_wa || '').trim()
 
-  // total transaksi = total bayar invoice (sesudah diskon manual + poin)
-  // pakai helper computeInvoiceTotals dari file kamu
-  const totals = computeInvoiceTotals(penjualan || [])
-  const totalTransaksi = toNumber(totals.total)
+      // ===== rollback loyalty dulu =====
+      try {
+        const totals = computeInvoiceTotals(penjualan || [])
+        const totalTransaksi = toNumber(totals.total)
+        const unitCount = (penjualan || []).filter((r) => !r.is_bonus && !r.is_aksesoris).length
 
-  // unit count = item non-aksesoris, non-bonus (sesuai earn_invoice kamu)
-  const unitCount = (penjualan || []).filter((r) => !r.is_bonus && !r.is_aksesoris).length
+        // kalau function ini memang ada di DB kamu
+        if (ledgerReady) {
+          const { error: voidErr } = await supabase.rpc('loyalty_void_invoice', {
+            p_invoice_id: invoice_id,
+            p_total_transaksi: totalTransaksi,
+            p_unit_count: unitCount,
+          })
+          if (voidErr) {
+            console.warn('loyalty_void_invoice error:', voidErr)
+            throw new Error('Gagal rollback loyalty. Hapus transaksi dibatalkan.')
+          }
+        }
+      } catch (err) {
+        alert(err?.message || 'Gagal rollback loyalty.')
+        setLoading(false)
+        return
+      }
 
-  if (wa && ledgerReady) {
-    const { error: voidErr } = await supabase.rpc('loyalty_void_invoice', {
-      p_invoice_id: invoice_id,
-      p_total_transaksi: totalTransaksi,
-      p_unit_count: unitCount,
-    })
-    if (voidErr) {
-      console.warn('loyalty_void_invoice error:', voidErr)
-      // kalau mau strict: throw new Error(voidErr.message)
-      // tapi saran aku: jangan lanjut hapus kalau rollback gagal
-      throw new Error('Gagal rollback loyalty. Hapus transaksi dibatalkan.')
-    }
-  }
-} catch (err) {
-  alert(err?.message || 'Gagal rollback loyalty.')
-  setLoading(false)
-  return
-}
-
-// ===== baru hapus transaksi =====
-await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
+      // ===== baru hapus transaksi =====
+      await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
 
       alert('Data berhasil dihapus!')
       fetchData()
@@ -738,7 +704,7 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
     }
   }
 
-  // ====== Loyalty modal (NO ALERT) ======
+  // ====== Loyalty modal ======
   async function openLoyaltyModal(invoice_id) {
     if (!invoice_id) return
     setOpenLoyalty(true)
@@ -749,15 +715,15 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
 
     if (!ledgerReady) {
       setLoadingLoyaltyModal(false)
-      setLoyaltyError('Riwayat poin belum aktif. (Tabel point_ledger belum tersedia / belum sesuai).')
+      setLoyaltyError('Riwayat poin belum aktif. (Tabel loyalty_point_ledger belum tersedia / belum sesuai).')
       return
     }
 
     try {
       const { data, error } = await supabase
-        .from('point_ledger')
+        .from('loyalty_point_ledger')
         .select('*')
-        .eq('ref_invoice_code', invoice_id)
+        .eq('invoice_id', invoice_id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -766,7 +732,7 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
       console.error('openLoyaltyModal error:', e)
       setLoyaltyRows([])
       setLedgerReady(false)
-      setLoyaltyError('Riwayat poin belum bisa dibuka. (Cek tabel/kolom point_ledger di Supabase)')
+      setLoyaltyError('Riwayat poin belum bisa dibuka. (Cek tabel/kolom loyalty_point_ledger di Supabase)')
     } finally {
       setLoadingLoyaltyModal(false)
     }
@@ -1025,12 +991,7 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
                       <td className="px-4 py-3 align-top">
                         <div className="text-[11px] text-gray-500 font-mono">{inv}</div>
                         <div className="mt-2 flex flex-col gap-2">
-                          <button
-                            className={btnMiniDark}
-                            type="button"
-                            disabled={loading || busy}
-                            onClick={() => downloadInvoiceJpg(inv)}
-                          >
+                          <button className={btnMiniDark} type="button" disabled={loading || busy} onClick={() => downloadInvoiceJpg(inv)}>
                             {busy ? 'Membuat…' : 'Download JPG'}
                           </button>
 
@@ -1070,35 +1031,22 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
                       <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'dilayani_oleh')}</td>
                       <td className="px-4 py-3 align-top">{getUniqueText(item.produk, 'referal')}</td>
 
-                      <td className="px-4 py-3 align-top text-right tabular-nums">
-                        {earned ? `${earned.toLocaleString('id-ID')} pts` : '-'}
-                      </td>
-                      <td className="px-4 py-3 align-top text-right tabular-nums">
-                        {used ? `${used.toLocaleString('id-ID')} pts` : '-'}
-                      </td>
+                      <td className="px-4 py-3 align-top text-right tabular-nums">{earned ? `${earned.toLocaleString('id-ID')} pts` : '-'}</td>
+                      <td className="px-4 py-3 align-top text-right tabular-nums">{used ? `${used.toLocaleString('id-ID')} pts` : '-'}</td>
 
                       <td className="px-4 py-3 align-top text-right">{formatRp(totalBayar)}</td>
 
                       <td className="px-4 py-3 align-top text-right">
                         <div className="flex flex-col items-end gap-2">
                           <span className={badge(labaVal >= 0 ? 'ok' : 'warn')}>{formatRp(labaVal)}</span>
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-blue-700 hover:underline"
-                            onClick={() => openProfitModal(inv, item.produk)}
-                          >
+                          <button type="button" className="text-xs font-semibold text-blue-700 hover:underline" onClick={() => openProfitModal(inv, item.produk)}>
                             Detail
                           </button>
                         </div>
                       </td>
 
                       <td className="px-4 py-3 align-top">
-                        <button
-                          onClick={() => handleDelete(inv)}
-                          className={btnDanger}
-                          disabled={loading || busy}
-                          type="button"
-                        >
+                        <button onClick={() => handleDelete(inv)} className={btnDanger} disabled={loading || busy} type="button">
                           Hapus
                         </button>
                       </td>
@@ -1128,20 +1076,14 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
           {/* PAGINATION */}
           <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between px-4 py-3 border-t border-gray-200 bg-white">
             <div className="text-xs text-gray-600">
-              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari{' '}
-              <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
+              Menampilkan <b className="text-gray-900">{showingFrom}–{showingTo}</b> dari <b className="text-gray-900">{totalRows}</b> invoice • 10 per halaman
             </div>
 
             <div className="flex gap-2">
               <button className={btn} onClick={() => setPage(1)} disabled={safePage === 1 || loading} type="button">
                 « First
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={safePage === 1 || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1 || loading} type="button">
                 ‹ Prev
               </button>
 
@@ -1149,20 +1091,10 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
                 {safePage}/{totalPages}
               </div>
 
-              <button
-                className={btn}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages || loading} type="button">
                 Next ›
               </button>
-              <button
-                className={btn}
-                onClick={() => setPage(totalPages)}
-                disabled={safePage === totalPages || loading}
-                type="button"
-              >
+              <button className={btn} onClick={() => setPage(totalPages)} disabled={safePage === totalPages || loading} type="button">
                 Last »
               </button>
             </div>
@@ -1187,9 +1119,7 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
                 {loadingLoyaltyModal && <div className="py-10 text-center text-gray-500 text-sm">Memuat riwayat poin…</div>}
 
                 {!loadingLoyaltyModal && !!loyaltyError && (
-                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
-                    {loyaltyError}
-                  </div>
+                  <div className="py-8 px-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">{loyaltyError}</div>
                 )}
 
                 {!loadingLoyaltyModal && !loyaltyError && loyaltyRows.length === 0 && (
@@ -1203,25 +1133,25 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
                         <tr className="text-gray-600">
                           <th className="px-4 py-3 text-left">Waktu</th>
                           <th className="px-4 py-3 text-left">Jenis</th>
-                          <th className="px-4 py-3 text-right">Nilai</th>
+                          <th className="px-4 py-3 text-right">Points</th>
                           <th className="px-4 py-3 text-right">Masuk</th>
                           <th className="px-4 py-3 text-right">Keluar</th>
-                          <th className="px-4 py-3 text-left">Keterangan</th>
+                          <th className="px-4 py-3 text-left">Note</th>
                         </tr>
                       </thead>
                       <tbody>
                         {loyaltyRows.map((r, idx) => {
-                          const jenis = (r?.jenis || r?.type || r?.tipe || '-').toString()
-                          const poinAwal = toNumber(r?.poin_awal ?? r?.poin ?? r?.points ?? r?.amount ?? 0)
+                          const jenis = (r?.entry_type || '-').toString()
+                          const pts = toNumber(r?.points ?? 0)
                           const parsed = parsePointLedgerRow(r)
                           return (
                             <tr key={r.id || idx} className="border-t border-gray-200 hover:bg-gray-50">
                               <td className="px-4 py-3">{r.created_at ? dayjs(r.created_at).format('YYYY-MM-DD HH:mm') : '-'}</td>
                               <td className="px-4 py-3">{jenis}</td>
-                              <td className="px-4 py-3 text-right tabular-nums">{poinAwal.toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-3 text-right tabular-nums">{pts.toLocaleString('id-ID')}</td>
                               <td className="px-4 py-3 text-right tabular-nums">{toNumber(parsed.earned).toLocaleString('id-ID')}</td>
                               <td className="px-4 py-3 text-right tabular-nums">{toNumber(parsed.used).toLocaleString('id-ID')}</td>
-                              <td className="px-4 py-3">{safe(r.keterangan || r.catatan || r.note || '') || '-'}</td>
+                              <td className="px-4 py-3">{safe(r.note || '') || '-'}</td>
                             </tr>
                           )
                         })}
@@ -1230,7 +1160,7 @@ await supabase.from('penjualan_baru').delete().eq('invoice_id', invoice_id)
                   </div>
                 )}
 
-                <div className="text-xs text-gray-500 mt-3">Catatan: riwayat poin ditarik dari point_ledger berdasarkan ref_invoice_code.</div>
+                <div className="text-xs text-gray-500 mt-3">Catatan: riwayat poin ditarik dari loyalty_point_ledger berdasarkan invoice_id.</div>
               </div>
             </div>
           </div>

@@ -28,7 +28,8 @@ const SKU_OFFICE = 'OFC-365-1'
 const METODE_PEMBAYARAN = ['BRI', 'BCA', 'MANDIRI', 'BSI', 'BNI', 'TOKOPEDIA', 'SHOPEE', 'CASH']
 
 const card = 'bg-white border border-gray-200 rounded-2xl shadow-sm'
-const input = 'border border-gray-200 px-3 py-2 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
+const input =
+  'border border-gray-200 px-3 py-2 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-blue-200'
 const label = 'text-xs text-gray-600 mb-1'
 const btn = 'px-4 py-2 rounded-xl font-semibold text-sm disabled:opacity-60 disabled:cursor-not-allowed'
 const btnBlue = `${btn} bg-blue-600 text-white hover:opacity-90`
@@ -54,7 +55,7 @@ const selectStyles = {
 }
 
 // ======================
-// LOYALTY V2 (SUPABASE CLEAN)
+// LOYALTY V2
 // ======================
 const TIERS = ['SILVER', 'GOLD', 'PLATINUM']
 const normalizeTier = (v) => {
@@ -68,7 +69,7 @@ const tierBadgeClass = (tier) => {
   return 'bg-slate-700 text-white'
 }
 
-// ✅ WA hanya angka (sesuai request: kalau bukan angka -> poin tidak berlaku)
+// ✅ WA hanya angka (kalau bukan angka -> poin tidak berlaku)
 function isValidWANumericLocal(raw) {
   const s = String(raw || '').trim()
   return /^[0-9]{8,16}$/.test(s)
@@ -87,20 +88,16 @@ async function fetchLoyaltyCustomer(noWaRaw) {
 }
 
 // ======================
-// ✅ LEDGER HELPERS (ANTI DUPLICATE UNIQUE)
-// Penyebab error kamu: invoice bisa "ketahan" di loyalty_ledger (redeem/earn sukses),
-// tapi penjualan_baru gagal insert -> saat retry invoiceId bisa ter-generate sama.
-// Fix: invoice generator juga cek ledger, dan redeem/earn dibuat idempotent.
+// ✅ LEDGER HELPERS (SESUAI DB KAMU)
+// table: loyalty_point_ledger
+// columns: invoice_id, entry_type, points, customer_key, note, created_at
 // ======================
-const LEDGER_TABLE = 'loyalty_ledger' // kalau di DB kamu namanya beda, ganti di sini.
-const LEDGER_INVOICE_COL = 'ref_invoice_code' // kalau kolom invoice di ledger beda, ganti di sini.
-const LEDGER_TYPE_COL = 'jenis' // atau 'type' di DB kamu
-const LEDGER_POINTS_COL = 'poin' // atau 'points' di DB kamu
+const LEDGER_TABLE = 'loyalty_point_ledger'
+const LEDGER_INVOICE_COL = 'invoice_id'
+const LEDGER_TYPE_COL = 'entry_type'
+const LEDGER_POINTS_COL = 'points'
 
-const getLedgerPoint = (r) => {
-  const v = r?.[LEDGER_POINTS_COL] ?? r?.points ?? r?.amount ?? r?.nilai ?? 0
-  return toNumber(v)
-}
+const getLedgerPoint = (r) => toNumber(r?.[LEDGER_POINTS_COL] ?? 0)
 
 async function fetchLedgerByInvoice(invoiceId) {
   if (!invoiceId) return []
@@ -166,7 +163,7 @@ export default function Penjualan() {
     no_wa: '',
     email: '',
     metode_pembayaran: '',
-    referral: '',
+    referal: '', // ✅ konsisten sama riwayat.js kamu (referal)
     dilayani_oleh: '',
   })
 
@@ -395,6 +392,7 @@ export default function Penjualan() {
 
   const totalAkhirBayar = Math.max(0, totalSetelahDiskonManual - poinDipakaiFinal)
 
+  // ✅ auto-isi poin ketika ON (selalu max 50%)
   useEffect(() => {
     if (!usePoinOn) {
       setUsePoinWanted(0)
@@ -425,7 +423,7 @@ export default function Penjualan() {
   const buyerSelectValue = buyerTab === 'customer' ? selectedCustomer : selectedIndent
 
   // ======================
-  // HYDRATE LOYALTY V2
+  // HYDRATE LOYALTY
   // ======================
   useEffect(() => {
     async function hydrateLoyalty() {
@@ -610,8 +608,7 @@ export default function Penjualan() {
     setBiayaList((p) => p.filter((_, i) => i !== index))
   }
 
-  // ✅ FIX: generator invoice sekarang cek juga loyalty_ledger,
-  // supaya kalau pernah redeem/earn sukses tapi penjualan gagal insert, invoice tidak dipakai ulang.
+  // ✅ generator invoice sekarang cek juga loyalty_point_ledger
   async function generateInvoiceId(tanggal) {
     const bulan = dayjs(tanggal).format('MM')
     const tahun = dayjs(tanggal).format('YYYY')
@@ -715,23 +712,23 @@ export default function Penjualan() {
       const unitCountInvoice = produkBerbayarExpanded.filter((x) => !x.is_aksesoris).length
 
       // ======================
-      // ✅ Cek ledger dulu (idempotent)
-      // Kalau invoice ini sudah pernah punya REDEEM/EARN (karena retry),
-      // maka jangan insert lagi -> ambil nilai existing.
+      // ✅ idempotent ledger check
       // ======================
       const ledgerExisting = isValidWANumericLocal(waTrim) ? await fetchLedgerByInvoice(invoice) : []
-      const findLedger = (jenis) =>
-        (ledgerExisting || []).find((r) => String(r?.[LEDGER_TYPE_COL] || '').toUpperCase() === String(jenis).toUpperCase())
+      const findLedger = (t) =>
+        (ledgerExisting || []).find(
+          (r) => String(r?.[LEDGER_TYPE_COL] || '').toUpperCase() === String(t).toUpperCase()
+        )
 
       // ======================
-      // REDEEM (1x per invoice) jika tombol ON
-      // - redeem pakai RPC (server akan clamp max 50% balance)
+      // REDEEM (1x per invoice)
       // ======================
       let poinDipakaiReal = 0
 
-      const existingRedeem = findLedger('REDEEM') || findLedger('PAKAI') || findLedger('Poin Dipakai')
+      const existingRedeem = findLedger('REDEEM')
       if (existingRedeem) {
-        poinDipakaiReal = Math.abs(getLedgerPoint(existingRedeem))
+        const pts = getLedgerPoint(existingRedeem)
+        poinDipakaiReal = Math.abs(pts)
       } else if (loyaltyEligible && usePoinOn && toNumber(poinDipakaiFinal) > 0 && isValidWANumericLocal(waTrim)) {
         const { data, error } = await supabase.rpc('loyalty_redeem', {
           p_customer_key: waTrim,
@@ -743,7 +740,7 @@ export default function Penjualan() {
       }
 
       // ======================
-      // Diskon total untuk distribusi = diskon manual + poin real (yang benar2 terpakai)
+      // Diskon total = diskon manual + poin real
       // ======================
       const diskonManual = toNumber(diskonInvoice)
       const diskonTotal = Math.min(sumHarga, diskonManual + poinDipakaiReal)
@@ -764,7 +761,6 @@ export default function Penjualan() {
 
       // ======================
       // INSERT penjualan rows
-      // - metadata loyalty ditulis 1x saja untuk invoice ini (baris pertama)
       // ======================
       let wroteLoyaltyMeta = false
 
@@ -780,7 +776,7 @@ export default function Penjualan() {
           no_wa: waTrim,
           email: emailLower,
           metode_pembayaran: (formData.metode_pembayaran || '').toString().trim().toUpperCase(),
-          referral: (formData.referral || '').toString().trim().toUpperCase(),
+          referal: (formData.referal || '').toString().trim().toUpperCase(),
           dilayani_oleh: (formData.dilayani_oleh || '').toString().trim().toUpperCase(),
 
           sn_sku: item.sn_sku,
@@ -819,11 +815,7 @@ export default function Penjualan() {
         // stock movement
         if (item.__is_fee) continue
 
-        const { data: stokUnit, error: cekErr } = await supabase
-          .from('stok')
-          .select('id')
-          .eq('sn', item.sn_sku)
-          .maybeSingle()
+        const { data: stokUnit, error: cekErr } = await supabase.from('stok').select('id').eq('sn', item.sn_sku).maybeSingle()
         if (cekErr) throw new Error(`Gagal cek stok: ${cekErr.message}`)
 
         if (stokUnit) {
@@ -836,10 +828,9 @@ export default function Penjualan() {
       }
 
       // ======================
-      // EARN (1x per invoice) — panggil RPC server
-      // ✅ idempotent: kalau sudah ada EARN di ledger untuk invoice ini, skip.
+      // EARN (1x per invoice)
       // ======================
-      const existingEarn = findLedger('EARN') || findLedger('MASUK') || findLedger('Poin Masuk')
+      const existingEarn = findLedger('EARN')
       if (isValidWANumericLocal(waTrim) && !existingEarn) {
         const { error: earnErr } = await supabase.rpc('loyalty_earn_invoice', {
           p_customer_key: waTrim,
@@ -858,11 +849,7 @@ export default function Penjualan() {
         if (selectedIndent?.meta?.id) {
           await supabase.from('transaksi_indent').update({ status: 'Sudah Diambil' }).eq('id', selectedIndent.meta.id)
         } else {
-          await supabase
-            .from('transaksi_indent')
-            .update({ status: 'Sudah Diambil' })
-            .eq('nama', namaUpper)
-            .eq('no_wa', waTrim)
+          await supabase.from('transaksi_indent').update({ status: 'Sudah Diambil' }).eq('nama', namaUpper).eq('no_wa', waTrim)
         }
       }
 
@@ -876,7 +863,7 @@ export default function Penjualan() {
         no_wa: '',
         email: '',
         metode_pembayaran: '',
-        referral: '',
+        referal: '',
         dilayani_oleh: '',
       })
       setSelectedCustomer(null)
@@ -1050,14 +1037,14 @@ export default function Penjualan() {
                 </div>
 
                 <div>
-                  <div className={label}>Referral</div>
+                  <div className={label}>Referal</div>
                   <select
                     className={input}
-                    value={formData.referral}
-                    onChange={(e) => setFormData({ ...formData, referral: e.target.value })}
+                    value={formData.referal}
+                    onChange={(e) => setFormData({ ...formData, referal: e.target.value })}
                     required
                   >
-                    <option value="">Pilih Referral</option>
+                    <option value="">Pilih Referal</option>
                     {KARYAWAN.map((n) => (
                       <option key={n} value={n}>
                         {n}
@@ -1090,11 +1077,7 @@ export default function Penjualan() {
                       <div className="text-sm">
                         <div className="flex items-center gap-2 flex-wrap">
                           <div className="font-semibold">Membership / Loyalty</div>
-                          <span
-                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(
-                              memberTier
-                            )}`}
-                          >
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs ${tierBadgeClass(memberTier)}`}>
                             {normalizeTier(memberTier)}
                           </span>
                           {!loyaltyEligible && loyaltyReason ? (
@@ -1117,9 +1100,7 @@ export default function Penjualan() {
                           <div className={label}>Gunakan Poin (Rp)</div>
                           <button
                             type="button"
-                            className={`${
-                              usePoinOn ? 'bg-black text-white border-black' : 'bg-white border-gray-200'
-                            } px-3 py-1.5 rounded-xl border text-xs font-semibold`}
+                            className={`${usePoinOn ? 'bg-black text-white border-black' : 'bg-white border-gray-200'} px-3 py-1.5 rounded-xl border text-xs font-semibold`}
                             onClick={() => {
                               if (!loyaltyEligible) return
                               setUsePoinOn((v) => !v)
@@ -1322,12 +1303,7 @@ export default function Penjualan() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                 <div>
                   <div className={label}>Deskripsi Biaya</div>
-                  <input
-                    className={input}
-                    placeholder="contoh: Ongkir"
-                    value={biayaDesc}
-                    onChange={(e) => setBiayaDesc(e.target.value)}
-                  />
+                  <input className={input} placeholder="contoh: Ongkir" value={biayaDesc} onChange={(e) => setBiayaDesc(e.target.value)} />
                 </div>
 
                 <div>
