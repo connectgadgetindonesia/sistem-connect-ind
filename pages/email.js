@@ -658,6 +658,206 @@ function buildOfferEmailTemplate(payload) {
   `
 }
 
+// ======================
+// ✅ MEMBERSHIP REMINDER (CARD + EMAIL TEMPLATE)
+// ======================
+const MEMBER_CARD_BG = '/template-kartu-member.png' // simpan di /public
+
+function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = {}) {
+  const displayName = safe(nama) || 'CUSTOMER'
+  const displayTier = String(tier || 'SILVER').toUpperCase()
+  const displayPoints = 'Rp. ' + toNumber(total_points).toLocaleString('id-ID')
+
+  // ukuran mengikuti template (gambar Bapak)
+  // template yang Bapak kirim ukurannya 2048 x 1388
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    *{ box-sizing:border-box; }
+    body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+  </style>
+</head>
+<body>
+  <div id="member-card"
+    style="
+      width:2048px; height:1388px;
+      background:#ffffff url('${MEMBER_CARD_BG}') no-repeat center/cover;
+      position:relative; overflow:hidden;
+    ">
+
+    <!-- NAMA (Inter Extra Bold 116, warna #19213D) -->
+    <div
+      style="
+        position:absolute;
+        left:520px; top:360px;
+        font-size:116px;
+        font-weight:800;
+        color:#19213D;
+        line-height:1;
+        letter-spacing:-1px;
+      "
+    >${displayName}</div>
+
+    <!-- LEVEL (Inter Regular 37, warna #5D6481) -->
+    <div
+      style="
+        position:absolute;
+        left:520px; top:500px;
+        font-size:37px;
+        font-weight:400;
+        color:#5D6481;
+      "
+    >${displayTier} MEMBER</div>
+
+    <!-- TOTAL POINT (Inter Black 58, warna #19213D, align right) -->
+    <div
+      style="
+        position:absolute;
+        right:250px; top:690px;
+        font-size:58px;
+        font-weight:900;
+        color:#19213D;
+        text-align:right;
+        white-space:nowrap;
+      "
+    >${displayPoints}</div>
+
+  </div>
+</body>
+</html>`
+}
+
+function buildMembershipReminderEmailTemplate(payload) {
+  const {
+    nama = '',
+    tier = 'SILVER',
+    total_points = 0,
+    next_expiring_points = null,
+    next_expiry_at = null,
+  } = payload || {}
+
+  const benefits = getTierBenefits(tier)
+  const expSoonText =
+    next_expiry_at
+      ? next_expiring_points && toNumber(next_expiring_points) > 0
+        ? `Point Anda akan segera hangus. Gunakan sebelum <b style="color:#111827;">${formatDateIndo(
+            next_expiry_at
+          )}</b> (sebanyak <b style="color:#111827;">${formatPoints(next_expiring_points)}</b>).`
+        : `Point Anda akan segera hangus. Gunakan sebelum <b style="color:#111827;">${formatDateIndo(next_expiry_at)}</b>.`
+      : `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
+
+  const benefitRows = (benefits || [])
+    .map(
+      (b) => `
+      <tr>
+        <td style="vertical-align:top; padding:3px 0; width:16px; color:#111827; font-weight:900;">•</td>
+        <td style="padding:3px 0; color:#374151; font-size:13px; line-height:1.6;">${safe(b)}</td>
+      </tr>
+    `
+    )
+    .join('')
+
+  // KARTU di atas (HTML, bukan img) supaya preview sama persis
+  const cardHtml = buildMemberCardHtml({ nama, tier, total_points })
+  const cardBody = extractBodyHtml(cardHtml)
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    @media screen and (max-width: 600px) {
+      .wrapPad { padding: 14px 10px !important; }
+      .container { width: 100% !important; }
+      .cardPad { padding: 14px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background:#f6f7f9;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+    <tr>
+      <td class="wrapPad" style="padding:24px 12px;">
+        <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
+          style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
+
+          <tr>
+            <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
+              <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
+              <div style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.4;">
+                Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-31-4000-31
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="cardPad" style="padding:20px;">
+              <!-- KARTU MEMBER (ATAS) -->
+              <div style="border:1px solid #eef2f7; border-radius:16px; overflow:hidden; background:#fff;">
+                <!-- scale down supaya muat 640 -->
+                <div style="transform:scale(0.30); transform-origin:top left; width:2048px; height:1388px;">
+                  ${cardBody}
+                </div>
+                <div style="height:6px;"></div>
+              </div>
+
+              <!-- DETAIL POINT + BENEFIT (BAWAH) -->
+              <div style="margin-top:14px; padding:14px 14px; background:#f7f9fc; border:1px solid #e5e7eb; border-radius:14px;">
+                <div style="font-weight:900; color:#111827; font-size:14px;">Membership & Points</div>
+
+                <div style="margin-top:8px; color:#374151; font-size:13px; line-height:1.7;">
+                  Halo <b style="color:#111827;">${safe(nama) || 'Customer'}</b>,<br/>
+                  Total point Anda saat ini <b style="color:#111827;">${formatPoints(total_points)}</b>.<br/>
+                  ${expSoonText}<br/>
+                  Level membership Anda: <b style="color:#111827;">${String(tier || 'SILVER').toUpperCase()}</b>.
+                </div>
+
+                ${
+                  benefitRows
+                    ? `
+                    <div style="margin-top:10px; font-weight:800; color:#111827; font-size:13px;">Benefit sesuai membership Anda:</div>
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:6px;">
+                      ${benefitRows}
+                    </table>
+                  `
+                    : ''
+                }
+
+                <div style="margin-top:10px; color:#6b7280; font-size:11px; line-height:1.6;">
+                  Catatan: Anda dapat menukarkan point saat transaksi berikutnya (maksimal 50% dari point yang dimiliki).
+                </div>
+              </div>
+
+              <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
+                Mohon tidak membalas email ini. Jika ada pertanyaan hubungi WhatsApp kami di <b style="color:#111827;">0896-31-4000-31</b>.
+              </div>
+
+              <div style="margin-top:18px; color:#6b7280; font-size:12px;">
+                Hormat kami,<br/>
+                <b style="color:#111827;">CONNECT.IND</b>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="text-align:center; color:#9ca3af; font-size:12px; padding:14px 16px; border-top:1px solid #f0f0f0;">
+              Email ini dikirim dari sistem CONNECT.IND.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+}
+
 // ====== download helpers (tetap) ======
 async function canvasToJpegBase64(canvas, quality = 0.95) {
   const dataUrl = canvas.toDataURL('image/jpeg', quality)
@@ -1024,12 +1224,19 @@ function buildOfferA4Html(payload) {
 
 // ===== PAGE =====
 export default function EmailPage() {
-  const [mode, setMode] = useState('invoice') // 'invoice' | 'offer'
+  const [mode, setMode] = useState('invoice') // 'invoice' | 'offer' | 'membership'
   const [sending, setSending] = useState(false)
 
   // ===== INVOICE STATE =====
   const [dataInvoice, setDataInvoice] = useState(null)
   const [htmlBody, setHtmlBody] = useState('')
+
+    // ===== MEMBERSHIP REMINDER STATE =====
+  const [memberSearch, setMemberSearch] = useState('')
+  const [memberLoading, setMemberLoading] = useState(false)
+  const [memberList, setMemberList] = useState([])
+  const [memberSelected, setMemberSelected] = useState(null) // { nama, no_wa, email }
+  const [memberSnap, setMemberSnap] = useState(null) // { total_points, tier, next_expiring_points, next_expiry_at }
 
   // ✅ membership snapshot (for invoice html)
   const [membershipSnap, setMembershipSnap] = useState(null)
@@ -1299,10 +1506,158 @@ const fetchMembershipSnapshot = async (invPayload) => {
   } finally {
     setMembershipLoading(false)
   }
+}// ======================
+// ✅ MEMBERSHIP: cari customer dari penjualan_baru (nama/no_wa/email)
+// ======================
+const fetchMemberCandidates = async (keyword) => {
+  const q = safe(keyword)
+  if (!q) {
+    setMemberList([])
+    return
+  }
+
+  setMemberLoading(true)
+  try {
+    // cari dari transaksi (paling aman & sudah ada datanya)
+    // NOTE: Supabase "or" pakai format: col.ilike.%x%,col2.ilike.%x%
+    const like = `%${q}%`
+    const { data, error } = await supabase
+      .from('penjualan_baru')
+      .select('nama_pembeli, no_wa, email, tanggal')
+      .or(`nama_pembeli.ilike.${like},no_wa.ilike.${like},email.ilike.${like}`)
+      .order('tanggal', { ascending: false })
+      .limit(50)
+
+    if (error) throw error
+
+    // unique by no_wa
+    const map = new Map()
+    for (const r of Array.isArray(data) ? data : []) {
+      const wa = safe(r.no_wa)
+      if (!wa) continue
+      if (!map.has(wa)) {
+        map.set(wa, {
+          nama: safe(r.nama_pembeli),
+          no_wa: wa,
+          email: safe(r.email),
+          last_tanggal: r.tanggal,
+        })
+      }
+    }
+
+    setMemberList(Array.from(map.values()).slice(0, 20))
+  } catch (e) {
+    console.warn('fetchMemberCandidates error:', e?.message || e)
+    setMemberList([])
+  } finally {
+    setMemberLoading(false)
+  }
+}
+
+const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
+  const keys = buildCustomerKeyCandidates(no_wa)
+  if (!keys.length) return null
+
+  setMembershipLoading(true)
+  try {
+    // 1) coba VIEW snapshot
+    try {
+      const { data: snap, error: snapErr } = await supabase
+        .from(LOYALTY_VIEW_SNAPSHOT)
+        .select('customer_key, points_balance, level, next_expiring_points, next_expiry_at')
+        .in('customer_key', keys)
+        .limit(1)
+
+      if (!snapErr && Array.isArray(snap) && snap.length) {
+        const row = snap[0] || {}
+        const tier = String(row.level || 'SILVER').toUpperCase()
+        return {
+          nama: safe(nama),
+          no_wa: safe(no_wa),
+          total_points: toNumber(row.points_balance),
+          tier,
+          next_expiring_points: row.next_expiring_points ?? null,
+          next_expiry_at: row.next_expiry_at ?? null,
+        }
+      }
+    } catch {
+      // lanjut ledger
+    }
+
+    // 2) fallback ledger FIFO (reuse cara dari fetchMembershipSnapshot)
+    const { data, error } = await supabase
+      .from(LOYALTY_LEDGER_TABLE)
+      .select('customer_key, entry_type, points, created_at, expires_at, expire_at')
+      .in('customer_key', keys)
+      .order('created_at', { ascending: true })
+      .limit(10000)
+    if (error) throw error
+
+    const rows = Array.isArray(data) ? data : []
+    const now = dayjs()
+
+    const earnBatches = []
+    let totalRedeem = 0
+
+    for (const r of rows) {
+      const pts = toNumber(r.points)
+      const entry = String(r.entry_type || '').toUpperCase()
+
+      if (entry === 'REDEEM' || pts < 0) {
+        totalRedeem += Math.abs(pts)
+        continue
+      }
+
+      const exp = r.expires_at || r.expire_at || null
+      const expDay = exp ? dayjs(exp) : null
+      const created = dayjs(r.created_at)
+      const expiryAt = expDay?.isValid() ? expDay : created.add(EXPIRY_DAYS, 'day')
+
+      earnBatches.push({
+        expiry_at: expiryAt.isValid() ? expiryAt.format('YYYY-MM-DD') : null,
+        earn_points: Math.max(0, pts),
+      })
+    }
+
+    let redeemLeft = totalRedeem
+    const remainingByExpiry = []
+
+    for (const b of earnBatches) {
+      let remain = b.earn_points
+      if (redeemLeft > 0) {
+        const used = Math.min(remain, redeemLeft)
+        remain -= used
+        redeemLeft -= used
+      }
+
+      const exp = b.expiry_at ? dayjs(b.expiry_at) : null
+      if (remain > 0 && exp && exp.isValid() && exp.isAfter(now)) {
+        remainingByExpiry.push({ expiry_at: exp.format('YYYY-MM-DD'), remaining_points: remain })
+      }
+    }
+
+    const totalPoints = remainingByExpiry.reduce((a, x) => a + toNumber(x.remaining_points), 0)
+    remainingByExpiry.sort((a, b) => new Date(a.expiry_at).getTime() - new Date(b.expiry_at).getTime())
+    const next = remainingByExpiry[0] || null
+
+    return {
+      nama: safe(nama),
+      no_wa: safe(no_wa),
+      total_points: totalPoints,
+      tier: 'SILVER',
+      next_expiring_points: next?.remaining_points || null,
+      next_expiry_at: next?.expiry_at || null,
+    }
+  } catch (e) {
+    console.warn('fetchMembershipForCustomer error:', e?.message || e)
+    return null
+  } finally {
+    setMembershipLoading(false)
+  }
 }
 
   // ===== build HTML based on mode =====
-  useEffect(() => {
+   useEffect(() => {
     if (mode === 'invoice') {
       if (!dataInvoice) {
         setHtmlBody('')
@@ -1317,33 +1672,39 @@ const fetchMembershipSnapshot = async (invPayload) => {
       return
     }
 
+    if (mode === 'membership') {
+      if (!memberSelected || !memberSnap) {
+        setHtmlBody('')
+        return
+      }
+      setHtmlBody(
+        buildMembershipReminderEmailTemplate({
+          nama: memberSelected.nama,
+          tier: memberSnap.tier,
+          total_points: memberSnap.total_points,
+          next_expiring_points: memberSnap.next_expiring_points,
+          next_expiry_at: memberSnap.next_expiry_at,
+        })
+      )
+      return
+    }
+
     const payload = getOfferPayload()
     setHtmlBody(buildOfferEmailTemplate(payload))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, dataInvoice, offerDate, offerId, kepadaNama, kepadaPerusahaan, offerNotes, offerItems, toEmail, membershipSnap])
-
-  // ✅ POINTS update
-  useEffect(() => {
-    const run = async () => {
-      if (mode !== 'invoice') return
-      if (!dataInvoice?.invoice_id) {
-        setMembershipSnap(null)
-        return
-      }
-      const snap = await fetchMembershipSnapshot(dataInvoice)
-      setMembershipSnap(snap)
-    }
-    run()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     mode,
-    dataInvoice?.invoice_id,
-    dataInvoice?.total,
-    dataInvoice?.subtotal,
-    dataInvoice?.discount,
-    dataInvoice?.tanggal,
-    dataInvoice?.no_wa,
-    dataInvoice?.nama_pembeli,
+    dataInvoice,
+    offerDate,
+    offerId,
+    kepadaNama,
+    kepadaPerusahaan,
+    offerNotes,
+    offerItems,
+    toEmail,
+    membershipSnap,
+    memberSelected,
+    memberSnap,
   ])
 
   // ✅ auto-generate offerId saat masuk mode offer + kosong
@@ -1826,6 +2187,10 @@ const fetchMembershipSnapshot = async (invPayload) => {
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
     if (!subject.trim()) return alert('Subject masih kosong.')
     if (!htmlBody || htmlBody.trim().length < 20) return alert('Body email masih kosong.')
+    
+      if (mode === 'membership') {
+      if (!memberSelected || !memberSnap) return alert('Pilih customer dulu.')
+    }
 
     if (mode === 'offer') {
       const p = getOfferPayload()
@@ -1843,10 +2208,20 @@ const fetchMembershipSnapshot = async (invPayload) => {
       let docId = ''
       let filename = ''
 
-      if (mode === 'invoice') {
+           if (mode === 'invoice') {
         docId = dataInvoice.invoice_id
         filename = `${docId}.jpg`
         const html = buildInvoiceA4Html({ invoice_id: dataInvoice.invoice_id, payload: dataInvoice })
+        const base64 = await generateJpgBase64FromHtml(html)
+        attachments.push({ filename, contentType: 'image/jpeg', contentBase64: base64 })
+      } else if (mode === 'membership') {
+        docId = `MEMBER-${digitsOnly(memberSelected?.no_wa) || dayjs().format('YYYYMMDDHHmm')}`
+        filename = `${docId}.jpg`
+        const html = buildMemberCardHtml({
+          nama: memberSelected?.nama,
+          tier: memberSnap?.tier,
+          total_points: memberSnap?.total_points,
+        })
         const base64 = await generateJpgBase64FromHtml(html)
         attachments.push({ filename, contentType: 'image/jpeg', contentBase64: base64 })
       } else {
@@ -1936,8 +2311,20 @@ const fetchMembershipSnapshot = async (invPayload) => {
     }
   }
 
-  const downloadJpg = async () => {
+    const downloadJpg = async () => {
     try {
+      if (mode === 'membership') {
+        if (!memberSelected || !memberSnap) return alert('Pilih customer dulu.')
+        const html = buildMemberCardHtml({
+          nama: memberSelected.nama,
+          tier: memberSnap.tier,
+          total_points: memberSnap.total_points,
+        })
+        const base64 = await generateJpgBase64FromHtml(html)
+        const filename = `MEMBER-${digitsOnly(memberSelected.no_wa) || 'CARD'}.jpg`
+        return downloadBase64AsJpg(base64, filename)
+      }
+
       if (mode === 'invoice') {
         if (!dataInvoice?.invoice_id) return alert('Pilih transaksi dulu.')
         const html = buildInvoiceA4Html({ invoice_id: dataInvoice.invoice_id, payload: dataInvoice })
@@ -2078,12 +2465,24 @@ const fetchMembershipSnapshot = async (invPayload) => {
     )
   }, [mode, dataInvoice, historyEnabled, membershipSnap, membershipLoading])
 
-  useEffect(() => {
+   useEffect(() => {
     if (mode === 'invoice') {
-      if (!subject || subject.includes('Surat Penawaran')) setSubject('Invoice Pembelian – CONNECT.IND')
+      if (!subject || subject.includes('Surat Penawaran') || subject.includes('Membership')) {
+        setSubject('Invoice Pembelian – CONNECT.IND')
+      }
       return
     }
-    if (!subject || subject.includes('Invoice Pembelian')) setSubject('Surat Penawaran – CONNECT.IND')
+    if (mode === 'offer') {
+      if (!subject || subject.includes('Invoice Pembelian') || subject.includes('Membership')) {
+        setSubject('Surat Penawaran – CONNECT.IND')
+      }
+      return
+    }
+    if (mode === 'membership') {
+      if (!subject || subject.includes('Invoice') || subject.includes('Surat Penawaran')) {
+        setSubject('Pengingat Membership & Point – CONNECT.IND')
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
@@ -2117,6 +2516,9 @@ const fetchMembershipSnapshot = async (invPayload) => {
               <button type="button" className={btnTab(mode === 'offer')} onClick={() => setMode('offer')}>
                 Surat Penawaran
               </button>
+              <button type="button" className={btnTab(mode === 'membership')} onClick={() => setMode('membership')}>
+  Membership Reminder
+</button>
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
@@ -2126,7 +2528,11 @@ const fetchMembershipSnapshot = async (invPayload) => {
               <button
                 className={btnPrimary + ' w-full sm:w-auto'}
                 onClick={sendEmail}
-                disabled={sending || (mode === 'invoice' && !dataInvoice)}
+                disabled={
+  sending ||
+  (mode === 'invoice' && !dataInvoice) ||
+  (mode === 'membership' && (!memberSelected || !memberSnap))
+}
                 style={{ opacity: sending || (mode === 'invoice' && !dataInvoice) ? 0.6 : 1 }}
                 type="button"
               >
@@ -2413,6 +2819,138 @@ const fetchMembershipSnapshot = async (invPayload) => {
         )}
 
         <div className="grid lg:grid-cols-2 gap-4">
+                  {/* MEMBERSHIP REMINDER PANEL */}
+        {mode === 'membership' && (
+          <div className={`${card} p-4 space-y-3`}>
+            <div className="grid lg:grid-cols-2 gap-3 items-start">
+              <div>
+                <div className="text-sm font-semibold">Cari Customer</div>
+                <div className="text-xs text-gray-500 mb-2">Cari berdasarkan Nama / WA / Email (data diambil dari penjualan).</div>
+
+                <div className="flex gap-2">
+                  <input
+                    className={input}
+                    placeholder="Ketik nama / WA / email..."
+                    value={memberSearch}
+                    onChange={(e) => setMemberSearch(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') await fetchMemberCandidates(memberSearch)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={btnPrimary + ' whitespace-nowrap'}
+                    onClick={async () => await fetchMemberCandidates(memberSearch)}
+                    disabled={memberLoading}
+                    style={{ opacity: memberLoading ? 0.6 : 1 }}
+                  >
+                    {memberLoading ? 'Mencari...' : 'Cari'}
+                  </button>
+                </div>
+
+                <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-sm flex items-center justify-between">
+                    <div>Hasil</div>
+                    <div className="text-xs text-gray-500">{memberList.length} data</div>
+                  </div>
+
+                  <div className="max-h-[320px] overflow-auto">
+                    {memberList.length === 0 ? (
+                      <div className="p-3 text-sm text-gray-600">Belum ada hasil. Ketik keyword lalu klik Cari.</div>
+                    ) : (
+                      <div className="divide-y divide-gray-100">
+                        {memberList.map((m) => (
+                          <button
+                            key={m.no_wa}
+                            type="button"
+                            className="w-full text-left p-3 hover:bg-gray-50"
+                            onClick={async () => {
+                              const picked = { nama: m.nama, no_wa: m.no_wa, email: m.email }
+                              setMemberSelected(picked)
+                              setToEmailTouched(false)
+                              if (picked.email && String(picked.email).includes('@')) setToEmail(String(picked.email).trim())
+                              else setToEmail('')
+                              const snap = await fetchMembershipForCustomer(picked)
+                              setMemberSnap(snap)
+                            }}
+                          >
+                            <div className="font-semibold truncate">{m.nama || '(Tanpa nama)'}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              WA: <b>{m.no_wa}</b>
+                              {m.email ? (
+                                <>
+                                  {' '}
+                                  • Email: <b>{m.email}</b>
+                                </>
+                              ) : null}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-sm font-semibold mb-2">Ringkasan Membership</div>
+
+                {!memberSelected ? (
+                  <div className="text-sm text-gray-500">Pilih customer dulu untuk membuat kartu & template email.</div>
+                ) : membershipLoading ? (
+                  <div className="text-sm text-gray-600">Menghitung points & expiry...</div>
+                ) : memberSnap ? (
+                  <div className="space-y-2">
+                    <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] text-gray-500">Customer</div>
+                        <div className="text-[11px] px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">
+                          {String(memberSnap.tier || 'SILVER').toUpperCase()}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-sm font-bold">{memberSelected.nama || '-'}</div>
+                      <div className="text-xs text-gray-600">WA: {memberSelected.no_wa || '-'}</div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+                      <div className="text-[11px] text-gray-500">Total Point</div>
+                      <div className="text-sm font-bold">{formatPoints(memberSnap.total_points || 0)}</div>
+                      {memberSnap.next_expiry_at ? (
+                        <div className="mt-1 text-xs text-gray-600">
+                          Point akan segera hangus sebelum <b>{formatDateIndo(memberSnap.next_expiry_at)}</b>
+                          {memberSnap.next_expiring_points ? (
+                            <>
+                              {' '}
+                              (sebanyak <b>{formatPoints(memberSnap.next_expiring_points)}</b>)
+                            </>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-xs text-gray-500">Rolling {EXPIRY_DAYS} hari.</div>
+                      )}
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl bg-white px-3 py-2">
+                      <div className="text-[11px] text-gray-500 mb-1">Benefit</div>
+                      <ul className="list-disc pl-5 space-y-0.5 text-xs text-gray-700">
+                        {(getTierBenefits(memberSnap.tier) || []).map((b, i) => (
+                          <li key={i}>{b}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">Data points tidak ditemukan.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-500">
+              Kartu member akan otomatis dipakai di bagian atas email (sesuai template final Bapak) + lampiran JPG saat kirim.
+            </div>
+          </div>
+        )}
+
           {/* Composer */}
           <div className={`${card} p-4 space-y-3`}>
             <div className="text-lg font-semibold">Composer</div>
@@ -2480,7 +3018,11 @@ const fetchMembershipSnapshot = async (invPayload) => {
               <button
                 className={btnPrimary + ' w-full sm:w-auto'}
                 onClick={sendEmail}
-                disabled={sending || (mode === 'invoice' && !dataInvoice)}
+               disabled={
+  sending ||
+  (mode === 'invoice' && !dataInvoice) ||
+  (mode === 'membership' && (!memberSelected || !memberSnap))
+}
                 style={{ opacity: sending || (mode === 'invoice' && !dataInvoice) ? 0.6 : 1 }}
                 type="button"
               >
