@@ -177,8 +177,8 @@ function computeTotals(rows = []) {
 }
 
 /**
- * ✅ TEMPLATE EMAIL INVOICE (HTML) — MOBILE SAFE
- * ✅ + Membership & Points block (POINTS tampil sebagai "poin", bukan Rupiah)
+ * ✅ TEMPLATE EMAIL INVOICE (HTML) — iPhone/Gmail SAFE (NO ZOOM OUT)
+ * ✅ + Membership & Points block
  */
 function buildInvoiceEmailTemplate(payload) {
   const {
@@ -216,11 +216,11 @@ function buildInvoiceEmailTemplate(payload) {
             return `
               <tr>
                 <td style="padding:0 0 12px 0;">
-                  <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border:1px solid #eaeaea; border-radius:14px; overflow:hidden; background:#ffffff;">
                     <tr>
                       <td style="padding:14px 14px 10px 14px;">
-                        <div style="font-size:12px; color:#9aa3af; font-weight:600; letter-spacing:.2px;">
+                        <div style="font-size:12px; color:#9aa3af; font-weight:700; letter-spacing:.2px;">
                           ITEM ${idx + 1}
                         </div>
                         <div style="margin-top:6px; font-size:14px; font-weight:800; color:#111827; line-height:1.35; word-break:break-word;">
@@ -245,16 +245,16 @@ function buildInvoiceEmailTemplate(payload) {
 
                     <tr>
                       <td style="padding:10px 14px 14px 14px; border-top:1px solid #f0f0f0; background:#fafafa;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                           <tr>
                             <td style="font-size:12px; color:#6b7280; padding:2px 0;">Qty</td>
-                            <td style="font-size:12px; color:#111827; font-weight:700; text-align:right; white-space:nowrap;">
+                            <td style="font-size:12px; color:#111827; font-weight:800; text-align:right; white-space:nowrap;">
                               ${qty}
                             </td>
                           </tr>
                           <tr>
                             <td style="font-size:12px; color:#6b7280; padding:2px 0;">Price</td>
-                            <td style="font-size:12px; color:#111827; font-weight:700; text-align:right; white-space:nowrap;">
+                            <td style="font-size:12px; color:#111827; font-weight:800; text-align:right; white-space:nowrap;">
                               ${formatRupiah(unit)}
                             </td>
                           </tr>
@@ -317,19 +317,18 @@ function buildInvoiceEmailTemplate(payload) {
         : getTierBenefits(tier)
 
     const expText = (() => {
-      // ✅ kalau ada next expiry, tampilkan poin + tanggal
+      // ✅ sesuai request: pengingat point akan hangus + tanggal expiry
       if (nextExpAt) {
         if (nextExpPts != null && nextExpPts > 0) {
-          return `Sebanyak <b style="color:#111827;">${formatPoints(nextExpPts)}</b> akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(
+          return `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(
             nextExpAt
-          )}</b>.`
+          )}</b>. (Sebanyak <b style="color:#111827;">${formatPoints(nextExpPts)}</b>)`
         }
-        return `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(nextExpAt)}</b>.`
+        return `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(nextExpAt)}</b>.`
       }
 
-      // fallback expiry umum
       if (expireAt) {
-        return `Point Anda akan hangus pada tanggal <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
+        return `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
       }
 
       return `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
@@ -366,7 +365,7 @@ function buildInvoiceEmailTemplate(payload) {
           benefitRows
             ? `
             <div style="margin-top:10px; font-weight:800; color:#111827; font-size:13px;">Benefit sesuai membership Anda:</div>
-            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:6px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:6px;">
               ${benefitRows}
             </table>
           `
@@ -374,33 +373,41 @@ function buildInvoiceEmailTemplate(payload) {
         }
 
         <div style="margin-top:10px; color:#6b7280; font-size:11px; line-height:1.6;">
-          Catatan: -
+          Catatan: Point mengikuti masa aktif (rolling) dan akan berkurang otomatis jika digunakan / hangus.
         </div>
       </div>
     `
   })()
 
-  return `
-<!doctype html>
+  // ✅ IMPORTANT: iOS Mail / Gmail iOS anti “zoom-out”
+  // - HAPUS width="640"
+  // - Gunakan container fluid 100% + max-width via style
+  return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="x-apple-disable-message-reformatting"/>
     <style>
+      /* anti font auto-zoom */
+      body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+      table { border-collapse:separate; }
+      img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
+      .wrapPad{ padding:24px 12px; }
+      .container{ width:100%; max-width:600px; }
       @media screen and (max-width: 600px) {
         .wrapPad { padding: 14px 10px !important; }
-        .container { width: 100% !important; }
         .cardPad { padding: 14px !important; }
       }
     </style>
   </head>
-  <body style="margin:0; padding:0; background:#f6f7f9;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+  <body style="margin:0; padding:0; width:100% !important; background:#f6f7f9; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
       <tr>
         <td class="wrapPad" style="padding:24px 12px;">
-          <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
-            style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
-
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"
+            class="container"
+            style="width:100%; max-width:600px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
             <tr>
               <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
                 <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
@@ -418,11 +425,11 @@ function buildInvoiceEmailTemplate(payload) {
                   Tanggal: <b style="color:#111827;">${safe(tanggal)}</b>
                 </div>
 
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
                   <tr>
                     <td style="padding:14px; background:#fafafa; border-radius:14px; border:1px solid #efefef;">
                       <div style="font-weight:800; margin-bottom:6px; color:#111827;">Data Pembeli</div>
-                      <div style="font-size:13px; color:#374151; line-height:1.6;">
+                      <div style="font-size:13px; color:#374151; line-height:1.6; word-break:break-word;">
                         Nama: <b style="color:#111827;">${safe(nama_pembeli)}</b><br/>
                         No. WA: <b style="color:#111827;">${safe(no_wa)}</b><br/>
                         Alamat: <b style="color:#111827;">${safe(alamat)}</b>
@@ -432,15 +439,15 @@ function buildInvoiceEmailTemplate(payload) {
                 </table>
 
                 <div style="margin-top:16px; font-weight:900; color:#111827;">Detail Item</div>
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
                   ${itemCards}
                 </table>
 
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
                   <tr>
                     <td></td>
                     <td style="width:320px; max-width:100%; padding:14px; border:1px solid #eaeaea; border-radius:14px; background:#ffffff;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                         <tr>
                           <td style="padding:6px 0; font-size:12px; color:#6b7280;">Sub Total</td>
                           <td style="padding:6px 0; font-size:12px; font-weight:900; color:#111827; text-align:right; white-space:nowrap;">
@@ -484,12 +491,11 @@ function buildInvoiceEmailTemplate(payload) {
       </tr>
     </table>
   </body>
-</html>
-  `
+</html>`
 }
 
 /**
- * ✅ TEMPLATE EMAIL SURAT PENAWARAN (HTML) — MOBILE SAFE
+ * ✅ TEMPLATE EMAIL SURAT PENAWARAN (HTML) — iPhone/Gmail SAFE (NO ZOOM OUT)
  */
 function buildOfferEmailTemplate(payload) {
   const { offer_id, tanggal, kepada_nama, kepada_perusahaan, to_email, items = [], catatan = '' } = payload || {}
@@ -503,22 +509,17 @@ function buildOfferEmailTemplate(payload) {
             const total = qty * harga
             return `
               <tr>
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220;">${
-                  idx + 1
-                }</td>
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; font-weight:600; word-break:break-word;">
+                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220;">${idx + 1}</td>
+                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; font-weight:700; word-break:break-word;">
                   ${safe(it.nama_barang)}
                 </td>
-
                 <td style="padding:10px 6px 10px 8px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; width:34px; white-space:nowrap;">
                   ${qty}
                 </td>
-
                 <td style="padding:10px 12px 10px 8px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap;">
                   ${formatRupiah(harga)}
                 </td>
-
-                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap; font-weight:700;">
+                <td style="padding:10px 12px; border-top:1px solid #eef2f7; font-size:12px; color:#0b1220; text-align:right; white-space:nowrap; font-weight:800;">
                   ${formatRupiah(total)}
                 </td>
               </tr>
@@ -541,28 +542,32 @@ function buildOfferEmailTemplate(payload) {
 
   const whom = `${safe(kepada_nama) || 'Bapak/Ibu'}${kepada_perusahaan ? ` (${safe(kepada_perusahaan)})` : ''}`
 
-  return `
-<!doctype html>
+  return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="x-apple-disable-message-reformatting"/>
     <style>
+      body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+      img{ max-width:100%; height:auto; }
+      .wrapPad{ padding:24px 12px; }
+      .container{ width:100%; max-width:600px; }
       @media screen and (max-width: 600px) {
         .wrapPad { padding: 14px 10px !important; }
-        .container { width: 100% !important; }
         .cardPad { padding: 14px !important; }
         .tableWrap { overflow:auto !important; }
         .minw { min-width:560px !important; }
       }
     </style>
   </head>
-  <body style="margin:0; padding:0; background:#f6f7f9;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+  <body style="margin:0; padding:0; width:100% !important; background:#f6f7f9; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
       <tr>
         <td class="wrapPad" style="padding:24px 12px;">
-          <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
-            style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"
+            class="container"
+            style="width:100%; max-width:600px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
 
             <tr>
               <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
@@ -591,7 +596,7 @@ function buildOfferEmailTemplate(payload) {
                 <div style="margin-top:16px; font-weight:900; color:#111827;">Detail Penawaran</div>
 
                 <div class="tableWrap" style="margin-top:10px; border:1px solid #eef2f7; border-radius:14px; overflow:hidden;">
-                  <table class="minw" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate; border-spacing:0;">
+                  <table role="presentation" class="minw" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate; border-spacing:0;">
                     <thead>
                       <tr style="background:#f7f9fc;">
                         <th style="text-align:left; padding:12px 12px; font-size:12px; font-weight:800; color:#0b1220;">No</th>
@@ -605,11 +610,11 @@ function buildOfferEmailTemplate(payload) {
                   </table>
                 </div>
 
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
                   <tr>
                     <td></td>
                     <td style="width:320px; max-width:100%; padding:14px; border:1px solid #eaeaea; border-radius:14px; background:#ffffff;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                         <tr>
                           <td style="padding:6px 0; font-size:12px; color:#6b7280;">Grand Total</td>
                           <td style="padding:6px 0; font-size:14px; font-weight:900; color:#111827; text-align:right; white-space:nowrap;">
@@ -625,9 +630,7 @@ function buildOfferEmailTemplate(payload) {
                   safe(catatan)
                     ? `<div style="margin-top:14px; padding:12px 14px; background:#fafafa; border:1px solid #efefef; border-radius:14px;">
                         <div style="font-weight:800; color:#111827; font-size:12px; margin-bottom:6px;">Catatan</div>
-                        <div style="font-size:13px; color:#374151; line-height:1.7; white-space:pre-wrap;">${safe(
-                          catatan
-                        )}</div>
+                        <div style="font-size:13px; color:#374151; line-height:1.7; white-space:pre-wrap;">${safe(catatan)}</div>
                       </div>`
                     : ''
                 }
@@ -654,8 +657,7 @@ function buildOfferEmailTemplate(payload) {
       </tr>
     </table>
   </body>
-</html>
-  `
+</html>`
 }
 
 // ======================
