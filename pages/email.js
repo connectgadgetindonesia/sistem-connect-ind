@@ -316,8 +316,8 @@ function buildInvoiceEmailTemplate(payload) {
         ? membership.benefits
         : getTierBenefits(tier)
 
+    // ✅ sesuai request: pengingat poin akan hangus + tanggal expirednya (bukan kalimat rolling)
     const expText = (() => {
-      // ✅ sesuai request: pengingat point akan hangus + tanggal expiry
       if (nextExpAt) {
         if (nextExpPts != null && nextExpPts > 0) {
           return `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(
@@ -331,6 +331,7 @@ function buildInvoiceEmailTemplate(payload) {
         return `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(expireAt)}</b>.`
       }
 
+      // fallback kalau DB belum punya expiry (tetap aman)
       return `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
     })()
 
@@ -379,9 +380,6 @@ function buildInvoiceEmailTemplate(payload) {
     `
   })()
 
-  // ✅ IMPORTANT: iOS Mail / Gmail iOS anti “zoom-out”
-  // - HAPUS width="640"
-  // - Gunakan container fluid 100% + max-width via style
   return `<!doctype html>
 <html>
   <head>
@@ -389,7 +387,6 @@ function buildInvoiceEmailTemplate(payload) {
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="x-apple-disable-message-reformatting"/>
     <style>
-      /* anti font auto-zoom */
       body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
       table { border-collapse:separate; }
       img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
@@ -670,8 +667,6 @@ function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = 
   const displayTier = String(tier || 'SILVER').toUpperCase()
   const displayPoints = 'Rp. ' + toNumber(total_points).toLocaleString('id-ID')
 
-  // ukuran mengikuti template (gambar Bapak)
-  // template yang Bapak kirim ukurannya 2048 x 1388
   return `<!doctype html>
 <html>
 <head>
@@ -693,7 +688,6 @@ function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = 
       position:relative; overflow:hidden;
     ">
 
-    <!-- NAMA (Inter Extra Bold 116, warna #19213D) -->
     <div
       style="
         position:absolute;
@@ -706,7 +700,6 @@ function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = 
       "
     >${displayName}</div>
 
-    <!-- LEVEL (Inter Regular 37, warna #5D6481) -->
     <div
       style="
         position:absolute;
@@ -717,7 +710,6 @@ function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = 
       "
     >${displayTier} MEMBER</div>
 
-    <!-- TOTAL POINT (Inter Black 58, warna #19213D, align right) -->
     <div
       style="
         position:absolute;
@@ -745,13 +737,15 @@ function buildMembershipReminderEmailTemplate(payload) {
   } = payload || {}
 
   const benefits = getTierBenefits(tier)
+
+  // ✅ wording sesuai request (pakai koma, "gunakan" huruf kecil)
   const expSoonText =
     next_expiry_at
       ? next_expiring_points && toNumber(next_expiring_points) > 0
-        ? `Point Anda akan segera hangus. Gunakan sebelum <b style="color:#111827;">${formatDateIndo(
+        ? `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(
             next_expiry_at
           )}</b> (sebanyak <b style="color:#111827;">${formatPoints(next_expiring_points)}</b>).`
-        : `Point Anda akan segera hangus. Gunakan sebelum <b style="color:#111827;">${formatDateIndo(next_expiry_at)}</b>.`
+        : `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(next_expiry_at)}</b>.`
       : `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
 
   const benefitRows = (benefits || [])
@@ -765,7 +759,6 @@ function buildMembershipReminderEmailTemplate(payload) {
     )
     .join('')
 
-  // KARTU di atas (HTML, bukan img) supaya preview sama persis
   const cardHtml = buildMemberCardHtml({ nama, tier, total_points })
   const cardBody = extractBodyHtml(cardHtml)
 
@@ -800,16 +793,13 @@ function buildMembershipReminderEmailTemplate(payload) {
 
           <tr>
             <td class="cardPad" style="padding:20px;">
-              <!-- KARTU MEMBER (ATAS) -->
               <div style="border:1px solid #eef2f7; border-radius:16px; overflow:hidden; background:#fff;">
-                <!-- scale down supaya muat 640 -->
                 <div style="transform:scale(0.30); transform-origin:top left; width:2048px; height:1388px;">
                   ${cardBody}
                 </div>
                 <div style="height:6px;"></div>
               </div>
 
-              <!-- DETAIL POINT + BENEFIT (BAWAH) -->
               <div style="margin-top:14px; padding:14px 14px; background:#f7f9fc; border:1px solid #e5e7eb; border-radius:14px;">
                 <div style="font-weight:900; color:#111827; font-size:14px;">Membership & Points</div>
 
@@ -1233,7 +1223,7 @@ export default function EmailPage() {
   const [dataInvoice, setDataInvoice] = useState(null)
   const [htmlBody, setHtmlBody] = useState('')
 
-    // ===== MEMBERSHIP REMINDER STATE =====
+  // ===== MEMBERSHIP REMINDER STATE =====
   const [memberSearch, setMemberSearch] = useState('')
   const [memberLoading, setMemberLoading] = useState(false)
   const [memberList, setMemberList] = useState([])
@@ -1343,40 +1333,40 @@ export default function EmailPage() {
   }
 
   // ======================
-// ✅ MEMBERSHIP SNAPSHOT FETCH (FIXED)
-// - Prioritas: view loyalty_customer_with_expiry (hasil FIFO DB)
-// - Fallback: hitung FIFO dari ledger (kalau view error)
-// ======================
-const fetchMembershipSnapshot = async (invPayload) => {
-  const p = invPayload || {}
+  // ✅ MEMBERSHIP SNAPSHOT FETCH (FIXED)
+  // - Prioritas: view loyalty_customer_with_expiry (hasil FIFO DB)
+  // - Fallback: hitung FIFO dari ledger (kalau view error)
+  // ======================
+  const fetchMembershipSnapshot = async (invPayload) => {
+    const p = invPayload || {}
 
-  // earned points dari transaksi ini (0.5% dari TOTAL setelah diskon)
-  const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
+    // earned points dari transaksi ini (0.5% dari TOTAL setelah diskon)
+    const earnedPoints = Math.floor(toNumber(p.total) * POINT_RATE)
 
-  const keys = buildCustomerKeyCandidates(p.no_wa)
-  if (!keys.length) {
-    return {
-      earned_points: earnedPoints,
-      total_points: null,
-      tier: null,
-      expire_at: null,
-      trx_count: null,
-      next_expiring_points: null,
-      next_expiry_at: null,
-      benefits: null,
+    const keys = buildCustomerKeyCandidates(p.no_wa)
+    if (!keys.length) {
+      return {
+        earned_points: earnedPoints,
+        total_points: null,
+        tier: null,
+        expire_at: null,
+        trx_count: null,
+        next_expiring_points: null,
+        next_expiry_at: null,
+        benefits: null,
+      }
     }
-  }
 
-  setMembershipLoading(true)
-  try {
-    // ======================
-    // 1) Ambil dari VIEW yang benar (FIFO sudah dihitung di DB)
-    // ======================
+    setMembershipLoading(true)
     try {
-      const { data: snap, error: snapErr } = await supabase
-        .from(LOYALTY_VIEW_SNAPSHOT)
-        .select(
-          `
+      // ======================
+      // 1) Ambil dari VIEW yang benar (FIFO sudah dihitung di DB)
+      // ======================
+      try {
+        const { data: snap, error: snapErr } = await supabase
+          .from(LOYALTY_VIEW_SNAPSHOT)
+          .select(
+            `
           customer_key,
           points_balance,
           level,
@@ -1384,282 +1374,270 @@ const fetchMembershipSnapshot = async (invPayload) => {
           next_expiring_points,
           next_expiry_at
         `
-        )
-        .in('customer_key', keys)
-        .limit(1)
+          )
+          .in('customer_key', keys)
+          .limit(1)
 
-      if (!snapErr && Array.isArray(snap) && snap.length) {
-        const row = snap[0] || {}
-        const tier = String(row.level || 'SILVER').toUpperCase()
-        const totalPts = row.points_balance == null ? null : toNumber(row.points_balance)
+        if (!snapErr && Array.isArray(snap) && snap.length) {
+          const row = snap[0] || {}
+          const tier = String(row.level || 'SILVER').toUpperCase()
+          const totalPts = row.points_balance == null ? null : toNumber(row.points_balance)
 
-        return {
-          earned_points: earnedPoints,
-          total_points: totalPts,
-          tier,
-          expire_at: row.next_expiry_at ?? null,
-          trx_count: row.transaksi_unit ?? null,
-          next_expiring_points: row.next_expiring_points ?? null,
-          next_expiry_at: row.next_expiry_at ?? null,
-          benefits: getTierBenefits(tier),
+          return {
+            earned_points: earnedPoints,
+            total_points: totalPts,
+            tier,
+            expire_at: row.next_expiry_at ?? null,
+            trx_count: row.transaksi_unit ?? null,
+            next_expiring_points: row.next_expiring_points ?? null,
+            next_expiry_at: row.next_expiry_at ?? null,
+            benefits: getTierBenefits(tier),
+          }
         }
-      }
-    } catch {
-      // lanjut fallback ledger
-    }
-
-    // ======================
-    // 2) Fallback: FIFO dari ledger (kalau view gagal)
-    //    - EARN (positif) = batch
-    //    - REDEEM (negatif) mengurangi batch paling lama dulu
-    //    - next_expiring_points = sisa batch terdekat expiry
-    // ======================
-    const { data, error } = await supabase
-      .from(LOYALTY_LEDGER_TABLE)
-      .select('customer_key, entry_type, points, created_at, expires_at, expire_at')
-      .in('customer_key', keys)
-      .order('created_at', { ascending: true })
-      .limit(10000)
-
-    if (error) throw error
-
-    const rows = Array.isArray(data) ? data : []
-    const now = dayjs()
-
-    // kumpulkan earn batches (urut lama → baru)
-    const earnBatches = []
-    let totalRedeem = 0
-
-    for (const r of rows) {
-      const pts = toNumber(r.points)
-      const entry = String(r.entry_type || '').toUpperCase()
-
-      if (entry === 'REDEEM' || pts < 0) {
-        totalRedeem += Math.abs(pts)
-        continue
+      } catch {
+        // lanjut fallback ledger
       }
 
-      // EARN
-      const exp = r.expires_at || r.expire_at || null
-      const expDay = exp ? dayjs(exp) : null
+      // ======================
+      // 2) Fallback: FIFO dari ledger (kalau view gagal)
+      // ======================
+      const { data, error } = await supabase
+        .from(LOYALTY_LEDGER_TABLE)
+        .select('customer_key, entry_type, points, created_at, expires_at, expire_at')
+        .in('customer_key', keys)
+        .order('created_at', { ascending: true })
+        .limit(10000)
 
-      // kalau expiry kosong, anggap rolling 365 dari created_at (fallback aman)
-      const created = dayjs(r.created_at)
-      const expiryAt = expDay?.isValid() ? expDay : created.add(EXPIRY_DAYS, 'day')
+      if (error) throw error
 
-      earnBatches.push({
-        created_at: created.isValid() ? created.toISOString() : r.created_at,
-        expiry_at: expiryAt.isValid() ? expiryAt.toISOString() : null,
-        earn_points: Math.max(0, pts),
-      })
-    }
+      const rows = Array.isArray(data) ? data : []
+      const now = dayjs()
 
-    // FIFO apply redeem
-    let redeemLeft = totalRedeem
-    const remainingByExpiry = [] // { expiry_at, remaining_points }
+      const earnBatches = []
+      let totalRedeem = 0
 
-    for (const b of earnBatches) {
-      let remain = b.earn_points
-      if (redeemLeft > 0) {
-        const used = Math.min(remain, redeemLeft)
-        remain -= used
-        redeemLeft -= used
-      }
+      for (const r of rows) {
+        const pts = toNumber(r.points)
+        const entry = String(r.entry_type || '').toUpperCase()
 
-      // hanya hitung yang belum expired & masih ada sisa
-      const exp = b.expiry_at ? dayjs(b.expiry_at) : null
-      if (remain > 0 && exp && exp.isValid() && exp.isAfter(now)) {
-        remainingByExpiry.push({ expiry_at: exp.format('YYYY-MM-DD'), remaining_points: remain })
-      }
-    }
+        if (entry === 'REDEEM' || pts < 0) {
+          totalRedeem += Math.abs(pts)
+          continue
+        }
 
-    // total points = sisa semua batch (yang belum expired)
-    const totalPoints = remainingByExpiry.reduce((a, x) => a + toNumber(x.remaining_points), 0)
+        const exp = r.expires_at || r.expire_at || null
+        const expDay = exp ? dayjs(exp) : null
 
-    // cari next expiry terdekat
-    remainingByExpiry.sort((a, b) => new Date(a.expiry_at).getTime() - new Date(b.expiry_at).getTime())
-    const next = remainingByExpiry[0] || null
+        const created = dayjs(r.created_at)
+        const expiryAt = expDay?.isValid() ? expDay : created.add(EXPIRY_DAYS, 'day')
 
-    // tier fallback (kalau view gagal, minimal aman SILVER)
-    const tier = 'SILVER'
-
-    return {
-      earned_points: earnedPoints,
-      total_points: totalPoints,
-      tier,
-      expire_at: next?.expiry_at || null,
-      trx_count: null,
-      next_expiring_points: next?.remaining_points || null,
-      next_expiry_at: next?.expiry_at || null,
-      benefits: getTierBenefits(tier),
-    }
-  } catch (e) {
-    console.warn('fetchMembershipSnapshot error:', e?.message || e)
-    return {
-      earned_points: earnedPoints,
-      total_points: null,
-      tier: null,
-      expire_at: null,
-      trx_count: null,
-      next_expiring_points: null,
-      next_expiry_at: null,
-      benefits: null,
-    }
-  } finally {
-    setMembershipLoading(false)
-  }
-}// ======================
-// ✅ MEMBERSHIP: cari customer dari penjualan_baru (nama/no_wa/email)
-// ======================
-const fetchMemberCandidates = async (keyword) => {
-  const q = safe(keyword)
-  if (!q) {
-    setMemberList([])
-    return
-  }
-
-  setMemberLoading(true)
-  try {
-    // cari dari transaksi (paling aman & sudah ada datanya)
-    // NOTE: Supabase "or" pakai format: col.ilike.%x%,col2.ilike.%x%
-    const like = `%${q}%`
-    const { data, error } = await supabase
-      .from('penjualan_baru')
-      .select('nama_pembeli, no_wa, email, tanggal')
-      .or(`nama_pembeli.ilike.${like},no_wa.ilike.${like},email.ilike.${like}`)
-      .order('tanggal', { ascending: false })
-      .limit(50)
-
-    if (error) throw error
-
-    // unique by no_wa
-    const map = new Map()
-    for (const r of Array.isArray(data) ? data : []) {
-      const wa = safe(r.no_wa)
-      if (!wa) continue
-      if (!map.has(wa)) {
-        map.set(wa, {
-          nama: safe(r.nama_pembeli),
-          no_wa: wa,
-          email: safe(r.email),
-          last_tanggal: r.tanggal,
+        earnBatches.push({
+          created_at: created.isValid() ? created.toISOString() : r.created_at,
+          expiry_at: expiryAt.isValid() ? expiryAt.toISOString() : null,
+          earn_points: Math.max(0, pts),
         })
       }
-    }
 
-    setMemberList(Array.from(map.values()).slice(0, 20))
-  } catch (e) {
-    console.warn('fetchMemberCandidates error:', e?.message || e)
-    setMemberList([])
-  } finally {
-    setMemberLoading(false)
-  }
-}
+      let redeemLeft = totalRedeem
+      const remainingByExpiry = []
 
-const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
-  const keys = buildCustomerKeyCandidates(no_wa)
-  if (!keys.length) return null
+      for (const b of earnBatches) {
+        let remain = b.earn_points
+        if (redeemLeft > 0) {
+          const used = Math.min(remain, redeemLeft)
+          remain -= used
+          redeemLeft -= used
+        }
 
-  setMembershipLoading(true)
-  try {
-    // 1) coba VIEW snapshot
-    try {
-      const { data: snap, error: snapErr } = await supabase
-        .from(LOYALTY_VIEW_SNAPSHOT)
-        .select('customer_key, points_balance, level, next_expiring_points, next_expiry_at')
-        .in('customer_key', keys)
-        .limit(1)
-
-      if (!snapErr && Array.isArray(snap) && snap.length) {
-        const row = snap[0] || {}
-        const tier = String(row.level || 'SILVER').toUpperCase()
-        return {
-          nama: safe(nama),
-          no_wa: safe(no_wa),
-          total_points: toNumber(row.points_balance),
-          tier,
-          next_expiring_points: row.next_expiring_points ?? null,
-          next_expiry_at: row.next_expiry_at ?? null,
+        const exp = b.expiry_at ? dayjs(b.expiry_at) : null
+        if (remain > 0 && exp && exp.isValid() && exp.isAfter(now)) {
+          remainingByExpiry.push({ expiry_at: exp.format('YYYY-MM-DD'), remaining_points: remain })
         }
       }
-    } catch {
-      // lanjut ledger
+
+      const totalPoints = remainingByExpiry.reduce((a, x) => a + toNumber(x.remaining_points), 0)
+
+      remainingByExpiry.sort((a, b) => new Date(a.expiry_at).getTime() - new Date(b.expiry_at).getTime())
+      const next = remainingByExpiry[0] || null
+
+      const tier = 'SILVER'
+
+      return {
+        earned_points: earnedPoints,
+        total_points: totalPoints,
+        tier,
+        expire_at: next?.expiry_at || null,
+        trx_count: null,
+        next_expiring_points: next?.remaining_points || null,
+        next_expiry_at: next?.expiry_at || null,
+        benefits: getTierBenefits(tier),
+      }
+    } catch (e) {
+      console.warn('fetchMembershipSnapshot error:', e?.message || e)
+      return {
+        earned_points: earnedPoints,
+        total_points: null,
+        tier: null,
+        expire_at: null,
+        trx_count: null,
+        next_expiring_points: null,
+        next_expiry_at: null,
+        benefits: null,
+      }
+    } finally {
+      setMembershipLoading(false)
+    }
+  } // ✅ BIARKAN TANPA ; DI SINI? TIDAK — kita tutup benar di bawah
+
+  // ✅ FIX SYNTAX: wajib ada ; setelah function const, biar tidak jadi `}const ...` (error)
+  // eslint-disable-next-line no-unused-expressions
+  ;(0)
+
+  // ======================
+  // ✅ MEMBERSHIP: cari customer dari penjualan_baru (nama/no_wa/email)
+  // ======================
+  const fetchMemberCandidates = async (keyword) => {
+    const q = safe(keyword)
+    if (!q) {
+      setMemberList([])
+      return
     }
 
-    // 2) fallback ledger FIFO (reuse cara dari fetchMembershipSnapshot)
-    const { data, error } = await supabase
-      .from(LOYALTY_LEDGER_TABLE)
-      .select('customer_key, entry_type, points, created_at, expires_at, expire_at')
-      .in('customer_key', keys)
-      .order('created_at', { ascending: true })
-      .limit(10000)
-    if (error) throw error
+    setMemberLoading(true)
+    try {
+      const like = `%${q}%`
+      const { data, error } = await supabase
+        .from('penjualan_baru')
+        .select('nama_pembeli, no_wa, email, tanggal')
+        .or(`nama_pembeli.ilike.${like},no_wa.ilike.${like},email.ilike.${like}`)
+        .order('tanggal', { ascending: false })
+        .limit(50)
 
-    const rows = Array.isArray(data) ? data : []
-    const now = dayjs()
+      if (error) throw error
 
-    const earnBatches = []
-    let totalRedeem = 0
-
-    for (const r of rows) {
-      const pts = toNumber(r.points)
-      const entry = String(r.entry_type || '').toUpperCase()
-
-      if (entry === 'REDEEM' || pts < 0) {
-        totalRedeem += Math.abs(pts)
-        continue
+      const map = new Map()
+      for (const r of Array.isArray(data) ? data : []) {
+        const wa = safe(r.no_wa)
+        if (!wa) continue
+        if (!map.has(wa)) {
+          map.set(wa, {
+            nama: safe(r.nama_pembeli),
+            no_wa: wa,
+            email: safe(r.email),
+            last_tanggal: r.tanggal,
+          })
+        }
       }
 
-      const exp = r.expires_at || r.expire_at || null
-      const expDay = exp ? dayjs(exp) : null
-      const created = dayjs(r.created_at)
-      const expiryAt = expDay?.isValid() ? expDay : created.add(EXPIRY_DAYS, 'day')
-
-      earnBatches.push({
-        expiry_at: expiryAt.isValid() ? expiryAt.format('YYYY-MM-DD') : null,
-        earn_points: Math.max(0, pts),
-      })
+      setMemberList(Array.from(map.values()).slice(0, 20))
+    } catch (e) {
+      console.warn('fetchMemberCandidates error:', e?.message || e)
+      setMemberList([])
+    } finally {
+      setMemberLoading(false)
     }
-
-    let redeemLeft = totalRedeem
-    const remainingByExpiry = []
-
-    for (const b of earnBatches) {
-      let remain = b.earn_points
-      if (redeemLeft > 0) {
-        const used = Math.min(remain, redeemLeft)
-        remain -= used
-        redeemLeft -= used
-      }
-
-      const exp = b.expiry_at ? dayjs(b.expiry_at) : null
-      if (remain > 0 && exp && exp.isValid() && exp.isAfter(now)) {
-        remainingByExpiry.push({ expiry_at: exp.format('YYYY-MM-DD'), remaining_points: remain })
-      }
-    }
-
-    const totalPoints = remainingByExpiry.reduce((a, x) => a + toNumber(x.remaining_points), 0)
-    remainingByExpiry.sort((a, b) => new Date(a.expiry_at).getTime() - new Date(b.expiry_at).getTime())
-    const next = remainingByExpiry[0] || null
-
-    return {
-      nama: safe(nama),
-      no_wa: safe(no_wa),
-      total_points: totalPoints,
-      tier: 'SILVER',
-      next_expiring_points: next?.remaining_points || null,
-      next_expiry_at: next?.expiry_at || null,
-    }
-  } catch (e) {
-    console.warn('fetchMembershipForCustomer error:', e?.message || e)
-    return null
-  } finally {
-    setMembershipLoading(false)
   }
-}
+
+  const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
+    const keys = buildCustomerKeyCandidates(no_wa)
+    if (!keys.length) return null
+
+    setMembershipLoading(true)
+    try {
+      try {
+        const { data: snap, error: snapErr } = await supabase
+          .from(LOYALTY_VIEW_SNAPSHOT)
+          .select('customer_key, points_balance, level, next_expiring_points, next_expiry_at')
+          .in('customer_key', keys)
+          .limit(1)
+
+        if (!snapErr && Array.isArray(snap) && snap.length) {
+          const row = snap[0] || {}
+          const tier = String(row.level || 'SILVER').toUpperCase()
+          return {
+            nama: safe(nama),
+            no_wa: safe(no_wa),
+            total_points: toNumber(row.points_balance),
+            tier,
+            next_expiring_points: row.next_expiring_points ?? null,
+            next_expiry_at: row.next_expiry_at ?? null,
+          }
+        }
+      } catch {}
+
+      const { data, error } = await supabase
+        .from(LOYALTY_LEDGER_TABLE)
+        .select('customer_key, entry_type, points, created_at, expires_at, expire_at')
+        .in('customer_key', keys)
+        .order('created_at', { ascending: true })
+        .limit(10000)
+      if (error) throw error
+
+      const rows = Array.isArray(data) ? data : []
+      const now = dayjs()
+
+      const earnBatches = []
+      let totalRedeem = 0
+
+      for (const r of rows) {
+        const pts = toNumber(r.points)
+        const entry = String(r.entry_type || '').toUpperCase()
+
+        if (entry === 'REDEEM' || pts < 0) {
+          totalRedeem += Math.abs(pts)
+          continue
+        }
+
+        const exp = r.expires_at || r.expire_at || null
+        const expDay = exp ? dayjs(exp) : null
+        const created = dayjs(r.created_at)
+        const expiryAt = expDay?.isValid() ? expDay : created.add(EXPIRY_DAYS, 'day')
+
+        earnBatches.push({
+          expiry_at: expiryAt.isValid() ? expiryAt.format('YYYY-MM-DD') : null,
+          earn_points: Math.max(0, pts),
+        })
+      }
+
+      let redeemLeft = totalRedeem
+      const remainingByExpiry = []
+
+      for (const b of earnBatches) {
+        let remain = b.earn_points
+        if (redeemLeft > 0) {
+          const used = Math.min(remain, redeemLeft)
+          remain -= used
+          redeemLeft -= used
+        }
+
+        const exp = b.expiry_at ? dayjs(b.expiry_at) : null
+        if (remain > 0 && exp && exp.isValid() && exp.isAfter(now)) {
+          remainingByExpiry.push({ expiry_at: exp.format('YYYY-MM-DD'), remaining_points: remain })
+        }
+      }
+
+      const totalPoints = remainingByExpiry.reduce((a, x) => a + toNumber(x.remaining_points), 0)
+      remainingByExpiry.sort((a, b) => new Date(a.expiry_at).getTime() - new Date(b.expiry_at).getTime())
+      const next = remainingByExpiry[0] || null
+
+      return {
+        nama: safe(nama),
+        no_wa: safe(no_wa),
+        total_points: totalPoints,
+        tier: 'SILVER',
+        next_expiring_points: next?.remaining_points || null,
+        next_expiry_at: next?.expiry_at || null,
+      }
+    } catch (e) {
+      console.warn('fetchMembershipForCustomer error:', e?.message || e)
+      return null
+    } finally {
+      setMembershipLoading(false)
+    }
+  }
 
   // ===== build HTML based on mode =====
-   useEffect(() => {
+  useEffect(() => {
     if (mode === 'invoice') {
       if (!dataInvoice) {
         setHtmlBody('')
@@ -2005,7 +1983,7 @@ const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
     await fetchInvoicesByDate(pickerDate)
   }
 
-  const pickInvoice = (inv) => {
+  const pickInvoice = async (inv) => {
     const payload = {
       invoice_id: inv.invoice_id,
       tanggal: inv.tanggal,
@@ -2033,6 +2011,14 @@ const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
     else setToEmail('')
 
     setSubject('Invoice Pembelian – CONNECT.IND')
+
+    // ✅ auto fetch membership snapshot saat pilih invoice
+    try {
+      const snap = await fetchMembershipSnapshot(payload)
+      setMembershipSnap(snap)
+    } catch {
+      setMembershipSnap(null)
+    }
   }
 
   const fileToBase64 = (file) =>
@@ -2189,8 +2175,8 @@ const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
     if (!toEmail || !String(toEmail).includes('@')) return alert('Email tujuan belum benar.')
     if (!subject.trim()) return alert('Subject masih kosong.')
     if (!htmlBody || htmlBody.trim().length < 20) return alert('Body email masih kosong.')
-    
-      if (mode === 'membership') {
+
+    if (mode === 'membership') {
       if (!memberSelected || !memberSnap) return alert('Pilih customer dulu.')
     }
 
@@ -2210,7 +2196,7 @@ const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
       let docId = ''
       let filename = ''
 
-           if (mode === 'invoice') {
+      if (mode === 'invoice') {
         docId = dataInvoice.invoice_id
         filename = `${docId}.jpg`
         const html = buildInvoiceA4Html({ invoice_id: dataInvoice.invoice_id, payload: dataInvoice })
@@ -2313,7 +2299,7 @@ const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
     }
   }
 
-    const downloadJpg = async () => {
+  const downloadJpg = async () => {
     try {
       if (mode === 'membership') {
         if (!memberSelected || !memberSnap) return alert('Pilih customer dulu.')
@@ -2467,7 +2453,7 @@ const fetchMembershipForCustomer = async ({ nama, no_wa }) => {
     )
   }, [mode, dataInvoice, historyEnabled, membershipSnap, membershipLoading])
 
-   useEffect(() => {
+  useEffect(() => {
     if (mode === 'invoice') {
       if (!subject || subject.includes('Surat Penawaran') || subject.includes('Membership')) {
         setSubject('Invoice Pembelian – CONNECT.IND')
