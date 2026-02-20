@@ -658,14 +658,49 @@ function buildOfferEmailTemplate(payload) {
 }
 
 // ======================
-// ✅ MEMBERSHIP REMINDER (CARD + EMAIL TEMPLATE)
+// ✅ MEMBERSHIP REMINDER A4 (JPG) — TANPA KARTU
 // ======================
-const MEMBER_CARD_BG = '/template-kartu-member.png' // simpan di /public
+function buildMembershipReminderA4Html(payload) {
+  const {
+    nama = '',
+    no_wa = '',
+    tier = 'SILVER',
+    total_points = 0,
+    next_expiring_points = null,
+    next_expiry_at = null,
+  } = payload || {}
 
-function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = {}) {
   const displayName = safe(nama) || 'CUSTOMER'
   const displayTier = String(tier || 'SILVER').toUpperCase()
-  const displayPoints = 'Rp. ' + toNumber(total_points).toLocaleString('id-ID')
+  const pointsText = formatPoints(total_points || 0)
+
+  const expText =
+    next_expiry_at
+      ? next_expiring_points && toNumber(next_expiring_points) > 0
+        ? `Point akan segera hangus sebelum <b>${formatDateIndo(next_expiry_at)}</b> (sebanyak <b>${formatPoints(
+            next_expiring_points
+          )}</b>).`
+        : `Point akan segera hangus sebelum <b>${formatDateIndo(next_expiry_at)}</b>.`
+      : `Point memiliki masa berlaku rolling ${EXPIRY_DAYS} hari.`
+
+  const benefits = getTierBenefits(displayTier)
+  const benefitLis =
+    Array.isArray(benefits) && benefits.length
+      ? benefits
+          .map(
+            (b) =>
+              `<li style="margin:6px 0; color:#111827; font-size:12px; line-height:1.55;">${safe(b)}</li>`
+          )
+          .join('')
+      : `<li style="margin:6px 0; color:#111827; font-size:12px; line-height:1.55;">-</li>`
+
+  // Badge color
+  const badgeStyle =
+    displayTier === 'PLATINUM'
+      ? 'background:#f1f5f9;border:1px solid #cbd5e1;color:#0f172a;'
+      : displayTier === 'GOLD'
+      ? 'background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;'
+      : 'background:#f9fafb;border:1px solid #e5e7eb;color:#111827;'
 
   return `<!doctype html>
 <html>
@@ -674,178 +709,74 @@ function buildMemberCardHtml({ nama = '', tier = 'SILVER', total_points = 0 } = 
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet"/>
   <style>
     *{ box-sizing:border-box; }
     body{ margin:0; background:#ffffff; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
   </style>
 </head>
 <body>
-  <div id="member-card"
-    style="
-      width:2048px; height:1388px;
-      background:#ffffff url('${MEMBER_CARD_BG}') no-repeat center/cover;
-      position:relative; overflow:hidden;
-    ">
+  <div id="member-reminder-a4" style="width:794px; height:1123px; background:#ffffff; position:relative; overflow:hidden;">
+    <div style="padding:56px;">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+        <div>
+          <div style="font-weight:900; font-size:18px; color:#111827; letter-spacing:.2px;">CONNECT.IND</div>
+          <div style="margin-top:6px; font-size:12px; color:#6b7280; line-height:1.6;">
+            Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145<br/>
+            WhatsApp: 0896-31-4000-31
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:12px; color:#6b7280;">Membership Reminder</div>
+          <div style="margin-top:4px; font-size:12px; color:#111827; font-weight:800;">${dayjs().format(
+            'DD/MM/YYYY'
+          )}</div>
+        </div>
+      </div>
 
-    <div
-      style="
-        position:absolute;
-        left:520px; top:360px;
-        font-size:116px;
-        font-weight:800;
-        color:#19213D;
-        line-height:1;
-        letter-spacing:-1px;
-      "
-    >${displayName}</div>
+      <div style="margin-top:26px; border:1px solid #eef2f7; border-radius:16px; padding:18px; background:#ffffff;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div>
+            <div style="font-size:12px; color:#6b7280;">Nama Customer</div>
+            <div style="margin-top:4px; font-size:18px; font-weight:900; color:#111827; letter-spacing:-.2px;">
+              ${displayName}
+            </div>
+            <div style="margin-top:6px; font-size:12px; color:#6b7280;">
+              No. WA: <b style="color:#111827;">${safe(no_wa) || '-'}</b>
+            </div>
+          </div>
 
-    <div
-      style="
-        position:absolute;
-        left:520px; top:500px;
-        font-size:37px;
-        font-weight:400;
-        color:#5D6481;
-      "
-    >${displayTier} MEMBER</div>
+          <div style="text-align:right;">
+            <div style="display:inline-block; padding:7px 12px; border-radius:999px; font-weight:900; font-size:12px; ${badgeStyle}">
+              ${displayTier} MEMBER
+            </div>
+            <div style="margin-top:10px; font-size:12px; color:#6b7280;">Total Point</div>
+            <div style="margin-top:4px; font-size:22px; font-weight:900; color:#111827;">
+              ${pointsText}
+            </div>
+          </div>
+        </div>
 
-    <div
-      style="
-        position:absolute;
-        right:250px; top:690px;
-        font-size:58px;
-        font-weight:900;
-        color:#19213D;
-        text-align:right;
-        white-space:nowrap;
-      "
-    >${displayPoints}</div>
+        <div style="margin-top:14px; padding:12px 14px; border-radius:14px; background:#fff7ed; border:1px solid #fed7aa;">
+          <div style="font-weight:900; color:#9a3412; font-size:13px;">⚠️ Pengingat</div>
+          <div style="margin-top:6px; font-size:12px; color:#111827; line-height:1.6;">
+            ${expText}
+          </div>
+        </div>
 
+        <div style="margin-top:16px; font-weight:900; color:#111827;">Benefit sesuai membership Anda</div>
+        <ul style="margin:10px 0 0 18px; padding:0;">
+          ${benefitLis}
+        </ul>
+
+        <div style="margin-top:16px; font-size:11px; color:#6b7280; line-height:1.6;">
+          Catatan: Point dapat ditukarkan saat transaksi berikutnya (maksimal 50% dari point yang dimiliki).
+        </div>
+      </div>
+    </div>
+
+    <div style="position:absolute; left:0; right:0; bottom:0; height:12px; background:#111827;"></div>
   </div>
-</body>
-</html>`
-}
-
-function buildMembershipReminderEmailTemplate(payload) {
-  const {
-    nama = '',
-    tier = 'SILVER',
-    total_points = 0,
-    next_expiring_points = null,
-    next_expiry_at = null,
-  } = payload || {}
-
-  const benefits = getTierBenefits(tier)
-
-  // ✅ wording sesuai request (pakai koma, "gunakan" huruf kecil)
-  const expSoonText =
-    next_expiry_at
-      ? next_expiring_points && toNumber(next_expiring_points) > 0
-        ? `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(
-            next_expiry_at
-          )}</b> (sebanyak <b style="color:#111827;">${formatPoints(next_expiring_points)}</b>).`
-        : `Point Anda akan segera hangus, gunakan sebelum <b style="color:#111827;">${formatDateIndo(next_expiry_at)}</b>.`
-      : `Point Anda memiliki masa berlaku (rolling ${EXPIRY_DAYS} hari).`
-
-  const benefitRows = (benefits || [])
-    .map(
-      (b) => `
-      <tr>
-        <td style="vertical-align:top; padding:3px 0; width:16px; color:#111827; font-weight:900;">•</td>
-        <td style="padding:3px 0; color:#374151; font-size:13px; line-height:1.6;">${safe(b)}</td>
-      </tr>
-    `
-    )
-    .join('')
-
-  const cardHtml = buildMemberCardHtml({ nama, tier, total_points })
-  const cardBody = extractBodyHtml(cardHtml)
-
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <style>
-    @media screen and (max-width: 600px) {
-      .wrapPad { padding: 14px 10px !important; }
-      .container { width: 100% !important; }
-      .cardPad { padding: 14px !important; }
-    }
-  </style>
-</head>
-<body style="margin:0; padding:0; background:#f6f7f9;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
-    <tr>
-      <td class="wrapPad" style="padding:24px 12px;">
-        <table class="container" width="640" cellpadding="0" cellspacing="0" border="0" align="center"
-          style="width:100%; max-width:640px; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
-
-          <tr>
-            <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
-              <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
-              <div style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.4;">
-                Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-31-4000-31
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td class="cardPad" style="padding:20px;">
-              <div style="border:1px solid #eef2f7; border-radius:16px; overflow:hidden; background:#fff;">
-                <div style="transform:scale(0.30); transform-origin:top left; width:2048px; height:1388px;">
-                  ${cardBody}
-                </div>
-                <div style="height:6px;"></div>
-              </div>
-
-              <div style="margin-top:14px; padding:14px 14px; background:#f7f9fc; border:1px solid #e5e7eb; border-radius:14px;">
-                <div style="font-weight:900; color:#111827; font-size:14px;">Membership & Points</div>
-
-                <div style="margin-top:8px; color:#374151; font-size:13px; line-height:1.7;">
-                  Halo <b style="color:#111827;">${safe(nama) || 'Customer'}</b>,<br/>
-                  Total point Anda saat ini <b style="color:#111827;">${formatPoints(total_points)}</b>.<br/>
-                  ${expSoonText}<br/>
-                  Level membership Anda: <b style="color:#111827;">${String(tier || 'SILVER').toUpperCase()}</b>.
-                </div>
-
-                ${
-                  benefitRows
-                    ? `
-                    <div style="margin-top:10px; font-weight:800; color:#111827; font-size:13px;">Benefit sesuai membership Anda:</div>
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:6px;">
-                      ${benefitRows}
-                    </table>
-                  `
-                    : ''
-                }
-
-                <div style="margin-top:10px; color:#6b7280; font-size:11px; line-height:1.6;">
-                  Catatan: Anda dapat menukarkan point saat transaksi berikutnya (maksimal 50% dari point yang dimiliki).
-                </div>
-              </div>
-
-              <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
-                Mohon tidak membalas email ini. Jika ada pertanyaan hubungi WhatsApp kami di <b style="color:#111827;">0896-31-4000-31</b>.
-              </div>
-
-              <div style="margin-top:18px; color:#6b7280; font-size:12px;">
-                Hormat kami,<br/>
-                <b style="color:#111827;">CONNECT.IND</b>
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="text-align:center; color:#9ca3af; font-size:12px; padding:14px 16px; border-top:1px solid #f0f0f0;">
-              Email ini dikirim dari sistem CONNECT.IND.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
 </body>
 </html>`
 }
@@ -966,7 +897,7 @@ function buildInvoiceA4Html({ invoice_id, payload, rows, totals }) {
 
       <div style="display:flex; gap:22px; align-items:flex-start;">
         <div style="width:360px; height:132px; display:flex; align-items:center; justify-content:flex-start;">
-          <img src="/logo-connect-transparan.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
+          <img src="/logo.png" alt="CONNECT.IND" style="width:320px; height:auto; display:block;" />
         </div>
 
         <div style="width:360px; height:132px; display:flex; flex-direction:column; gap:8px;">
