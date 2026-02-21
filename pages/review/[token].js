@@ -168,7 +168,7 @@ export default function ReviewPublicPage() {
               <div className="mt-4 border border-gray-200 rounded-2xl p-4 bg-white">
                 <div className="text-sm font-bold text-gray-900">2) Nilai Pelayanan</div>
                 <div className="text-sm text-gray-600 mt-1">
-                  Ini untuk internal kami agar pelayanan makin rapi.
+                  Saran dan masukan kamu tentang pelayanan kami sangat berarti untuk perbaikan ke depannya. Tolong beri nilai jujur ya, biar kami tahu apa yang harus diperbaiki.
                 </div>
 
                 <div className="mt-3">
