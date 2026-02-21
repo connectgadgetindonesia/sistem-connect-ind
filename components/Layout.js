@@ -17,6 +17,7 @@ import {
   CreditCard,
   Menu,
   LogOut,
+  MessageSquare,
   Mail,
 } from 'lucide-react'
 
@@ -30,10 +31,9 @@ export default function Layout({ children }) {
     { label: 'Absensi & Tugas', path: '/absensi', icon: CalendarCheck2 },
     { label: 'Stok Barang', path: '/', icon: Package },
     { label: 'Input Penjualan', path: '/penjualan', icon: ShoppingCart },
-
+    { label: 'Review Pelayanan', path: '/review-pelayanan', icon: MessageSquare },
     // ✅ FIX: wajib ada koma
     { label: 'Membership & Loyalty', path: '/membership', icon: Users },
-
     { label: 'Transaksi Indent', path: '/indent', icon: CreditCard },
     { label: 'Stok Aksesoris', path: '/stok-aksesoris', icon: Boxes },
     { label: 'Riwayat Penjualan', path: '/riwayat', icon: ClipboardList },
