@@ -148,7 +148,9 @@ export default function ReviewPublicPage() {
                   <>
                     , transaksi kamu dilayani oleh <b className="text-gray-900">{reqData.dilayani_oleh}</b>.
                   </>
-                ) : null}
+                ) : (
+                  '.'
+                )}
               </div>
 
               <div className="mt-4 border border-gray-200 rounded-2xl p-4 bg-white">
