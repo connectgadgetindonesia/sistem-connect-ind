@@ -20,6 +20,11 @@ const btnTab = (active) =>
 const FROM_EMAIL = 'admin@connectgadgetind.com'
 const FROM_NAME = 'CONNECT.IND'
 
+const APP_BASE_URL = 'https://sistem.connectgadgetind.com'
+const GOOGLE_REVIEW_URL = 'https://share.google/Zo6NYmnk4fw6XSxUR'
+const REVIEW_REQUESTS_TABLE = 'review_requests'
+
+
 // ==========================
 // EMAIL LOG TABLE (Supabase)
 // ==========================
@@ -95,6 +100,62 @@ const buildCustomerKeyCandidates = (no_wa) => {
   if (raw.startsWith('0') && raw.length > 3) arr.add(raw.slice(1))
 
   return Array.from(arr).filter(Boolean)
+}
+
+// ======================
+// ✅ REVIEW REQUEST (Invoice → Google Maps + Rating Pelayanan)
+// ======================
+function generateReviewToken(len = 32) {
+  try {
+    const bytes = new Uint8Array(len)
+    crypto.getRandomValues(bytes)
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .slice(0, len * 2)
+  } catch {
+    // fallback
+    const s = `${Date.now()}-${Math.random()}-${Math.random()}`
+    return btoa(s).replace(/[^a-zA-Z0-9]/g, '').slice(0, len * 2)
+  }
+}
+
+async function createReviewRequestForInvoice({ invoice_id, nama_pembeli, no_wa, dilayani_oleh, to_email }) {
+  const keyCandidates = buildCustomerKeyCandidates(no_wa)
+  const customer_key = keyCandidates[0] || digitsOnly(no_wa) || ''
+
+  // token unik (pakai insert retry kalau bentrok)
+  for (let i = 0; i < 3; i++) {
+    const token = generateReviewToken(16) // 32 hex chars
+    const payload = {
+      token,
+      invoice_id: safe(invoice_id),
+      customer_key: safe(customer_key),
+      customer_name: safe(nama_pembeli),
+      email: safe(to_email),
+      dilayani_oleh: safe(dilayani_oleh),
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    }
+
+    const { error } = await supabase.from(REVIEW_REQUESTS_TABLE).insert([payload])
+    if (!error) {
+      const origin =
+        typeof window !== 'undefined' && window.location?.origin ? window.location.origin : APP_BASE_URL
+      const reviewUrl = `${origin}/review/${token}`
+      return { token, reviewUrl }
+    }
+
+    // kalau bentrok token / error lain, coba ulang
+    // eslint-disable-next-line no-console
+    console.warn('createReviewRequestForInvoice error:', error?.message || error)
+  }
+
+  // fallback: tetap kirim email tanpa link internal
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : APP_BASE_URL
+  return { token: '', reviewUrl: `${origin}/review` }
 }
 
 function isUnitRow(r) {
@@ -192,6 +253,7 @@ function buildInvoiceEmailTemplate(payload) {
     discount = 0,
     total = 0,
     membership = null,
+    review = null,
   } = payload || {}
 
   const itemCards =
@@ -380,6 +442,51 @@ function buildInvoiceEmailTemplate(payload) {
     `
   })()
 
+  const reviewBlock = (() => {
+    if (!review) return ''
+
+    const mapsUrl = safe(review.maps_url || GOOGLE_REVIEW_URL)
+    const internalUrl = safe(review.review_url || '')
+    const servedBy = safe(review.dilayani_oleh || '')
+
+    // tombol email-safe
+    const btnStyle =
+      'display:inline-block;padding:12px 14px;border-radius:12px;font-weight:900;font-size:13px;text-decoration:none;'
+    const btnPrimary = btnStyle + 'background:#111827;color:#ffffff;'
+    const btnSoft = btnStyle + 'background:#f3f4f6;color:#111827;border:1px solid #e5e7eb;'
+
+    return `
+      <div style="margin-top:18px; padding:14px 14px; background:#ffffff; border:1px solid #e5e7eb; border-radius:14px;">
+        <div style="font-weight:900; color:#111827; font-size:14px;">Bantu kami dengan 30 detik?</div>
+        <div style="margin-top:6px; color:#374151; font-size:13px; line-height:1.7;">
+          Kalau pelayanan kami sudah oke, boleh bantu kasih ulasan ya 🙏
+          ${servedBy ? `<br/>Transaksi ini dilayani oleh: <b style="color:#111827;">${servedBy}</b>.` : ''}
+        </div>
+
+        <div style="margin-top:12px;">
+          <a href="${mapsUrl}" target="_blank" style="${btnPrimary}">
+            Beri Ulasan Google Maps
+          </a>
+        </div>
+
+        ${
+          internalUrl
+            ? `<div style="margin-top:10px;">
+                <a href="${internalUrl}" target="_blank" style="${btnSoft}">
+                  Nilai Pelayanan (Bintang & Komentar)
+                </a>
+              </div>`
+            : ''
+        }
+
+        <div style="margin-top:10px; color:#6b7280; font-size:11px; line-height:1.6;">
+          Terima kasih—ini membantu CONNECT.IND tetap konsisten menjaga kualitas.
+        </div>
+      </div>
+    `
+  })()
+
+
   return `<!doctype html>
 <html>
   <head>
@@ -464,6 +571,8 @@ function buildInvoiceEmailTemplate(payload) {
                 </table>
 
                 ${membershipBlock}
+
+                ${reviewBlock}
 
                 <div style="margin-top:18px; color:#374151; font-size:13px; line-height:1.7;">
                   Halo <b style="color:#111827;">${safe(nama_pembeli) || 'Customer'}</b>,<br/>
@@ -2322,13 +2431,43 @@ export default function EmailPage() {
         })
       }
 
+
+      // ✅ Invoice: buat review request token (seamless di email invoice)
+      let htmlToSend = htmlBody
+      if (mode === 'invoice') {
+        try {
+          const rr = await createReviewRequestForInvoice({
+            invoice_id: dataInvoice?.invoice_id,
+            nama_pembeli: dataInvoice?.nama_pembeli,
+            no_wa: dataInvoice?.no_wa,
+            dilayani_oleh: dataInvoice?.dilayani_oleh,
+            to_email: toEmail.trim(),
+          })
+
+          htmlToSend = buildInvoiceEmailTemplate({
+            ...dataInvoice,
+            membership: membershipSnap,
+            review: {
+              maps_url: GOOGLE_REVIEW_URL,
+              review_url: rr?.reviewUrl || '',
+              dilayani_oleh: dataInvoice?.dilayani_oleh,
+            },
+          })
+        } catch (e) {
+          // fallback: kirim tanpa review token jika ada error
+          htmlToSend = buildInvoiceEmailTemplate({
+            ...dataInvoice,
+            membership: membershipSnap,
+          })
+        }
+      }
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: toEmail.trim(),
           subject: subject.trim(),
-          html: htmlBody,
+          html: htmlToSend,
           fromEmail: FROM_EMAIL,
           fromName: FROM_NAME,
           attach_invoice_jpg: false,
