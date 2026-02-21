@@ -677,13 +677,11 @@ function buildMembershipReminderA4Html(payload) {
   const expText =
     next_expiry_at
       ? next_expiring_points && toNumber(next_expiring_points) > 0
-        ? `Point akan segera hangus sebelum <b>${formatDateIndo(next_expiry_at)}</b> (sebanyak <b>${formatPoints(
-            next_expiring_points
-          )}</b>).`
-        : `Point akan segera hangus sebelum <b>${formatDateIndo(next_expiry_at)}</b>.`
-      : `Point memiliki masa berlaku rolling ${EXPIRY_DAYS} hari.`
+        ? `Ada poin yang akan segera hangus. Pakai sebelum <b>${formatDateIndo(next_expiry_at)}</b> (sebanyak <b>${formatPoints(next_expiring_points)}</b>).`
+        : `Ada poin yang akan segera hangus. Pakai sebelum <b>${formatDateIndo(next_expiry_at)}</b>.`
+      : `Poin kamu masih aktif dan siap dipakai kapan saja saat belanja berikutnya.`
 
-  const benefits = getTierBenefits(displayTier)
+  const benefits = (getTierBenefits(displayTier) || []).slice(0, 4)
   const benefitLis =
     Array.isArray(benefits) && benefits.length
       ? benefits
@@ -770,7 +768,8 @@ function buildMembershipReminderA4Html(payload) {
         </ul>
 
         <div style="margin-top:16px; font-size:11px; color:#6b7280; line-height:1.6;">
-          Catatan: Point dapat ditukarkan saat transaksi berikutnya (maksimal 50% dari point yang dimiliki).
+          Mau pakai poin? Chat WhatsApp CONNECT.IND: <b>0896-31-4000-31</b>.
+          <br/>Catatan: Poin dapat ditukarkan saat transaksi berikutnya (maksimal 50% dari poin yang dimiliki).
         </div>
       </div>
     </div>
@@ -780,6 +779,159 @@ function buildMembershipReminderA4Html(payload) {
 </body>
 </html>`
 }
+
+// ======================
+// ✅ MEMBERSHIP REMINDER EMAIL (HTML) — simpel & natural (tanpa kartu)
+// ======================
+function buildMembershipReminderEmailTemplate(payload) {
+  const {
+    nama = '',
+    no_wa = '',
+    tier = 'SILVER',
+    total_points = 0,
+    next_expiring_points = null,
+    next_expiry_at = null,
+  } = payload || {}
+
+  const displayName = safe(nama) || 'Customer'
+  const displayTier = String(tier || 'SILVER').toUpperCase()
+  const pointsText = formatPoints(total_points || 0)
+
+  const hasExpiry = Boolean(next_expiry_at)
+  const expPts = next_expiring_points == null ? null : toNumber(next_expiring_points)
+
+  const badgeStyle =
+    displayTier === 'PLATINUM'
+      ? 'background:#0f172a;color:#ffffff;'
+      : displayTier === 'GOLD'
+      ? 'background:#9a3412;color:#ffffff;'
+      : 'background:#111827;color:#ffffff;'
+
+  const expBox = (() => {
+    if (!hasExpiry) {
+      return `
+        <div style="margin-top:12px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:14px; background:#f9fafb;">
+          <div style="font-weight:800; color:#111827; font-size:13px;">Info poin</div>
+          <div style="margin-top:6px; color:#374151; font-size:13px; line-height:1.7;">
+            Poin kamu masih aktif dan bisa dipakai kapan saja saat belanja berikutnya.
+          </div>
+        </div>
+      `
+    }
+
+    const expLine =
+      expPts != null && expPts > 0
+        ? `Ada <b style="color:#111827;">${formatPoints(expPts)}</b> yang akan hangus.`
+        : `Ada poin yang akan hangus.`
+    return `
+      <div style="margin-top:12px; padding:12px 14px; border:1px solid #fed7aa; border-radius:14px; background:#fff7ed;">
+        <div style="font-weight:900; color:#9a3412; font-size:13px;">⚠️ Pengingat</div>
+        <div style="margin-top:6px; color:#111827; font-size:13px; line-height:1.7;">
+          ${expLine} Pakai sebelum <b style="color:#111827;">${formatDateIndo(next_expiry_at)}</b>, sayang kalau kelewat.
+        </div>
+      </div>
+    `
+  })()
+
+  const waText = safe(no_wa) ? safe(no_wa) : '-'
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="x-apple-disable-message-reformatting"/>
+    <style>
+      body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+      table { border-collapse:separate; }
+      .wrapPad{ padding:24px 12px; }
+      .container{ width:100%; max-width:600px; }
+      @media screen and (max-width: 600px) {
+        .wrapPad { padding: 14px 10px !important; }
+        .cardPad { padding: 14px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0; padding:0; width:100% !important; background:#f6f7f9;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+      <tr>
+        <td class="wrapPad" style="padding:24px 12px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"
+            class="container"
+            style="width:100%; max-width:600px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#ffffff; border:1px solid #eaeaea; border-radius:18px; overflow:hidden;">
+            <tr>
+              <td style="padding:18px 20px; border-bottom:1px solid #f0f0f0;">
+                <div style="font-weight:900; letter-spacing:0.3px; color:#111827;">CONNECT.IND</div>
+                <div style="color:#6b7280; font-size:12px; margin-top:4px; line-height:1.4;">
+                  Jl. Srikuncoro Raya Ruko B1-B2, Kalibanteng Kulon, Semarang 50145 • WhatsApp: 0896-31-4000-31
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="cardPad" style="padding:20px;">
+                <div style="font-size:18px; font-weight:900; color:#111827;">Pengingat Poin Membership</div>
+                <div style="margin-top:6px; color:#6b7280; font-size:13px; line-height:1.6;">
+                  Halo <b style="color:#111827;">${safe(displayName)}</b>, ini info poin kamu di CONNECT.IND.
+                </div>
+
+                <div style="margin-top:14px; border:1px solid #eef2f7; border-radius:16px; padding:16px; background:#ffffff;">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+                    <div style="min-width:0;">
+                      <div style="font-size:12px; color:#6b7280;">Nama</div>
+                      <div style="margin-top:4px; font-size:16px; font-weight:900; color:#111827; word-break:break-word;">
+                        ${safe(displayName)}
+                      </div>
+                      <div style="margin-top:6px; font-size:12px; color:#6b7280;">
+                        No. WA: <b style="color:#111827;">${waText}</b>
+                      </div>
+                    </div>
+
+                    <div style="text-align:right; flex-shrink:0;">
+                      <div style="display:inline-block; padding:7px 12px; border-radius:999px; font-weight:900; font-size:12px; ${badgeStyle}">
+                        ${displayTier} MEMBER
+                      </div>
+                      <div style="margin-top:10px; font-size:12px; color:#6b7280;">Total Poin</div>
+                      <div style="margin-top:4px; font-size:22px; font-weight:900; color:#111827; white-space:nowrap;">
+                        ${pointsText}
+                      </div>
+                    </div>
+                  </div>
+
+                  ${expBox}
+
+                  <div style="margin-top:12px; padding:12px 14px; border-radius:14px; background:#111827;">
+                    <div style="color:#ffffff; font-weight:900; font-size:13px;">Mau pakai poin?</div>
+                    <div style="margin-top:6px; color:#e5e7eb; font-size:13px; line-height:1.7;">
+                      Tinggal chat WhatsApp kami di <b style="color:#ffffff;">0896-31-4000-31</b> atau datang ke toko. Kami bantu pilihkan yang cocok ✨
+                    </div>
+                  </div>
+
+                  <div style="margin-top:12px; font-size:11px; color:#6b7280; line-height:1.6;">
+                    Catatan: Poin dapat ditukarkan saat transaksi (maksimal 50% dari poin yang dimiliki).
+                  </div>
+                </div>
+
+                <div style="margin-top:16px; color:#6b7280; font-size:12px;">
+                  Hormat kami,<br/>
+                  <b style="color:#111827;">CONNECT.IND</b>
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="text-align:center; color:#9ca3af; font-size:12px; padding:14px 16px; border-top:1px solid #f0f0f0;">
+                Email ini dikirim dari sistem CONNECT.IND.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
 
 // ====== download helpers (tetap) ======
 async function canvasToJpegBase64(canvas, quality = 0.95) {
@@ -797,7 +949,11 @@ async function renderHtmlToOffscreen(html) {
   wrap.style.zIndex = '999999'
   wrap.innerHTML = html
   document.body.appendChild(wrap)
-  const root = wrap.querySelector('#invoice-a4') || wrap.querySelector('#offer-a4') || wrap
+  const root =
+    wrap.querySelector('#invoice-a4') ||
+    wrap.querySelector('#offer-a4') ||
+    wrap.querySelector('#member-reminder-a4') ||
+    wrap
   return { wrap, root }
 }
 
@@ -1591,6 +1747,7 @@ export default function EmailPage() {
       setHtmlBody(
         buildMembershipReminderEmailTemplate({
           nama: memberSelected.nama,
+          no_wa: memberSelected.no_wa,
           tier: memberSnap.tier,
           total_points: memberSnap.total_points,
           next_expiring_points: memberSnap.next_expiring_points,
@@ -2136,10 +2293,13 @@ export default function EmailPage() {
       } else if (mode === 'membership') {
         docId = `MEMBER-${digitsOnly(memberSelected?.no_wa) || dayjs().format('YYYYMMDDHHmm')}`
         filename = `${docId}.jpg`
-        const html = buildMemberCardHtml({
+        const html = buildMembershipReminderA4Html({
           nama: memberSelected?.nama,
+          no_wa: memberSelected?.no_wa,
           tier: memberSnap?.tier,
           total_points: memberSnap?.total_points,
+          next_expiring_points: memberSnap?.next_expiring_points,
+          next_expiry_at: memberSnap?.next_expiry_at,
         })
         const base64 = await generateJpgBase64FromHtml(html)
         attachments.push({ filename, contentType: 'image/jpeg', contentBase64: base64 })
@@ -2234,13 +2394,16 @@ export default function EmailPage() {
     try {
       if (mode === 'membership') {
         if (!memberSelected || !memberSnap) return alert('Pilih customer dulu.')
-        const html = buildMemberCardHtml({
+        const html = buildMembershipReminderA4Html({
           nama: memberSelected.nama,
+          no_wa: memberSelected.no_wa,
           tier: memberSnap.tier,
           total_points: memberSnap.total_points,
+          next_expiring_points: memberSnap.next_expiring_points,
+          next_expiry_at: memberSnap.next_expiry_at,
         })
         const base64 = await generateJpgBase64FromHtml(html)
-        const filename = `MEMBER-${digitsOnly(memberSelected.no_wa) || 'CARD'}.jpg`
+        const filename = `MEMBER-${digitsOnly(memberSelected.no_wa) || dayjs().format('YYYYMMDD')}.jpg`
         return downloadBase64AsJpg(base64, filename)
       }
 
