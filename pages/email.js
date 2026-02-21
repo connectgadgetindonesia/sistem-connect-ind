@@ -120,42 +120,75 @@ function generateReviewToken(len = 32) {
   }
 }
 
-async function createReviewRequestForInvoice({ invoice_id, nama_pembeli, no_wa, dilayani_oleh, to_email }) {
+async function createReviewRequestForInvoice({
+  invoice_id,
+  nama_pembeli,
+  no_wa,
+  dilayani_oleh,
+  to_email,
+  status = 'draft', // 'draft' (preview) | 'sent' (saat kirim email)
+}) {
   const keyCandidates = buildCustomerKeyCandidates(no_wa)
   const customer_key = keyCandidates[0] || digitsOnly(no_wa) || ''
 
-  // token unik (pakai insert retry kalau bentrok)
+  const inv = safe(invoice_id)
+  const email = safe(to_email)
+
+  // 1) Reuse token jika sudah pernah dibuat utk invoice ini (biar preview = email yang diterima sama)
+  try {
+    const { data: existing } = await supabase
+      .from(REVIEW_REQUESTS_TABLE)
+      .select('id, token, status')
+      .eq('invoice_id', inv)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (existing && existing[0] && existing[0].token) {
+      const origin =
+        typeof window !== 'undefined' && window.location?.origin ? window.location.origin : APP_BASE_URL
+      const reviewUrl = `${origin}/review/${existing[0].token}`
+
+      // Jika sekarang memang mau kirim email, update status draft → sent
+      if (status === 'sent' && existing[0].status !== 'sent') {
+        await supabase
+          .from(REVIEW_REQUESTS_TABLE)
+          .update({ status: 'sent', sent_at: new Date().toISOString(), email })
+          .eq('id', existing[0].id)
+      }
+
+      return { id: existing[0].id, token: existing[0].token, reviewUrl }
+    }
+  } catch (e) {
+    console.warn('createReviewRequestForInvoice reuse error:', e?.message || e)
+  }
+
+  // 2) Buat token baru (insert retry kalau bentrok)
   for (let i = 0; i < 3; i++) {
     const token = generateReviewToken(16) // 32 hex chars
     const payload = {
       token,
-      invoice_id: safe(invoice_id),
+      invoice_id: inv,
       customer_key: safe(customer_key),
       customer_name: safe(nama_pembeli),
-      email: safe(to_email),
+      email,
       dilayani_oleh: safe(dilayani_oleh),
-      status: 'sent',
-      sent_at: new Date().toISOString(),
+      status: status === 'sent' ? 'sent' : 'draft',
+      sent_at: status === 'sent' ? new Date().toISOString() : null,
       created_at: new Date().toISOString(),
     }
 
-    const { error } = await supabase.from(REVIEW_REQUESTS_TABLE).insert([payload])
+    const { data, error } = await supabase.from(REVIEW_REQUESTS_TABLE).insert([payload]).select('id, token').single()
     if (!error) {
       const origin =
         typeof window !== 'undefined' && window.location?.origin ? window.location.origin : APP_BASE_URL
       const reviewUrl = `${origin}/review/${token}`
-      return { token, reviewUrl }
+      return { id: data?.id || null, token, reviewUrl }
     }
 
-    // kalau bentrok token / error lain, coba ulang
-    // eslint-disable-next-line no-console
-    console.warn('createReviewRequestForInvoice error:', error?.message || error)
+    console.warn('createReviewRequestForInvoice insert error:', error?.message || error)
   }
 
-  // fallback: tetap kirim email tanpa link internal
-  const origin =
-    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : APP_BASE_URL
-  return { token: '', reviewUrl: `${origin}/review` }
+  throw new Error('Gagal membuat review token. Coba ulangi.')
 }
 
 function isUnitRow(r) {
@@ -1430,7 +1463,10 @@ export default function EmailPage() {
   const [membershipSnap, setMembershipSnap] = useState(null)
   const [membershipLoading, setMembershipLoading] = useState(false)
 
-  // composer
+    // ✅ review token (untuk preview & email)
+  const [reviewSnap, setReviewSnap] = useState(null) // { review_url, maps_url, dilayani_oleh }
+
+// composer
   const [toEmail, setToEmail] = useState('')
   const [toEmailTouched, setToEmailTouched] = useState(false)
   const [subject, setSubject] = useState('Invoice Pembelian – CONNECT.IND')
@@ -1832,7 +1868,53 @@ export default function EmailPage() {
     }
   }
 
-  // ===== build HTML based on mode =====
+  
+  // ======================
+  // ✅ Ensure Review Token (untuk preview)
+  // - Dibuat sekali per invoice (status: draft)
+  // - Saat email dikirim, status otomatis di-update jadi sent
+  // ======================
+  useEffect(() => {
+    if (mode !== 'invoice') {
+      setReviewSnap(null)
+      return
+    }
+    if (!dataInvoice?.invoice_id) {
+      setReviewSnap(null)
+      return
+    }
+
+    let alive = true
+    ;(async () => {
+      try {
+        const emailCandidate = safe(toEmail) || safe(dataInvoice?.email) || ''
+        const rr = await createReviewRequestForInvoice({
+          invoice_id: dataInvoice.invoice_id,
+          nama_pembeli: dataInvoice.nama_pembeli,
+          no_wa: dataInvoice.no_wa,
+          dilayani_oleh: dataInvoice.dilayani_oleh,
+          to_email: emailCandidate,
+          status: 'draft',
+        })
+        if (!alive) return
+        setReviewSnap({
+          maps_url: GOOGLE_REVIEW_URL,
+          review_url: rr?.reviewUrl || '',
+          dilayani_oleh: dataInvoice?.dilayani_oleh || '',
+        })
+      } catch (e) {
+        if (!alive) return
+        setReviewSnap(null)
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, dataInvoice?.invoice_id, toEmail])
+
+// ===== build HTML based on mode =====
   useEffect(() => {
     if (mode === 'invoice') {
       if (!dataInvoice) {
@@ -1843,6 +1925,7 @@ export default function EmailPage() {
         buildInvoiceEmailTemplate({
           ...dataInvoice,
           membership: membershipSnap,
+          review: reviewSnap,
         })
       )
       return
@@ -1882,7 +1965,8 @@ export default function EmailPage() {
     membershipSnap,
     memberSelected,
     memberSnap,
-  ])
+      reviewSnap,
+])
 
   // ✅ auto-generate offerId saat masuk mode offer + kosong
   useEffect(() => {
