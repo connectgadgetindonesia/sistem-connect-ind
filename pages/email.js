@@ -1450,6 +1450,8 @@ export default function EmailPage() {
 
   // ===== INVOICE STATE =====
   const [dataInvoice, setDataInvoice] = useState(null)
+  const [reviewSnap, setReviewSnap] = useState(null) // { review_url, maps_url, dilayani_oleh }
+
   const [htmlBody, setHtmlBody] = useState('')
 
   // ===== MEMBERSHIP REMINDER STATE =====
@@ -1926,6 +1928,7 @@ export default function EmailPage() {
           ...dataInvoice,
           membership: membershipSnap,
           review: reviewSnap,
+          review: reviewSnap,
         })
       )
       return
@@ -1963,6 +1966,7 @@ export default function EmailPage() {
     offerItems,
     toEmail,
     membershipSnap,
+    reviewSnap,
     memberSelected,
     memberSnap,
       reviewSnap,
@@ -2156,6 +2160,8 @@ export default function EmailPage() {
           no_wa: r.no_wa || '',
           email: r.email || '',
 
+          dilayani_oleh: r.dilayani_oleh || '',
+
           email_sent_count: 0,
           email_last_to: '',
           email_last_at: null,
@@ -2186,6 +2192,7 @@ export default function EmailPage() {
       if (!it.alamat && r.alamat) it.alamat = r.alamat
       if (!it.no_wa && r.no_wa) it.no_wa = r.no_wa
       if (!it.email && r.email) it.email = r.email
+      if (!it.dilayani_oleh && r.dilayani_oleh) it.dilayani_oleh = r.dilayani_oleh
     }
 
     let grouped = Array.from(map.values()).map((inv) => {
@@ -2272,7 +2279,8 @@ export default function EmailPage() {
       nama_pembeli: inv.nama_pembeli || '',
       alamat: inv.alamat || '',
       no_wa: inv.no_wa || '',
-      email: inv.email || '',
+      email: inv\.email \|\| '',
+      dilayani_oleh: inv.dilayani_oleh || '',
 
       email_sent_count: inv.email_sent_count || 0,
       email_last_to: inv.email_last_to || '',
@@ -2300,6 +2308,23 @@ export default function EmailPage() {
     } catch {
       setMembershipSnap(null)
     }
+
+
+// ✅ buat / reuse review link utk invoice (untuk preview & email)
+try {
+  const rr = await createReviewRequestForInvoice({
+    invoice_id: payload.invoice_id,
+    nama_pembeli: payload.nama_pembeli,
+    no_wa: payload.no_wa,
+    dilayani_oleh: payload.dilayani_oleh,
+    to_email: payload.email || toEmail,
+    status: 'draft',
+  })
+  setReviewSnap({ review_url: rr.reviewUrl, maps_url: GOOGLE_REVIEW_URL, dilayani_oleh: payload.dilayani_oleh })
+} catch {
+  setReviewSnap(null)
+}
+
   }
 
   const fileToBase64 = (file) =>
@@ -2545,6 +2570,27 @@ export default function EmailPage() {
           })
         }
       }
+
+// ✅ Final HTML yang dikirim (khusus invoice: pastikan review link & nama karyawan tampil)
+let htmlToSend = htmlBody
+if (mode === 'invoice') {
+  try {
+    const rr = await createReviewRequestForInvoice({
+      invoice_id: dataInvoice.invoice_id,
+      nama_pembeli: dataInvoice.nama_pembeli,
+      no_wa: dataInvoice.no_wa,
+      dilayani_oleh: dataInvoice.dilayani_oleh,
+      to_email: toEmail.trim(),
+      status: 'sent',
+    })
+    const reviewObj = { review_url: rr.reviewUrl, maps_url: GOOGLE_REVIEW_URL, dilayani_oleh: dataInvoice.dilayani_oleh }
+    htmlToSend = buildInvoiceEmailTemplate({ ...dataInvoice, membership: membershipSnap, review: reviewObj })
+  } catch (e) {
+    // fallback: kirim seperti biasa
+    htmlToSend = buildInvoiceEmailTemplate({ ...dataInvoice, membership: membershipSnap, review: reviewSnap })
+  }
+}
+
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
