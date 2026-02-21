@@ -1,6 +1,6 @@
 // pages/penjualan.js
 import Layout from '@/components/Layout'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import dayjs from 'dayjs'
 import Select from 'react-select'
@@ -210,7 +210,10 @@ export default function Penjualan() {
   const [loyaltyReason, setLoyaltyReason] = useState('')
 
   // tombol ON/OFF pakai poin
-  const [usePoinOn, setUsePoinOn] = useState(false)
+  // simpan WA sebelumnya supaya default ON hanya saat ganti customer
+  const prevWARef = useRef('')
+
+  const [usePoinOn, setUsePoinOn] = useState(true)
 
   // field input poin (Rp)
   const [usePoinDisplay, setUsePoinDisplay] = useState('') // tampil dengan titik
@@ -376,13 +379,24 @@ export default function Penjualan() {
   const sumDiskonInvoiceManual = Math.min(toNumber(diskonInvoice), sumHarga)
   const totalSetelahDiskonManual = Math.max(0, sumHarga - sumDiskonInvoiceManual)
 
+  // ✅ batas redeem dari saldo (50% dari poin aktif)
+  const maxPoinByBalance = useMemo(() => {
+    if (!loyaltyEligible) return 0
+    const bal = toNumber(poinAktif)
+    return Math.max(0, Math.floor(bal * 0.5))
+  }, [poinAktif, loyaltyEligible])
+
   // ✅ max redeem: 50% saldo poin, dan tidak boleh melebihi total setelah diskon manual
   const maxPoinDipakai = useMemo(() => {
     if (!loyaltyEligible) return 0
-    const bal = toNumber(poinAktif)
-    const limit50 = Math.floor(bal * 0.5)
-    return Math.max(0, Math.min(limit50, totalSetelahDiskonManual))
-  }, [poinAktif, totalSetelahDiskonManual, loyaltyEligible])
+
+    // Kalau belum ada produk (subtotal masih 0), kita tetap tampilkan max redeem dari saldo (50%)
+    // supaya kolom poin langsung terisi begitu customer dipilih.
+    if (toNumber(totalSetelahDiskonManual) <= 0) return maxPoinByBalance
+
+    // Kalau sudah ada total belanja, poin dipakai tidak boleh melebihi total setelah diskon manual.
+    return Math.max(0, Math.min(maxPoinByBalance, totalSetelahDiskonManual))
+  }, [maxPoinByBalance, totalSetelahDiskonManual, loyaltyEligible])
 
   // ✅ yang dipakai real di UI (kalau OFF -> 0)
   const poinDipakaiFinal = useMemo(() => {
@@ -430,6 +444,7 @@ export default function Penjualan() {
       const wa = String(formData.no_wa || '').trim()
 
       if (!wa) {
+        prevWARef.current = ''
         setPoinAktif(0)
         setMemberTier('SILVER')
         setLoyaltyEligible(false)
@@ -441,6 +456,7 @@ export default function Penjualan() {
       }
 
       if (!isValidWANumericLocal(wa)) {
+        prevWARef.current = ''
         setPoinAktif(0)
         setMemberTier('SILVER')
         setLoyaltyEligible(false)
@@ -449,6 +465,12 @@ export default function Penjualan() {
         setUsePoinWanted(0)
         setUsePoinDisplay('')
         return
+      }
+
+      // Default: pakai poin ON setiap kali ganti customer (WA berubah)
+      if (prevWARef.current !== wa) {
+        prevWARef.current = wa
+        setUsePoinOn(true)
       }
 
       const row = await fetchLoyaltyCustomer(wa)
@@ -1127,7 +1149,9 @@ export default function Penjualan() {
 
                         <div className="mt-2 text-xs text-gray-500">
                           Dipakai saat ini: <b>{fmt(poinDipakaiFinal)}</b>
-                          {sumHarga <= 0 ? <span className="ml-2">• Tambahkan produk untuk menghitung max.</span> : null}
+                          {sumHarga <= 0 ? (
+                            <span className="ml-2">• Akan otomatis menyesuaikan setelah produk ditambahkan.</span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1349,7 +1373,7 @@ export default function Penjualan() {
                 setDiskonDisplay('')
                 setHargaJualDisplay('')
                 setBiayaNominalDisplay('')
-                setUsePoinOn(false)
+                setUsePoinOn(true)
                 setUsePoinWanted(0)
                 setUsePoinDisplay('')
               }}
