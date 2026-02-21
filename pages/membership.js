@@ -21,6 +21,53 @@ const btnTab = (active) =>
 
 const PAGE_SIZE = 15
 
+
+// ===== Benefits (GOLD / PLATINUM) =====
+const BENEFITS = {
+  GOLD: [
+    'Free tempered glass seumur hidup (klaim 2x setiap tahun)',
+    'Gratis Ongkir Instan 2x tiap tahun',
+    'Diskon aksesoris 5%',
+    'Cashback 100 rb tiap transaksi unit',
+    'Garansi upgrade privilege +250 ribu saat trade-in',
+    'Customer Service Prioritas',
+    'Free cleaning device',
+    'Free maintenance device',
+    'Free delivery dengan minimal pembelian Rp. 2.000.000',
+  ],
+  PLATINUM: [
+    'Free tempered glass seumur hidup (klaim 5x setiap tahun)',
+    'Gratis Ongkir Instan 5x tiap tahun',
+    'Diskon aksesoris 10%',
+    'Cashback 200 rb tiap transaksi unit',
+    'Garansi upgrade privilege +500 ribu saat trade-in',
+    'Customer Service Prioritas',
+    'Free cleaning device',
+    'Free maintenance device',
+    'Free delivery dengan minimal pembelian Rp. 2.000.000',
+  ],
+}
+
+const CLAIM_LIMITS = {
+  GOLD: { tempered_glass: 2, ongkir_instan: 2 },
+  PLATINUM: { tempered_glass: 5, ongkir_instan: 5 },
+}
+
+// Tabel Supabase untuk history klaim benefit
+// Kolom minimum yang dibutuhkan:
+// - id (uuid / bigint)
+// - customer_key (text)
+// - benefit_type (text) -> 'tempered_glass' | 'ongkir_instan'
+// - claimed_at (timestamptz)
+// - note (text, nullable)
+// - created_at (timestamptz, nullable)
+const CLAIM_TABLE = 'loyalty_benefit_claims'
+
+const isPremiumLevel = (level) => {
+  const lv = String(level || '').toUpperCase()
+  return lv === 'GOLD' || lv === 'PLATINUM'
+}
+
 // ===== Helpers =====
 const toNumber = (v) => {
   if (typeof v === 'number') return v
@@ -132,6 +179,16 @@ export default function Membership() {
   const [ledger, setLedger] = useState([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
 
+  // benefit modal (GOLD / PLATINUM)
+  const [benefitOpen, setBenefitOpen] = useState(false)
+  const [benefitCustomer, setBenefitCustomer] = useState(null)
+  const [claimLoading, setClaimLoading] = useState(false)
+  const [claimSaving, setClaimSaving] = useState(false)
+  const [claims, setClaims] = useState([])
+
+  const yearStart = useMemo(() => dayjs().startOf('year').toISOString(), [])
+  const yearEnd = useMemo(() => dayjs().endOf('year').toISOString(), [])
+
   // edit email
   const [emailDraft, setEmailDraft] = useState('')
 
@@ -179,6 +236,78 @@ export default function Membership() {
     setLedger(data || [])
   }
 
+
+  const fetchClaims = async (customerKey) => {
+    if (!customerKey) return
+    setClaimLoading(true)
+
+    const { data, error } = await supabase
+      .from(CLAIM_TABLE)
+      .select('id,customer_key,benefit_type,claimed_at,note,created_at')
+      .eq('customer_key', customerKey)
+      .gte('claimed_at', yearStart)
+      .lte('claimed_at', yearEnd)
+      .order('claimed_at', { ascending: false })
+      .limit(200)
+
+    setClaimLoading(false)
+
+    if (error) {
+      console.error(error)
+      // Jangan crash UI kalau tabel belum ada / belum dibuat
+      setClaims([])
+      return
+    }
+    setClaims(data || [])
+  }
+
+  const openBenefits = async (c) => {
+    if (!c) return
+    const lv = String(c.level || '').toUpperCase()
+    if (!isPremiumLevel(lv)) return
+
+    setBenefitCustomer(c)
+    setBenefitOpen(true)
+    await fetchClaims(c.customer_key)
+  }
+
+  const countClaims = (benefitType) => {
+    return (claims || []).filter((x) => String(x.benefit_type || '').toLowerCase() === benefitType).length
+  }
+
+  const addClaim = async (benefitType) => {
+    if (!benefitCustomer?.customer_key) return
+    const lv = String(benefitCustomer.level || '').toUpperCase()
+    if (!isPremiumLevel(lv)) return
+
+    const limits = CLAIM_LIMITS[lv] || {}
+    const used = countClaims(benefitType)
+    const limit = limits[benefitType] ?? 0
+    if (limit && used >= limit) {
+      alert('Limit klaim tahun ini sudah tercapai.')
+      return
+    }
+
+    setClaimSaving(true)
+    const { error } = await supabase.from(CLAIM_TABLE).insert([
+      {
+        customer_key: benefitCustomer.customer_key,
+        benefit_type: benefitType,
+        claimed_at: new Date().toISOString(),
+        note: null,
+        created_at: new Date().toISOString(),
+      },
+    ])
+    setClaimSaving(false)
+
+    if (error) {
+      console.error(error)
+      alert('Gagal menyimpan klaim. Pastikan tabel klaim benefit sudah dibuat.')
+      return
+    }
+
+    await fetchClaims(benefitCustomer.customer_key)
+  }
   useEffect(() => {
     fetchCustomers()
   }, [])
@@ -265,6 +394,15 @@ export default function Membership() {
     setAdjPoints('')
     setAdjNote('Penyesuaian manual')
     setAdjSaving(false)
+  }
+
+
+  const closeBenefits = () => {
+    setBenefitOpen(false)
+    setBenefitCustomer(null)
+    setClaims([])
+    setClaimLoading(false)
+    setClaimSaving(false)
   }
 
   const maxRedeem = useMemo(() => {
@@ -523,7 +661,18 @@ export default function Membership() {
                         </td>
                         <td className="px-4 py-3 border-b">{normalizeWA(c.no_wa || c.customer_key) || '-'}</td>
                         <td className="px-4 py-3 border-b">
-                          <span className={levelBadge(c.level)}>{String(c.level || 'SILVER').toUpperCase()}</span>
+                          {isPremiumLevel(c.level) ? (
+                            <button
+                              type="button"
+                              className={levelBadge(c.level) + ' hover:opacity-90'}
+                              onClick={() => openBenefits(c)}
+                              title="Lihat benefit & history klaim"
+                            >
+                              {String(c.level || 'SILVER').toUpperCase()}
+                            </button>
+                          ) : (
+                            <span className={levelBadge(c.level)}>{String(c.level || 'SILVER').toUpperCase()}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 border-b text-right">
                           <div className="font-semibold">{formatPts(c.points_balance)}</div>
@@ -607,12 +756,25 @@ export default function Membership() {
                 <div>
                   <div className="text-lg font-bold flex items-center gap-2">
                     <span>{selected.nama || '-'}</span>
-                    <span className={levelBadge(selected.level)}>{String(selected.level || 'SILVER').toUpperCase()}</span>
+                    {isPremiumLevel(selected.level) ? (
+                      <button
+                        type="button"
+                        className={levelBadge(selected.level) + ' hover:opacity-90'}
+                        onClick={() => openBenefits(selected)}
+                        title="Lihat benefit & history klaim"
+                      >
+                        {String(selected.level || 'SILVER').toUpperCase()}
+                      </button>
+                    ) : (
+                      <span className={levelBadge(selected.level)}>
+                        {String(selected.level || 'SILVER').toUpperCase()}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-gray-600">{normalizeWA(selected.no_wa || selected.customer_key)}</div>
                 </div>
 
-                <button className={btnDanger} onClick={() => setOpen(false)}>
+                <button className={btnDanger} onClick={closeModal}>
                   Close
                 </button>
               </div>
@@ -791,6 +953,156 @@ export default function Membership() {
 
               {/* ensure close resets */}
               <div className="hidden">{/* noop */}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Benefit Modal (klik Level) */}
+        {benefitOpen && benefitCustomer && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-3xl rounded-2xl shadow-xl overflow-hidden">
+              <div className="p-4 border-b flex items-center justify-between">
+                <div>
+                  <div className="text-lg font-bold flex items-center gap-2">
+                    <span>Benefit Member</span>
+                    <span className={levelBadge(benefitCustomer.level)}>
+                      {String(benefitCustomer.level || 'SILVER').toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {benefitCustomer.nama || '-'} • {normalizeWA(benefitCustomer.no_wa || benefitCustomer.customer_key)}
+                  </div>
+                </div>
+
+                <button className={btnDanger} onClick={closeBenefits}>
+                  Close
+                </button>
+              </div>
+
+              <div className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className={card + ' p-4'}>
+                    <div className="font-semibold mb-2">Daftar Benefit</div>
+                    <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+                      {(BENEFITS[String(benefitCustomer.level || '').toUpperCase()] || []).map((b, i) => (
+                        <li key={i}>{b}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className={card + ' p-4'}>
+                    <div className="font-semibold mb-2">History Klaim (Tahun Ini)</div>
+
+                    {(() => {
+                      const lv = String(benefitCustomer.level || '').toUpperCase()
+                      const lim = CLAIM_LIMITS[lv] || { tempered_glass: 0, ongkir_instan: 0 }
+                      const usedTG = countClaims('tempered_glass')
+                      const usedOI = countClaims('ongkir_instan')
+                      return (
+                        <div className="space-y-3">
+                          <div className="border border-gray-200 rounded-xl p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-semibold">Tempered Glass</div>
+                                <div className="text-xs text-gray-600">
+                                  Sudah klaim: <span className="font-semibold">{usedTG}</span> / {lim.tempered_glass}
+                                </div>
+                              </div>
+                              <button
+                                className={btnPrimary}
+                                onClick={() => addClaim('tempered_glass')}
+                                disabled={claimSaving || (lim.tempered_glass && usedTG >= lim.tempered_glass)}
+                              >
+                                {claimSaving ? 'Saving...' : 'Tambah Klaim'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="border border-gray-200 rounded-xl p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-semibold">Gratis Ongkir Instan</div>
+                                <div className="text-xs text-gray-600">
+                                  Sudah klaim: <span className="font-semibold">{usedOI}</span> / {lim.ongkir_instan}
+                                </div>
+                              </div>
+                              <button
+                                className={btnPrimary}
+                                onClick={() => addClaim('ongkir_instan')}
+                                disabled={claimSaving || (lim.ongkir_instan && usedOI >= lim.ongkir_instan)}
+                              >
+                                {claimSaving ? 'Saving...' : 'Tambah Klaim'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-gray-500">
+                            * Hitungan klaim di-reset otomatis setiap awal tahun.
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+
+                <div className={card + ' p-4 mt-4'}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="font-semibold">Riwayat Klaim</div>
+                      <div className="text-xs text-gray-600">Menampilkan {claims.length} klaim di tahun ini</div>
+                    </div>
+                    <button
+                      className={btn}
+                      onClick={() => fetchClaims(benefitCustomer.customer_key)}
+                      disabled={claimLoading}
+                      type="button"
+                    >
+                      {claimLoading ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  <div className="w-full overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-700">
+                          <th className="text-left font-semibold px-4 py-3 border-t border-b">Tanggal</th>
+                          <th className="text-left font-semibold px-4 py-3 border-t border-b">Benefit</th>
+                          <th className="text-left font-semibold px-4 py-3 border-t border-b">Catatan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {!claims.length && (
+                          <tr>
+                            <td colSpan={3} className="px-4 py-10 text-center text-gray-500">
+                              {claimLoading
+                                ? 'Memuat...'
+                                : 'Belum ada klaim tahun ini (atau tabel klaim belum dibuat).'}
+                            </td>
+                          </tr>
+                        )}
+
+                        {claims.slice(0, 50).map((r) => (
+                          <tr key={r.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 border-b">{formatDateTime(r.claimed_at || r.created_at)}</td>
+                            <td className="px-4 py-3 border-b">
+                              {String(r.benefit_type || '') === 'tempered_glass'
+                                ? 'Tempered Glass'
+                                : String(r.benefit_type || '') === 'ongkir_instan'
+                                ? 'Gratis Ongkir Instan'
+                                : r.benefit_type}
+                            </td>
+                            <td className="px-4 py-3 border-b">{r.note || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="text-xs text-gray-500 mt-3">
+                  Kalau history klaim belum muncul, berarti tabel <span className="font-mono">{CLAIM_TABLE}</span> belum ada di Supabase.
+                </div>
+              </div>
             </div>
           </div>
         )}
